@@ -4,29 +4,25 @@ Updated: 2026-07-15
 
 ## Status
 
-Phase 3 gated on **postgres backups → MinIO** before more platform components.
+Phase 3: **ns `data` platform workloads on Flux** (except hauliage `mosquitto`).
 
-## Locked decisions
+## Flux stacks (dev)
 
-- Separate GitOps repo (this one)
-- Multi-cluster: `dev` / `staging` / `prod`
-- Multipass shared-k8s = **`dev`**
-- GitOpsSets for stack dryness
-- Postgres: Bitnami HA + bitnamilegacy; `local-path-retain`
-- **Backups:** `pg_dumpall` CronJob → MinIO bucket `postgres-backups`
-- **MinIO:** hostPath `/var/lib/data/minio` on worker-1, PV reclaim **Retain**
+- namespaces, cluster, cylon-infra, platform-dev-tls
+- postgres-ha, minio, postgres-backup
+- **redis**, **messaging**, **pact**, **imgproxy**
 
-## Stacks to enable (before redis/etc.)
+## Still Tilt (shared-k8s-cluster)
 
-1. `minio`
-2. `postgres-backup` (after postgres-ha Ready)
+- scheduling (faktory), pipeline (fluvio), observability, ai
+- `mosquitto` in data ns is product (hauliage), not platform-data
 
-Docs: `docs/postgres-backup.md`, `docs/postgres-pvc-reuse.md`
-Recipes: `just heal-minio-pvc`, `just postgres-backup-now`
+## Notes
+
+- Retain hostPath: minio, redis, mailpit, pact-postgres
+- Heal: `just heal-minio-pvc`, `just heal-hostpath-pvc mailpit|pact`
+- Backup: `just postgres-backup-now`
 
 ## Next
 
-1. Commit + push gitops (minio + backup + retain SC)
-2. Heal Terminating minio PVC on cluster
-3. Verify first dump in `postgres-backups`
-4. Then continue platform-data / observability / …
+observability / scheduling / pipeline / openbao; fix postgres-ha Helm STS Ready
