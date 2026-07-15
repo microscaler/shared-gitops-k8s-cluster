@@ -1,6 +1,6 @@
 # Platform storage B-shape: host ZFS + democratic-csi
 
-Status: **Flux `stack-democratic-csi` live** (2026-07-16). Dynamic `zfs-iscsi` PVC smoke passed. **postgres-ha migrating to `zfs-iscsi`** (prove-out workload).
+Status: **Flux `stack-democratic-csi` live** (2026-07-16). **postgres-ha prove-out passed** — 3/3 on `zfs-iscsi` with hard anti-affinity (one pod per worker); HelmRelease Ready.
 
 ## Problem
 

@@ -14,12 +14,17 @@
 - [x] age key + flux-system/sops-age + observability credentials
 - [x] NFS + iSCSI host smokes; choose iSCSI for platform RWO
 
+## Done (postgres prove-out)
+
+- [x] postgres-ha → `zfs-iscsi` (STS PVC recreate cutover)
+- [x] Hard anti-affinity + topology spread: one PG pod per worker
+- [x] HelmRelease Ready; stack-postgres-ha Ready @ `349ffd8`
+
 ## Next
 
-- Migrate redis (first) off hostPath → zfs-iscsi
-- Then mailpit → openbao → minio → faktory / pact
-- Stabilize postgres-ha standbys (local-path); CSI later
+- Migrate redis → mailpit → openbao → minio → faktory / pact
 - Day-0-only shared-k8s-cluster cutover
+- Optional: tear down `csi-smoke`
 
 ## Backlog
 
