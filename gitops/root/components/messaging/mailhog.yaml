@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailhog
+  namespace: data
+  labels:
+    app: mailhog
+    app.kubernetes.io/name: mailhog
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: messaging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailhog
+  template:
+    metadata:
+      labels:
+        app: mailhog
+    spec:
+      containers:
+        - name: mailhog
+          image: mailhog/mailhog:v1.0.1
+          ports:
+            - containerPort: 1025
+              name: smtp
+            - containerPort: 8025
+              name: http
+          env:
+            - name: MH_HOSTNAME
+              value: mailhog.data.svc.cluster.local
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 25m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailhog
+  namespace: data
+  labels:
+    app: mailhog
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: messaging
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "10.177.76.234"
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 1025
+      targetPort: smtp
+      protocol: TCP
+      name: smtp
+    - port: 8025
+      targetPort: http
+      protocol: TCP
+      name: web
+  selector:
+    app: mailhog

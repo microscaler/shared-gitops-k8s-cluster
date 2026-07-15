@@ -1,0 +1,15 @@
+# Subset of infra-config keys used by messaging workloads (dev).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: messaging-config
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: messaging
+data:
+  MAILPIT_DATABASE: /data/mailpit.db
+  MAILPIT_TIMEZONE: UTC
+  INBUCKET_POP3_ADDR: 0.0.0.0:1100
+  INBUCKET_SMTP_ADDR: 0.0.0.0:2500
+  INBUCKET_WEB_ADDR: 0.0.0.0:7901

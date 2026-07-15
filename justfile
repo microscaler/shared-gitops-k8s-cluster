@@ -124,3 +124,25 @@ heal-minio-pvc:
 	kubectl -n data rollout status deploy/minio --timeout=180s
 	kubectl -n data scale deploy/imgproxy --replicas=1 || true
 	echo "MinIO healed. HostPath /var/lib/data/minio on k8s-worker-1 retained."
+
+# Heal Terminating Retain hostPath PVC/PV for mailpit or pact-postgres
+heal-hostpath-pvc name:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	case "{{name}}" in
+	  mailpit)
+	    DEPLOY=mailpit; PVC=mailpit-storage-pv-claim; PV=mailpit-pv; COMP=messaging ;;
+	  pact)
+	    DEPLOY=pact-postgres; PVC=pact-postgres-data; PV=pact-postgres-pv; COMP=pact ;;
+	  *) echo "usage: just heal-hostpath-pvc mailpit|pact" >&2; exit 1 ;;
+	esac
+	kubectl -n data scale "deploy/$DEPLOY" --replicas=0 || true
+	kubectl -n data wait --for=delete pod -l "app=$DEPLOY" --timeout=120s || true
+	kubectl -n data patch "pvc/$PVC" -p '{"metadata":{"finalizers":null}}' --type=merge || true
+	kubectl patch "pv/$PV" -p '{"metadata":{"finalizers":null}}' --type=merge || true
+	sleep 2
+	kubectl apply -k "{{repo_root}}/gitops/root/components/$COMP"
+	kubectl -n data scale "deploy/$DEPLOY" --replicas=1 || true
+	kubectl -n data rollout status "deploy/$DEPLOY" --timeout=180s
+	echo "Healed {{name}} (Retain hostPath)."
