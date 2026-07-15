@@ -31,6 +31,14 @@ spec:
       labels:
         app: imgproxy
     spec:
+      # Shares RWO PVC minio-storage with MinIO — must schedule on the same node.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: minio
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: imgproxy
           image: darthsim/imgproxy:v3.8.0
