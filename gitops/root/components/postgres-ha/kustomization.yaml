@@ -1,6 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - storageclass-local-path-retain.yaml
   - helmrepository.yaml
   - helm-release.yaml
   - postgres-credentials-secret.yaml

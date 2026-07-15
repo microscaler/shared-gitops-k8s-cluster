@@ -97,3 +97,30 @@ push-gitopssets-images registry="10.177.76.220:5000" version="v0.17.2":
 	docker tag "$PROXY_SRC" "$PROXY_DST"
 	docker push "$PROXY_DST"
 	echo "Pushed $IMG (+ $DESC) and $PROXY_DST"
+
+# Trigger an immediate postgres → MinIO dump (from CronJob template)
+postgres-backup-now:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	NAME="postgres-backup-manual-$(date -u +%Y%m%d%H%M%S)"
+	kubectl -n data create job "$NAME" --from=cronjob/postgres-backup
+	kubectl -n data wait --for=condition=complete "job/$NAME" --timeout=600s
+	kubectl -n data logs "job/$NAME" -c dump
+	kubectl -n data logs "job/$NAME" -c upload
+
+# Heal stuck Terminating MinIO PVC/PV (Retain hostPath kept on disk), then apply Flux component
+heal-minio-pvc:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	kubectl -n data scale deploy/minio deploy/imgproxy --replicas=0 || true
+	kubectl -n data wait --for=delete pod -l app=minio --timeout=120s || true
+	kubectl -n data wait --for=delete pod -l app=imgproxy --timeout=120s || true
+	kubectl -n data patch pvc minio-storage -p '{"metadata":{"finalizers":null}}' --type=merge || true
+	kubectl patch pv minio-pv -p '{"metadata":{"finalizers":null}}' --type=merge || true
+	sleep 2
+	kubectl apply -k {{repo_root}}/gitops/root/components/minio
+	kubectl -n data rollout status deploy/minio --timeout=180s
+	kubectl -n data scale deploy/imgproxy --replicas=1 || true
+	echo "MinIO healed. HostPath /var/lib/data/minio on k8s-worker-1 retained."

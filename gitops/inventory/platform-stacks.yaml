@@ -20,10 +20,20 @@ stacks:
     description: Bitnami postgresql-ha (repmgr + Pgpool) with bitnamilegacy images
     depends_on: [namespaces]
 
+  - name: minio
+    path: ./gitops/root/components/minio
+    description: MinIO object store (Retain hostPath); target for postgres dumps
+    depends_on: [namespaces]
+
+  - name: postgres-backup
+    path: ./gitops/root/components/postgres-backup
+    description: pg_dumpall CronJob → MinIO bucket postgres-backups
+    depends_on: [postgres-ha, minio]
+
   - name: platform-data
     path: ./gitops/root/components/platform-data
-    description: Redis, minio, messaging, scheduling, gcp emulators (postgres via postgres-ha stack)
-    depends_on: [postgres-ha]
+    description: Redis, messaging, scheduling, gcp emulators (postgres via postgres-ha; minio via minio stack)
+    depends_on: [postgres-ha, minio]
 
   - name: observability
     path: ./gitops/root/components/observability

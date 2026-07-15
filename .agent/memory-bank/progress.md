@@ -5,13 +5,14 @@
 ### Phase 2 — done
 Flux + GitOpsSets on Multipass `dev` with local registry images.
 
-### Phase 3 — in progress
-Enabled Flux stacks (all Ready):
-- `stack-namespaces`
-- `stack-cluster` (registry, MetalLB pool, housekeeping)
-- `stack-cylon-infra`
-- `stack-platform-dev-tls`
+### Phase 3 — in progress (backup gate)
+Enabled / enabling:
+- namespaces, cluster, cylon-infra, platform-dev-tls, postgres-ha
+- **minio** (Flux component; Retain hostPath; removed from Tilt buckets kustomize)
+- **postgres-backup** (CronJob pg_dumpall → MinIO)
 
-Remaining: `platform-data`, `observability`, `ai`, `platform-openbao`
+### Postgres PVC reuse
+- Old primary disks gone; HA PVs patched Retain; `local-path-retain` SC
 
-shared-k8s-cluster: Tilt no longer applies cylon-infra (commit local, not necessarily pushed).
+### Remaining after backup verified
+platform-data (redis/messaging/…), observability, ai, openbao

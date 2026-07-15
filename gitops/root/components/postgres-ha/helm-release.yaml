@@ -27,7 +27,8 @@ spec:
       interval: 24h
   values:
     global:
-      defaultStorageClass: local-path
+      # Retain SC: PVC/STS deletes must not wipe host disks (see docs/postgres-pvc-reuse.md)
+      defaultStorageClass: local-path-retain
       security:
         # Required when pulling bitnamilegacy/* instead of bitnami/*
         allowInsecureImages: true
@@ -78,7 +79,7 @@ spec:
 
     persistence:
       enabled: true
-      storageClass: local-path
+      storageClass: local-path-retain
       size: 10Gi
 
     # Chart services stay ClusterIP; LoadBalancer alias is postgres-lb-service.yaml
