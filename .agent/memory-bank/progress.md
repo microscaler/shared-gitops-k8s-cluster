@@ -2,18 +2,11 @@
 
 ## 2026-07-15
 
-- [x] Scaffold + push to github.com/microscaler/shared-gitops-k8s-cluster
-- [x] Flux controllers running on Multipass `shared-k8s` (dev)
-- [x] `gitops-auth` secret created (ed25519 deploy key on ms02)
-- [ ] **BLOCKED:** add deploy key to GitHub repo (read-only)
-- [ ] cluster-control Ready → gitopssets → stack-namespaces
-- [ ] Migrate remaining platform stacks
+- [x] Flux on Multipass `dev` + deploy key
+- [x] Built gitopssets-controller from `~/Workspace/weaveworks/gitopssets-controller`
+- [x] Pushed to `10.177.76.220:5000/weaveworks/gitopssets-controller:v0.17.2`
+- [x] Mirrored kube-rbac-proxy to `10.177.76.220:5000/kubebuilder/kube-rbac-proxy:v0.16.0`
+- [x] HelmRelease Ready; pod 2/2 Running
+- [x] GitOpsSet `platform-stacks` Ready → generated `stack-namespaces` Ready
 
-### Deploy key (public) — add at
-https://github.com/microscaler/shared-gitops-k8s-cluster/settings/keys
-
-```
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILAkivXyOXteK2SUBC96N1cF5GccisMm/+DSvy27Abdm flux@shared-gitops-k8s-cluster
-```
-
-Title: `flux@shared-gitops-k8s-cluster` — **Allow write** unchecked (read-only).
+Refresh images: `just push-gitopssets-images` (builds from local weaveworks checkout).

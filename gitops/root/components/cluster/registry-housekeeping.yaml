@@ -1,0 +1,134 @@
+# Registry housekeeping — nightly tag prune + blob garbage-collect.
+#
+# Why: Tilt pushes a unique tag per build and never deletes old ones. The tags
+# pile up on the registry PVC until the node hits DiskPressure (postmortem
+# 2026-07-09: worker-3 filled up, kubelet tainted the node and evicted the
+# registry pod, blocking all image pushes cluster-wide).
+#
+# How: a CronJob mounts the same RWO PVC (scheduled onto the registry's node by
+# the local-path PV node affinity):
+#   1. initContainer (python): delete tag references older than the newest
+#      KEEP_TAGS per repository (manifests/blobs untouched at this stage).
+#   2. main container (registry:2): `registry garbage-collect --delete-untagged`
+#      reclaims the now-unreferenced blobs.
+#
+# Caveat (acceptable for dev): GC racing a concurrent push can orphan an
+# in-flight upload — the schedule (03:30) avoids active Tilt hours. A pruned
+# tag only matters if a pod restarts and re-pulls it; KEEP_TAGS=2 keeps the
+# currently-running tag plus the previous one per image, which is enough to
+# keep Helm/Tilt deployments (and one rollback) stable in a dev cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-housekeeping
+  namespace: registry
+data:
+  prune_tags.py: |
+    """Prune old tag references in a docker registry v2 filesystem layout.
+
+    Keeps the newest KEEP_TAGS (by directory mtime) per repository and removes
+    the rest. Blobs are reclaimed afterwards by `registry garbage-collect`.
+    """
+    import os
+    import shutil
+
+    ROOT = os.environ.get("REGISTRY_ROOT", "/var/lib/registry")
+    KEEP = int(os.environ.get("KEEP_TAGS", "2"))
+    repositories = os.path.join(ROOT, "docker", "registry", "v2", "repositories")
+
+    def tag_dirs(repo_path):
+        tags = os.path.join(repo_path, "_manifests", "tags")
+        if not os.path.isdir(tags):
+            return []
+        entries = [os.path.join(tags, t) for t in os.listdir(tags)]
+        return sorted(entries, key=os.path.getmtime, reverse=True)
+
+    def walk_repos(base, prefix=""):
+        """Yield repository dirs (contain _manifests); recurse into nested names."""
+        for name in os.listdir(base):
+            if name.startswith("_"):
+                continue
+            path = os.path.join(base, name)
+            if not os.path.isdir(path):
+                continue
+            if os.path.isdir(os.path.join(path, "_manifests")):
+                yield prefix + name, path
+            else:
+                yield from walk_repos(path, prefix + name + "/")
+
+    def main():
+        if not os.path.isdir(repositories):
+            print(f"no repositories dir at {repositories}; nothing to do")
+            return
+        removed = 0
+        for repo, path in walk_repos(repositories):
+            for stale in tag_dirs(path)[KEEP:]:
+                shutil.rmtree(stale, ignore_errors=True)
+                removed += 1
+                print(f"pruned {repo}:{os.path.basename(stale)}")
+        print(f"done: pruned {removed} tag references (kept newest {KEEP} per repo)")
+
+    if __name__ == "__main__":
+        main()
+  gc-config.yml: |
+    version: 0.1
+    storage:
+      filesystem:
+        rootdirectory: /var/lib/registry
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: registry-housekeeping
+  namespace: registry
+  labels:
+    app: registry-housekeeping
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: registry-housekeeping
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: prune-tags
+              image: python:3.12-alpine
+              command: ["python", "/housekeeping/prune_tags.py"]
+              env:
+                - name: KEEP_TAGS
+                  value: "2"
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/registry
+                - name: scripts
+                  mountPath: /housekeeping
+          containers:
+            - name: garbage-collect
+              # Must be registry:3 — the v2 GC deletes child manifests of
+              # multi-arch/OCI indexes (distribution#3178), corrupting images.
+              image: registry:3
+              command:
+                - registry
+                - garbage-collect
+                - --delete-untagged
+                - /housekeeping/gc-config.yml
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/registry
+                - name: scripts
+                  mountPath: /housekeeping
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: registry-data
+            - name: scripts
+              configMap:
+                name: registry-housekeeping

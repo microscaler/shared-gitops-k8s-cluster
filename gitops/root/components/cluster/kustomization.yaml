@@ -1,4 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 resources:
-  - stub-configmap.yaml
+  - registry.yaml
+  - registry-housekeeping.yaml
+  - local-registry-hosting.yaml
+  - metallb/ipaddresspool.yaml
+
+# Migrated from shared-k8s-cluster/k8s/cluster (Phase 3).
+# MetalLB operator itself remains Day-0; this manages the IPAddressPool + L2Advertisement.

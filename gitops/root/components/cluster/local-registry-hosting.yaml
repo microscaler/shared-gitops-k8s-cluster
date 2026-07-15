@@ -1,0 +1,13 @@
+# Tilt + build tooling: where to push dev images.
+# In-cluster registry LoadBalancer on Multipass L2 (see config/cluster.env).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-registry-hosting
+  namespace: kube-public
+data:
+  localRegistryHosting.v1: |
+    host: "10.177.76.220:5000"
+    hostFromClusterNetwork: "10.177.76.220:5000"
+    hostFromContainerRuntime: "10.177.76.220:5000"
+    help: "shared-k8s-cluster in-cluster registry (MetalLB). Nodes mirror localhost:5001 and cluster DNS to 10.177.76.220:5000."
