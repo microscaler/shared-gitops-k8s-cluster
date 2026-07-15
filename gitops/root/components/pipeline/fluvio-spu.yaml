@@ -70,10 +70,10 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
-      storageClassName: local-storage
+      storageClassName: zfs-iscsi
       resources:
         requests:
-          storage: 512Mi
+          storage: 10Gi
 ---
 apiVersion: v1
 kind: Service

@@ -64,7 +64,7 @@ spec:
     persistence:
       enabled: true
       enableInitChown: true
-      storageClass: local-path-retain
+      storageClass: zfs-iscsi
       size: 30Gi
       accessModes:
         - ReadWriteOnce

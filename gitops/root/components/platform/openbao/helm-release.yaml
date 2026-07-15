@@ -47,25 +47,18 @@ spec:
         tag: "2.6.0"
         pullPolicy: IfNotPresent
 
-      # Pin to the node backing local-storage PV openbao-data-pv
-      nodeSelector:
-        kubernetes.io/hostname: k8s-worker-1
-
       authDelegator:
         enabled: true
 
       dataStorage:
         enabled: true
         size: 1Gi
-        storageClass: local-storage
+        storageClass: zfs-iscsi
         accessMode: ReadWriteOnce
         mountPath: /openbao/data
 
       auditStorage:
         enabled: false
-
-      # data dir ownership: hostPath must be chown 100:1000 (OpenBao uid/gid).
-      # See README — pod runAsNonRoot blocks a root initContainer.
 
       ha:
         enabled: false

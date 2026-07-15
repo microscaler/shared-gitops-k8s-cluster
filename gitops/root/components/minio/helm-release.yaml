@@ -1,4 +1,4 @@
-# Official MinIO Helm chart (standalone). Retain PVC minio-storage via existingClaim.
+# Official MinIO Helm chart (standalone). Dynamic PVC minio-storage (zfs-iscsi).
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
