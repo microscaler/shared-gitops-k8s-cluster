@@ -1,0 +1,74 @@
+# Host ZFS ZVOL + LIO iSCSI via democratic-csi (zfs-generic-iscsi).
+# Day-0: csi-zfs SSH user + rpool/k8s/iscsi/{vols,snaps} — see docs/storage-csi-zfs.md
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: democratic-csi
+  namespace: democratic-csi
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: democratic-csi
+spec:
+  interval: 30m
+  timeout: 15m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: false
+      retries: 3
+  chart:
+    spec:
+      chart: democratic-csi
+      version: "0.15.1"
+      sourceRef:
+        kind: HelmRepository
+        name: democratic-csi
+        namespace: democratic-csi
+      interval: 24h
+  values:
+    # Chart still requires driver.config even with existingConfigSecret
+    driver:
+      existingConfigSecret: democratic-csi-driver-config
+      config:
+        driver: zfs-generic-iscsi
+
+    csiDriver:
+      name: org.democratic-csi.zfs-iscsi
+      enabled: true
+      attachRequired: true
+      podInfoOnMount: true
+      fsGroupPolicy: File
+
+    controller:
+      enabled: true
+      # Reach ms02 bridge SSH as the node would
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      priorityClassName: system-cluster-critical
+      externalResizer:
+        enabled: true
+      externalSnapshotter:
+        enabled: false
+
+    node:
+      enabled: true
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      kubeletHostPath: /var/lib/kubelet
+      driver:
+        iscsiDirHostPath: /etc/iscsi
+        iscsiDirHostPathType: Directory
+
+    storageClasses:
+      - name: zfs-iscsi
+        defaultClass: false
+        reclaimPolicy: Retain
+        volumeBindingMode: Immediate
+        allowVolumeExpansion: true
+        parameters:
+          fsType: ext4
+
+    volumeSnapshotClasses: []

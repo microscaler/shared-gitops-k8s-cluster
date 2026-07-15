@@ -10,6 +10,11 @@ stacks:
     description: Platform and app namespaces
     depends_on: []
 
+  - name: democratic-csi
+    path: ./gitops/root/components/democratic-csi
+    description: Host ZFS ZVOL + LIO iSCSI (democratic-csi); StorageClass zfs-iscsi
+    depends_on: [namespaces]
+
   - name: cluster
     path: ./gitops/root/components/cluster
     description: In-cluster OCI registry + housekeeping (MetalLB Services)
