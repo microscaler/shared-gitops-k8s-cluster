@@ -1,0 +1,19 @@
+# Wildcard cert for *.dev.microscaler.local — synced to ms02 haproxy by sync_haproxy_tls.py.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-microscaler-local-wildcard
+  namespace: cert-manager
+spec:
+  secretName: dev-microscaler-local-tls
+  issuerRef:
+    name: dev-microscaler-ca
+    kind: ClusterIssuer
+  dnsNames:
+    - dev.microscaler.local
+    - "*.dev.microscaler.local"
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256

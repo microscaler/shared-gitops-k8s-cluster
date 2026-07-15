@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: squid-config
+  namespace: cylon
+data:
+  squid.conf: |
+    acl localnet src 10.0.0.0/8
+    acl localnet src 172.16.0.0/12
+    acl localnet src 192.168.0.0/16
+    acl SSL_ports port 443
+    acl Safe_ports port 80
+    acl Safe_ports port 443
+    acl CONNECT method CONNECT
+
+    auth_param basic program /usr/lib/squid/basic_radius_auth -f /shared/radius_config
+    auth_param basic children 5
+    auth_param basic realm "Tiffany Proxy Billing Auth"
+    auth_param basic credentialsttl 2 hours
+
+    acl radius_users proxy_auth REQUIRED
+
+    http_access deny !Safe_ports
+    http_access deny CONNECT !SSL_ports
+    http_access allow localhost manager
+    http_access deny manager
+    http_access allow localhost
+    http_access allow radius_users
+    http_access deny all
+
+    http_port 3128
+    access_log stdio:/var/log/squid/access.log
+  radius_config: |
+    server freeradius
+    secret proxy-secret

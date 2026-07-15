@@ -1,0 +1,36 @@
+# Stable ConfigMap name — required for Tilt k8s_resource (force-update must include CM).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: routellm-config
+  namespace: cylon
+data:
+  config.yaml: |
+    # LiteLLM proxy config — must match Hermes on ms02 (~/.hermes/config.yaml):
+    #   base_url: http://192.168.1.104:8000/v1
+    #   default:  Qwen/Qwen3.6-35B-A3B-FP8
+    #
+    # Use LAN IP for api_base — host.docker.internal and /etc/hosts names do not
+    # resolve inside Kind-on-Linux pods.
+
+    model_list:
+      - model_name: Qwen/Qwen3.6-35B-A3B-FP8
+        litellm_params:
+          model: hosted_vllm/Qwen/Qwen3.6-35B-A3B-FP8
+          api_base: http://192.168.1.104:8000/v1
+          api_key: dummy
+
+      - model_name: gpt-4o-mini
+        litellm_params:
+          model: hosted_vllm/gpt-4o-mini
+          api_base: http://192.168.1.104:8000/v1
+          api_key: dummy
+
+      - model_name: qwen3
+        litellm_params:
+          model: hosted_vllm/qwen3
+          api_base: http://192.168.1.104:8000/v1
+          api_key: dummy
+
+    litellm_settings:
+      drop_params: true

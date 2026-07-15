@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dev-microscaler-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: dev.microscaler.local
+  secretName: dev-microscaler-ca
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: dev-microscaler-bootstrap
+    kind: ClusterIssuer
+  duration: 87600h
+  renewBefore: 720h

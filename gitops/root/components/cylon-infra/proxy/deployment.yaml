@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy
+  namespace: cylon
+  labels:
+    app: proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proxy
+  template:
+    metadata:
+      labels:
+        app: proxy
+    spec:
+      shareProcessNamespace: true
+      initContainers:
+        - name: init-config
+          image: alpine:latest
+          command: ["/bin/sh", "-c", "cp /mnt/config/* /shared/"]
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: config
+              mountPath: /mnt/config
+      containers:
+        - name: squid
+          image: ubuntu/squid:latest
+          args: ["-f", "/shared/squid.conf", "-NYC"]
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: logs
+              mountPath: /var/log/squid
+          ports:
+            - containerPort: 3128
+        - name: config-reloader
+          image: alpine:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              SUM=""
+              while true; do
+                if [ -f "/mnt/config/squid.conf" ]; then
+                  NEWSUM=$(md5sum /mnt/config/squid.conf /mnt/config/radius_config 2>/dev/null | awk '{print $1}' | tr -d '\n')
+                  if [ "$SUM" != "$NEWSUM" ]; then
+                    echo "Config change detected. Updating..."
+                    cp /mnt/config/* /shared/
+                    echo "Reloading squid..."
+                    kill -HUP $(pgrep squid) 2>/dev/null || true
+                    SUM="$NEWSUM"
+                  fi
+                fi
+                sleep 5
+              done
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: config
+              mountPath: /mnt/config
+      volumes:
+        - name: config
+          configMap:
+            name: squid-config
+        - name: logs
+          emptyDir: {}
+        - name: shared
+          emptyDir: {}

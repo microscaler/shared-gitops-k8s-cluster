@@ -1,0 +1,7 @@
+# Bootstrap self-signed CA for dev.microscaler.local (LAN / split-horizon DNS only).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: dev-microscaler-bootstrap
+spec:
+  selfSigned: {}

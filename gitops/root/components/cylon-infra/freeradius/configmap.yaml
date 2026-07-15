@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: freeradius-config
+  namespace: cylon
+data:
+  clients.conf: |
+    client cylon_proxy {
+        ipaddr = 0.0.0.0/0
+        secret = proxy-secret
+    }
+  users: |
+    "agent-001" Cleartext-Password := "cylon"
+    "agent-002" Cleartext-Password := "farvm"

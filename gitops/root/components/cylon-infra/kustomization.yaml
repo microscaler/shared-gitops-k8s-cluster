@@ -1,4 +1,10 @@
+# Cylon shared infra — LiteLLM routellm, Squid AAA proxy, FreeRADIUS.
+# Deployed by shared-kind-cluster Tilt; host exposure via kind-config NodePort hostPorts.
+# Consumed by cylon-daemon and FAR guest bridges (namespace cylon DNS unchanged).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 resources:
-  - stub-configmap.yaml
+  - routellm
+  - proxy
+  - freeradius

@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: routellm
+  namespace: cylon
+  labels:
+    app: routellm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: routellm
+  template:
+    metadata:
+      labels:
+        app: routellm
+    spec:
+      containers:
+        - name: litellm
+          image: ghcr.io/berriai/litellm:main-latest
+          args: ["--config", "/app/config.yaml"]
+          ports:
+            - containerPort: 4000
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: routellm-config

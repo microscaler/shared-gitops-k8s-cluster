@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: squid-proxy
+  namespace: cylon
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "10.177.76.222"
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 3128
+      targetPort: 3128
+  selector:
+    app: proxy
