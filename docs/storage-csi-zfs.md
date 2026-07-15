@@ -1,6 +1,6 @@
 # Platform storage B-shape: host ZFS + democratic-csi
 
-Status: **Flux `stack-democratic-csi` live** (2026-07-16). Dynamic `zfs-iscsi` PVC smoke passed (nginx on worker-2).
+Status: **Flux `stack-democratic-csi` live** (2026-07-16). Dynamic `zfs-iscsi` PVC smoke passed. **postgres-ha migrating to `zfs-iscsi`** (prove-out workload).
 
 ## Problem
 
@@ -10,10 +10,8 @@ Static `local-storage` hostPath PVs are pinned to `k8s-worker-1` (`K8S_DATA_NODE
 
 | Use case | Driver / SC |
 |----------|-------------|
-| Platform RWO (redis, minio, openbao, …) | **`zfs-generic-iscsi`** → StorageClass `zfs-iscsi` |
+| Platform RWO (postgres-ha, redis, minio, openbao, …) | **`zfs-generic-iscsi`** → StorageClass `zfs-iscsi` |
 | Optional RWX shared files later | `zfs-generic-nfs` → `zfs-nfs` (NFS parents ready; not in Flux yet) |
-
-Keep **postgres-ha on `local-path`** until standbys are healthy; migrate later.
 
 ## Architecture
 
@@ -46,44 +44,33 @@ Inventory: `gitops/clusters/dev/inventory/stacks/democratic-csi/`
 
 ### Known caveat: LIO portals
 
-`CreateVolume` often leaves targets with **Portals: 0** when `10.177.76.1:3260` already exists on another target. NodeStage then hangs on `iscsiadm` login until the portal is added:
+`CreateVolume` often leaves targets with **Portals: 0** when `10.177.76.1:3260` already exists on another target. NodeStage then hangs on `iscsiadm` login until the portal is added.
+
+**Mitigation:** CronJob `iscsi-portal-ensure` SSHes as `csi-zfs` and ensures the portal on every IQN (up to ~1 minute delay on first attach).
+
+## Workload cutover: postgres-ha (in progress)
+
+Prove-out: 3× RWO on `zfs-iscsi` + **hard** pod anti-affinity / topology spread (one PG pod per node).
+
+STS `volumeClaimTemplates` are immutable — cutover deletes STS + PVCs, then Helm recreates on `zfs-iscsi`. Take `just postgres-backup-now` first.
 
 ```bash
-sudo targetcli "/iscsi/<iqn>/tpg1/portals create 10.177.76.1 3260"
-sudo targetcli saveconfig
-```
-
-**Mitigation:** CronJob `iscsi-portal-ensure` SSHes as `csi-zfs` and ensures the portal on every IQN. New PVCs may wait up to ~1 minute before NodeStage succeeds.
-
-Manual one-shot (same logic):
-
-```bash
-for d in /sys/kernel/config/target/iscsi/iqn.*; do
-  [ -d "$d" ] || continue
-  sudo targetcli "/iscsi/$(basename "$d")/tpg1/portals create 10.177.76.1 3260" || true
-done
-sudo targetcli saveconfig
+flux suspend hr postgres-ha -n data
+kubectl -n data delete sts postgres-ha-postgresql
+kubectl -n data delete pvc data-postgres-ha-postgresql-0 \
+  data-postgres-ha-postgresql-1 data-postgres-ha-postgresql-2
+# optional: delete Released local-path PVs
+flux resume hr postgres-ha -n data
+flux reconcile hr postgres-ha -n data --with-source
 ```
 
 ## Smoke (done)
 
-Namespace `csi-smoke`: PVCs `zfs-iscsi-smoke{,-2}` + nginx Deployments — Bound, pods Ready after portal ensure.
+Namespace `csi-smoke`: PVCs `zfs-iscsi-smoke{,-2,-3}` + nginx — Bound/Ready after portal ensure.
 
-Tear down when done proving:
+## Next after postgres
 
-```bash
-kubectl delete ns csi-smoke
-# Retain PVs/zvols until explicitly destroyed via CSI / targetcli + zfs destroy
-```
-
-## Next: migrate off hostPath magnet
-
-Order: **redis → mailpit → openbao → minio → faktory / pact**. Pattern per app:
-
-1. GitOps: StorageClass → `zfs-iscsi` (new PVC name or wipe + recreate)
-2. Flux reconcile; wait for portal-ensure if NodeStage stalls
-3. Delete old hostPath PV/PVC only after data cutover verified
-4. Revisit postgres-ha → `zfs-iscsi` after redis proves stable
+Migrate hostPath magnet: **redis → mailpit → openbao → minio → faktory / pact**.
 
 ## Ops notes
 

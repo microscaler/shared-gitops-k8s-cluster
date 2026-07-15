@@ -17,6 +17,7 @@ spec:
     remediation:
       # Prior failed revisions left no rollback target; disable until a clean release exists.
       remediateLastFailure: false
+      retries: 3
   chart:
     spec:
       chart: postgresql-ha
@@ -28,9 +29,9 @@ spec:
       interval: 24h
   values:
     global:
-      # Keep aligned with existing STS volumeClaimTemplates (immutable).
-      # HA PVs are patched to Retain separately — see docs/postgres-pvc-reuse.md
-      defaultStorageClass: local-path
+      # zfs-iscsi (democratic-csi) — see docs/storage-csi-zfs.md
+      # STS volumeClaimTemplates are immutable: storage-class cutovers delete STS+PVCs.
+      defaultStorageClass: zfs-iscsi
       security:
         # Required when pulling bitnamilegacy/* instead of bitnami/*
         allowInsecureImages: true
@@ -126,7 +127,7 @@ spec:
 
     persistence:
       enabled: true
-      storageClass: local-path
+      storageClass: zfs-iscsi
       size: 10Gi
 
     # Chart services stay ClusterIP; LoadBalancer alias is postgres-lb-service.yaml
