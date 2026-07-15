@@ -15,7 +15,8 @@ spec:
       retries: 3
   upgrade:
     remediation:
-      remediateLastFailure: true
+      # Prior failed revisions left no rollback target; disable until a clean release exists.
+      remediateLastFailure: false
   chart:
     spec:
       chart: postgresql-ha
@@ -63,17 +64,13 @@ spec:
         periodSeconds: 10
         timeoutSeconds: 5
         failureThreshold: 36
-      # Reverse DNS of pod IPs times out (~5s/conn) and breaks repmgr clone + local ping
-      # (Bitnami also maps POSTGRESQL_LOG_HOSTNAME → log_hostname)
+      # Reverse DNS of pod IPs times out (~5s/conn) and breaks repmgr clone + local ping.
+      # Use chart knobs — do NOT set these via extraEnvVars (duplicates chart env keys → SSA fail).
+      audit:
+        logHostname: false
       configuration: |
         log_hostname = off
-      extraEnvVars:
-        - name: POSTGRESQL_LOG_HOSTNAME
-          value: "false"
-        - name: REPMGR_CONNECT_TIMEOUT
-          value: "30"
-        - name: BITNAMI_DEBUG
-          value: "false"
+      repmgrConnectTimeout: 30
 
     pgpool:
       image:
@@ -83,6 +80,7 @@ spec:
       replicaCount: 2
       adminUsername: admin
       adminPassword: postgres
+      logHostname: false
       # Must be stable — random chart default drifts from DB after upgrades
       srCheckUsername: sr_check_user
       srCheckPassword: postgres

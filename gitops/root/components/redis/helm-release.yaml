@@ -16,7 +16,7 @@ spec:
       retries: 3
   upgrade:
     remediation:
-      remediateLastFailure: true
+      remediateLastFailure: false
   chart:
     spec:
       chart: redis
@@ -63,6 +63,14 @@ spec:
         type: ClusterIP
         ports:
           redis: 6379
+
+    # Existing redis-storage PVC was written by the raw Deployment; fix ownership for bitnami UID 1001.
+    volumePermissions:
+      enabled: true
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/os-shell
+        tag: 12-debian-12-r51
 
     metrics:
       enabled: true
