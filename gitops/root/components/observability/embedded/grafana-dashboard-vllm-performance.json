@@ -1,0 +1,231 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "vllm-performance",
+  "title": "vLLM — Performance",
+  "tags": ["sparks", "cylon", "vllm", "inference"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-30m", "to": "now" },
+  "timezone": "browser",
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(vllm_num_requests_running{cluster=\"cylon-sparks\"}, host)",
+        "includeAll": true,
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": { "query": "label_values(vllm_num_requests_running{cluster=\"cylon-sparks\"}, host)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(vllm_num_requests_running{cluster=\"cylon-sparks\"}, model_name)",
+        "includeAll": true,
+        "multi": true,
+        "name": "model",
+        "options": [],
+        "query": { "query": "label_values(vllm_num_requests_running{cluster=\"cylon-sparks\"}, model_name)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Throughput + concurrency",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 32 }, { "color": "red", "value": 96 }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (host) (vllm_num_requests_running{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"})", "legendFormat": "{{host}}", "refId": "A" }],
+      "title": "Concurrent requests in flight (running)",
+      "description": "vllm:num_requests_running. Sustained > 32 puts pressure on KV cache + may amplify the GX10 abrupt-power-off precursor (see llmwiki/runs/2026-05-01-nvidia2-abrupt-power-off-vllm-long-context.md).",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 8 }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (host) (vllm_num_requests_waiting{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"})", "legendFormat": "{{host}}", "refId": "A" }],
+      "title": "Requests queued (waiting)",
+      "description": "vllm:num_requests_waiting. Non-zero = scheduler queue is backing up (saturated on --max-num-seqs or KV cache). Sustained > 0 = batching not keeping up.",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max by (host) (vllm_kv_cache_usage_perc{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"})", "legendFormat": "{{host}}", "refId": "A" }],
+      "title": "KV cache occupancy",
+      "description": "vllm:kv_cache_usage_perc. Approaching 1.0 = vLLM will start preempting / refusing.",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.95 }, { "color": "green", "value": 0.99 }] } }, "overrides": [] },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(vllm_request_success_total{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])) / clamp_min(sum(rate(vllm_e2e_request_latency_seconds_count{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])), 0.0001)", "refId": "A" }],
+      "title": "Request success rate (5m)",
+      "description": "successful / total over the last 5 min. < 1.0 = some requests failed (preemption, OOM, timeout, ...).",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "tps", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 10,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (host) (rate(vllm_prompt_tokens_total{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[1m]))", "legendFormat": "{{host}} prompt tok/s (in)", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (host) (rate(vllm_generation_tokens_total{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[1m]))", "legendFormat": "{{host}} generation tok/s (out)", "refId": "B" }
+      ],
+      "title": "Token throughput (prompt + generation)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 11,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "vllm_num_requests_running{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}", "legendFormat": "{{host}} running", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "vllm_num_requests_waiting{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}", "legendFormat": "{{host}} waiting", "refId": "B" }
+      ],
+      "title": "Concurrency: running vs waiting (over time)",
+      "description": "Running = currently in decode. Waiting = queued past --max-num-seqs. The 'waiting' line is what amplifies the GX10 hard-off precursor when multi-Hermes-session traffic stacks up.",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 101,
+      "panels": [],
+      "title": "Latency (TTFT, ITL, e2e)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "id": 20,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.50, sum by (le, host) (rate(vllm_time_to_first_token_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le, host) (rate(vllm_time_to_first_token_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum by (le, host) (rate(vllm_time_to_first_token_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p99", "refId": "C" }
+      ],
+      "title": "Time to first token (TTFT) — p50/p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 21,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.50, sum by (le, host) (rate(vllm_inter_token_latency_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le, host) (rate(vllm_inter_token_latency_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum by (le, host) (rate(vllm_inter_token_latency_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p99", "refId": "C" }
+      ],
+      "title": "Inter-token latency (ITL) — p50/p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id": 22,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.50, sum by (le, host) (rate(vllm_e2e_request_latency_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le, host) (rate(vllm_e2e_request_latency_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.99, sum by (le, host) (rate(vllm_e2e_request_latency_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} p99", "refId": "C" }
+      ],
+      "title": "End-to-end request latency — p50/p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id": 23,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le, host) (rate(vllm_request_queue_time_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} queue p95", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "histogram_quantile(0.95, sum by (le, host) (rate(vllm_request_prefill_time_seconds_bucket{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])))", "legendFormat": "{{host}} prefill p95", "refId": "B" }
+      ],
+      "title": "Queue + prefill time (p95)",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 102,
+      "panels": [],
+      "title": "Cache + preemption",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 30,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (host) (rate(vllm_prefix_cache_hits_total{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])) / clamp_min(sum by (host) (rate(vllm_prefix_cache_queries_total{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m])), 0.0001)", "legendFormat": "{{host}}", "refId": "A" }
+      ],
+      "title": "Prefix cache hit rate (5m)",
+      "description": "vllm:prefix_cache_hits / vllm:prefix_cache_queries. Higher = more KV reuse across requests with shared prefixes (system prompts, agent loops).",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.1 }] }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 25 } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 31,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum by (host) (rate(vllm_num_preemptions_total{cluster=\"cylon-sparks\", host=~\"$host\", model_name=~\"$model\"}[5m]))", "legendFormat": "{{host}}", "refId": "A" }
+      ],
+      "title": "Preemptions/sec (5m)",
+      "description": "vllm:num_preemptions. Non-zero = the scheduler had to preempt running requests to make room (KV cache pressure).",
+      "type": "timeseries"
+    }
+  ]
+}

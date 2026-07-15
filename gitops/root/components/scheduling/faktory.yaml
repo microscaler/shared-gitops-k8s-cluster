@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: faktory-server
+  namespace: scheduling
+  labels:
+    app: faktory-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: faktory-server
+  template:
+    metadata:
+      labels:
+        app: faktory-server
+      annotations:
+        prometheus.io/scrape: 'true'
+    spec:
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: faktory-server-config-watcher
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - "sum() {\n  current=$(find /conf -type f -exec md5sum {} \\; | sort -k 2\
+          \ | md5sum)\n}\nsum\nlast=\"$current\"\nwhile true; do\n  sum\n  if [ \"\
+          $current\" != \"$last\" ]; then\n    pid=$(pidof faktory)\n    echo \"$(date\
+          \ -Iseconds) [conf.d] changes detected - signaling Faktory with pid=$pid\"\
+          \n    kill -HUP \"$pid\"\n    last=\"$current\"\n  fi\n  sleep 1\ndone\n"
+        volumeMounts:
+        - name: faktory-server-configs-volume
+          mountPath: /conf
+        resources:
+          requests:
+            memory: 32Mi
+            cpu: 50m
+          limits:
+            memory: 64Mi
+            cpu: 100m
+      - image: contribsys/faktory:1.2.0
+        name: faktory-server
+        command:
+        - /faktory
+        - -b
+        - :7419
+        - -w
+        - :7420
+        - -e
+        - development
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: faktory-server-configmap
+        ports:
+        - containerPort: 7419
+          name: faktory
+        - containerPort: 7420
+          name: dashboard
+        volumeMounts:
+        - name: faktory-server-configs-volume
+          mountPath: /etc/faktory/conf.d
+        - name: faktory-server-storage-volume
+          mountPath: /var/lib/faktory/db
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 200m
+          limits:
+            memory: 512Mi
+            cpu: 500m
+        readinessProbe:
+          tcpSocket:
+            port: 7419
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 7419
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: faktory-server-configs-volume
+        configMap:
+          name: faktory-server-configmap
+      - name: faktory-server-storage-volume
+        persistentVolumeClaim:
+          claimName: faktory-server-storage-pv-claim
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: faktory-server
+  namespace: scheduling
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.177.76.233
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 7419
+    targetPort: 7419
+    name: faktory
+    protocol: TCP
+  - port: 7420
+    targetPort: 7420
+    name: dashboard
+    protocol: TCP
+  selector:
+    app: faktory-server
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: faktory-server-configmap
+  namespace: scheduling
+data:
+  cron.toml: "# [[cron]]\n# schedule = \"*/1 * * * *\"\n# \n# [cron.job]\n# queue\
+    \ = \"default\"\n# reserve_for = 60\n# retry = -1\n# type = \"Cron::SomeRandomCron\"\
+    \n"
+  throttles.toml: '# [throttles.default]
+
+    # concurrency = 1
+
+    # timeout = 60
+
+    '

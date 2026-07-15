@@ -1,0 +1,75 @@
+# Dashboard providers for Grafana.
+# Each provider loads JSON dashboards from a specific folder.
+# - hauliage: Hauliage app dashboards (optional ConfigMap)
+# - databases: Core infrastructure dashboards (postgres, redis)
+# - postgres-overview: PostgreSQL primary & replica overview
+# - hauliage-db-perf: Hauliage database performance dashboard
+apiVersion: 1
+providers:
+  - name: hauliage
+    orgId: 1
+    folder: Hauliage
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/hauliage
+  - name: databases
+    orgId: 1
+    folder: Databases
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/cluster
+  - name: postgres-overview
+    orgId: 1
+    folder: PostgreSQL
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/postgres-overview
+  - name: hauliage-db-perf
+    orgId: 1
+    folder: PostgreSQL
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/hauliage-db-perf
+  # DGX Spark dashboards (cluster overview, vLLM performance, GX10 hard-off
+  # hunt). Backed by metrics pushed from each Spark via the cylon-local-infra
+  # roles/spark_observability OTel agent and Promtail. See
+  # cylon-local-infra/llmwiki/concepts/sparks-observability-pipeline.md.
+  - name: sparks-cluster
+    orgId: 1
+    folder: Sparks
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/sparks-cluster
+  - name: sparks-vllm
+    orgId: 1
+    folder: Sparks
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/sparks-vllm
+  - name: sparks-gx10-hunt
+    orgId: 1
+    folder: Sparks
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/sparks-gx10-hunt

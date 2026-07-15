@@ -55,9 +55,14 @@ stacks:
     description: NanoMQ MQTT broker (Service name mosquitto); enable/disable via inventory stack dir
     depends_on: [namespaces]
 
-  - name: platform-data
-    path: ./gitops/root/components/platform-data
-    description: Stub — redis/messaging/pact/imgproxy/mosquitto are separate stacks; leftover for scheduling/pipeline later
+  - name: scheduling
+    path: ./gitops/root/components/scheduling
+    description: Faktory job server (Retain hostPath)
+    depends_on: [namespaces]
+
+  - name: pipeline
+    path: ./gitops/root/components/pipeline
+    description: Fluvio streaming (SC + SpuGroup; Retain SPU PVs)
     depends_on: [namespaces]
 
   - name: observability
@@ -65,22 +70,22 @@ stacks:
     description: Prometheus, Loki, Grafana, Jaeger, OTel, Promtail
     depends_on: [namespaces]
 
+  - name: ai
+    path: ./gitops/root/components/ai
+    description: Shared LLMRouter
+    depends_on: [namespaces]
+
+  - name: platform-openbao
+    path: ./gitops/root/components/platform-openbao
+    description: OpenBao via Flux HelmRelease (openbao/openbao chart); Retain hostPath PV
+    depends_on: [namespaces]
+
   - name: cylon-infra
     path: ./gitops/root/components/cylon-infra
     description: routellm, squid, freeradius, resurrection-hub
     depends_on: [namespaces]
 
-  - name: ai
-    path: ./gitops/root/components/ai
-    description: Shared AI helpers
-    depends_on: [namespaces]
-
   - name: platform-dev-tls
     path: ./gitops/root/components/platform-dev-tls
     description: cert-manager bootstrapped dev CA + wildcard (wrapper → platform/dev-tls)
-    depends_on: [namespaces]
-
-  - name: platform-openbao
-    path: ./gitops/root/components/platform-openbao
-    description: OpenBao secrets backend (wrapper → platform/openbao)
     depends_on: [namespaces]

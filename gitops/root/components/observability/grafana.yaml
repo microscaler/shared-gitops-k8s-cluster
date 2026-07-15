@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.177.76.227
+spec:
+  type: LoadBalancer
+  selector:
+    app: grafana
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:12.4.3
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: admin
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: admin
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: 'false'
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: 'true'
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Viewer
+        - name: GF_SERVER_HTTP_PORT
+          value: '3000'
+        - name: GF_FEATURE_TOGGLES_ENABLE
+          value: dashboardNewLayouts
+        ports:
+        - name: http
+          containerPort: 3000
+        volumeMounts:
+        - name: datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        - name: grafana-dashboard-providers
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: grafana-hauliage-dashboards
+          mountPath: /var/lib/grafana/dashboards/hauliage
+        - name: grafana-cluster-dashboards
+          mountPath: /var/lib/grafana/dashboards/cluster
+        - name: grafana-postgres-overview
+          mountPath: /var/lib/grafana/dashboards/postgres-overview
+        - name: grafana-hauliage-db-perf
+          mountPath: /var/lib/grafana/dashboards/hauliage-db-perf
+        - name: grafana-sparks-cluster
+          mountPath: /var/lib/grafana/dashboards/sparks-cluster
+        - name: grafana-sparks-vllm
+          mountPath: /var/lib/grafana/dashboards/sparks-vllm
+        - name: grafana-sparks-gx10-hunt
+          mountPath: /var/lib/grafana/dashboards/sparks-gx10-hunt
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+          initialDelaySeconds: 5
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+      volumes:
+      - name: datasources
+        configMap:
+          name: grafana-datasources
+      - name: grafana-dashboard-providers
+        configMap:
+          name: grafana-dashboard-providers
+      - name: grafana-hauliage-dashboards
+        configMap:
+          name: grafana-hauliage-dashboards
+          optional: true
+      - name: grafana-cluster-dashboards
+        configMap:
+          name: grafana-cluster-dashboards
+      - name: grafana-postgres-overview
+        configMap:
+          name: grafana-postgres-overview
+          optional: true
+      - name: grafana-hauliage-db-perf
+        configMap:
+          name: grafana-hauliage-db-perf
+          optional: true
+      - name: grafana-sparks-cluster
+        configMap:
+          name: grafana-sparks-cluster
+          optional: true
+      - name: grafana-sparks-vllm
+        configMap:
+          name: grafana-sparks-vllm
+          optional: true
+      - name: grafana-sparks-gx10-hunt
+        configMap:
+          name: grafana-sparks-gx10-hunt
+          optional: true

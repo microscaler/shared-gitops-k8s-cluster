@@ -1,0 +1,102 @@
+# LLMRouter deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmrouter
+  namespace: ai
+  labels:
+    app: llmrouter
+    managed-by: shared-k8s-cluster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llmrouter
+  template:
+    metadata:
+      labels:
+        app: llmrouter
+    spec:
+      containers:
+        - name: llmrouter
+          # Bare `llmrouter:latest` only worked while the node had it cached —
+          # pull from the in-cluster registry so rescheduling works on any node.
+          image: registry.registry.svc.cluster.local:5000/llmrouter:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            # LLMRouter uses environment variables for API keys.
+            # These are wired from Kubernetes Secrets.
+            # NOTE: Create the Secrets before deploying:
+            #   kubectl create secret generic llmrouter-api-keys \
+            #     --from-literal=openai-api-key=<key> \
+            #     --from-literal=anthropic-api-key=<key> \
+            #     -n ai
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llmrouter-api-keys
+                  key: openai-api-key
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llmrouter-api-keys
+                  key: anthropic-api-key
+                  optional: true
+            - name: NVIDIA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llmrouter-api-keys
+                  key: nvidia-api-key
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/llmrouter
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: llmrouter-config
+---
+# LLMRouter Service — exposes the OpenAI-compatible API on-cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmrouter
+  namespace: ai
+  labels:
+    app: llmrouter
+spec:
+  selector:
+    app: llmrouter
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+  type: ClusterIP

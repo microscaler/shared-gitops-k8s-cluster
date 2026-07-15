@@ -1,0 +1,94 @@
+# ⚠️ PORT CONFIGURATION REFERENCE:
+---
+# Streaming Processing Units (SPUs) - Handle data streaming, replication, and persistence
+# Using StatefulSet for stable network identities and persistent storage
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fluvio-spu
+  namespace: pipeline
+  labels:
+    app: fluvio-spu
+spec:
+  serviceName: fluvio-spu
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fluvio-spu
+  template:
+    metadata:
+      labels:
+        app: fluvio-spu
+      annotations:
+        prometheus.io/scrape: "true"
+    spec:
+      containers:
+      - name: fluvio-spu
+        image: infinyon/fluvio:stable
+        command:
+        - /fluvio-run
+        - spu
+        - --sc-addr
+        - fluvio-sc:9003
+        ports:
+        - containerPort: 9004
+          name: spu-api
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: SPU_INDEX
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        - name: FLV_SPU_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['apps.kubernetes.io/pod-index']
+        volumeMounts:
+        - name: spu-storage
+          mountPath: /var/lib/fluvio
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        readinessProbe:
+          tcpSocket:
+            port: 9004
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: 9004
+          initialDelaySeconds: 30
+          periodSeconds: 10
+  volumeClaimTemplates:
+  - metadata:
+      name: spu-storage
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-storage
+      resources:
+        requests:
+          storage: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluvio-spu
+  namespace: pipeline
+  labels:
+    app: fluvio-spu
+spec:
+  type: ClusterIP
+  clusterIP: None  # Headless service for StatefulSet
+  ports:
+  - port: 9004
+    targetPort: 9004
+    name: spu-api
+  selector:
+    app: fluvio-spu
+

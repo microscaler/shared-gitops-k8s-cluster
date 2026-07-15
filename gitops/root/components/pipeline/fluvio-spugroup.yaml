@@ -1,0 +1,23 @@
+# ⚠️ PORT CONFIGURATION REFERENCE:
+---
+# SPU Group - Manages SPU lifecycle automatically
+# Creates SPU Custom Resources that the SC recognizes
+# In Kubernetes mode, Fluvio automatically uses service DNS names
+apiVersion: fluvio.infinyon.com/v1
+kind: SpuGroup
+metadata:
+  name: default
+  namespace: pipeline
+spec:
+  replicas: 2
+  template:
+    spec:
+      publicEndpoint:
+        port: 9004
+        encryption: PLAINTEXT
+      privateEndpoint:
+        port: 9004
+        encryption: PLAINTEXT
+      storage:
+        size: "10Gi"
+        logDir: "/var/lib/fluvio"

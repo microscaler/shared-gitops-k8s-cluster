@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - fluvio-persistent-volumes.yaml
+  - fluvio-rbac.yaml
+  - crds/mirrors.yaml
+  - crds/partitions.yaml
+  - crds/smartmodules.yaml
+  - crds/spugroups.yaml
+  - crds/spus.yaml
+  - crds/tableformats.yaml
+  - crds/topics.yaml
+  - fluvio-sc.yaml
+  - fluvio-spugroup.yaml

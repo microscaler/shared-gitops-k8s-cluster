@@ -1,0 +1,37 @@
+# LLMRouter configuration — initial setup with placeholder models
+# Edit to add real model endpoints and adjust routing weights.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llmrouter-config
+  namespace: ai
+  labels:
+    app: llmrouter
+data:
+  config.yaml: |
+    serve:
+      host: "0.0.0.0"
+      port: 8000
+      show_model_prefix: true
+
+    router:
+      strategy: random
+      weights:
+        placeholder-1: 1
+
+    api_keys:
+      openai: ""
+      anthropic: ""
+      nvidia: ""
+
+    llms:
+      placeholder-1:
+        provider: openai
+        model: gpt-4o-mini
+        base_url: https://api.openai.com/v1
+        description: "Placeholder — replace with real endpoint"
+        input_price: 0.15
+        output_price: 0.60
+        max_tokens: 4096
+        context_limit: 32768

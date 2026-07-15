@@ -1,0 +1,36 @@
+# ⚠️ PORT CONFIGURATION REFERENCE:
+# =================================
+# For the complete canonical reference of ALL services, ports, NodePorts, and resource allocations,
+# see: docs/infrastructure/services-ports.md
+#
+# ALWAYS check docs/infrastructure/services-ports.md before adding new services or changing ports
+# to prevent port conflicts.
+#
+# Persistent Volumes for Faktory
+# Note: PVs should be created once and not managed by Tilt
+# They have Retain policy and can't be easily deleted when bound to PVCs
+# Create them manually: kubectl apply -f k8s/scheduling/persistent-volumes.yaml
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: faktory-server-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  hostPath:
+    path: /var/lib/scheduling/faktory
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k8s-worker-1
+

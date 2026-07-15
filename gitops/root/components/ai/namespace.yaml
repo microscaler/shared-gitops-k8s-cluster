@@ -1,0 +1,11 @@
+---
+# AI namespace for LLMRouter and future AI workloads
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai
+  labels:
+    app: ai
+    managed-by: tilt
+  annotations:
+    description: "AI inference namespace — LLMRouter and future LLM workloads"

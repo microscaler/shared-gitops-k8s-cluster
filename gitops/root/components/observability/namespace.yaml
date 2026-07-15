@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/part-of: microscaler-shared-cluster
+  annotations:
+    description: Shared Prometheus, Loki, Grafana, OpenTelemetry collector
