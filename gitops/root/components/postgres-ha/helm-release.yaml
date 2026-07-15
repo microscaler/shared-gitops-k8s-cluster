@@ -86,10 +86,10 @@ spec:
         failureThreshold: 60
       # Reverse DNS of pod IPs times out (~5s/conn) and breaks repmgr clone + local ping.
       # Use chart knobs — do NOT set these via extraEnvVars (duplicates chart env keys → SSA fail).
+      # Do NOT set postgresql.configuration to a snippet — it replaces the entire conf and
+      # Postgres fatal: "syntax error near token =" (seen 2026-07-16 on zfs-iscsi cutover).
       audit:
         logHostname: false
-      configuration: |
-        log_hostname = off
       repmgrConnectTimeout: 30
 
     pgpool:
