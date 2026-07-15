@@ -1,0 +1,42 @@
+# Renders one Flux Kustomization per stack directory under the cluster inventory.
+# Convention: directory name == component folder under gitops/root/components/
+# (e.g. stacks/namespaces → ./gitops/root/components/namespaces).
+# Nested components (platform/dev-tls): use a stacks/platform-dev-tls dir and
+# add a List/Matrix override GitOpsSet later, or symlink naming.
+apiVersion: sets.gitops.pro/v1alpha1
+kind: GitOpsSet
+metadata:
+  name: platform-stacks
+  namespace: flux-system
+  annotations:
+    sets.gitops.pro/delimiters: "${{,}}"
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+spec:
+  serviceAccountName: gitopssets-platform
+  generators:
+    - gitRepository:
+        repositoryRef: shared-gitops
+        directories:
+          - path: gitops/clusters/dev/inventory/stacks/*
+  templates:
+    - content:
+        apiVersion: kustomize.toolkit.fluxcd.io/v1
+        kind: Kustomization
+        metadata:
+          name: "stack-${{ .Element.Base }}"
+          namespace: flux-system
+          labels:
+            gitops.microscaler.io/stack: "${{ .Element.Base }}"
+            app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+        spec:
+          interval: 5m
+          retryInterval: 1m
+          timeout: 10m
+          path: "./gitops/root/components/${{ .Element.Base }}"
+          prune: true
+          wait: true
+          sourceRef:
+            kind: GitRepository
+            name: shared-gitops
+            namespace: flux-system

@@ -2,14 +2,18 @@
 
 ## 2026-07-15
 
-- [x] Scaffold repo (README, AGENTS, justfile, design)
-- [x] Flux v2.9.2 export (Namespace stripped)
-- [x] Inventories: clusters, stacks, metallb, apps
-- [x] clusters/{dev,staging,prod} entrypoints + control
-- [x] gitopssets-controller HelmRelease + RBAC + platform-stacks GitOpsSet
-- [x] namespaces component (real); other stacks stub ConfigMaps
-- [x] Inventory validator (venv + just validate-inventory)
-- [x] kustomize build greened for namespaces, control, dev bootstrap
-- [ ] GitHub remote + first push
-- [ ] bootstrap-dev against live cluster
-- [ ] Migrate platform-data / observability / …
+- [x] Scaffold + push to github.com/microscaler/shared-gitops-k8s-cluster
+- [x] Flux controllers running on Multipass `shared-k8s` (dev)
+- [x] `gitops-auth` secret created (ed25519 deploy key on ms02)
+- [ ] **BLOCKED:** add deploy key to GitHub repo (read-only)
+- [ ] cluster-control Ready → gitopssets → stack-namespaces
+- [ ] Migrate remaining platform stacks
+
+### Deploy key (public) — add at
+https://github.com/microscaler/shared-gitops-k8s-cluster/settings/keys
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILAkivXyOXteK2SUBC96N1cF5GccisMm/+DSvy27Abdm flux@shared-gitops-k8s-cluster
+```
+
+Title: `flux@shared-gitops-k8s-cluster` — **Allow write** unchecked (read-only).

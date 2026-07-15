@@ -15,9 +15,23 @@
 | GitOps home | **Separate repo** `shared-gitops-k8s-cluster` |
 | Multi-cluster | **Yes** — `dev` / `staging` / `prod` |
 | Local Multipass | Cluster id **`dev`** (context `shared-k8s`) |
-| Dryness | **gitopssets-controller** over inventory + per-cluster stack dirs |
+| Dryness | **gitopssets-controller** (images mirrored to ms02 registry `10.177.76.220:5000`) |
 | Product apps | Remain on Tilt (v1) |
 
+### GitOpsSets images (ms02 registry)
+
+Upstream chart tags on ghcr are incomplete for our pin; we **retag + push**:
+
+| Image | Local mirror |
+|-------|----------------|
+| `ghcr.io/weaveworks/gitopssets-controller:v0.17.2` | `10.177.76.220:5000/weaveworks/gitopssets-controller:v0.17.2` |
+| `registry.k8s.io/kubebuilder/kube-rbac-proxy:v0.16.0` | `10.177.76.220:5000/kubebuilder/kube-rbac-proxy:v0.16.0` |
+
+```bash
+just push-gitopssets-images
+```
+
+HelmRelease values in `gitops/root/controllers/gitopssets/helm-release.yaml` pin these mirrors.
 ---
 
 ## Architecture

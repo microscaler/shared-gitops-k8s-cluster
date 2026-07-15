@@ -1,6 +1,6 @@
-# Dev control plane — ordered Flux Kustomizations only (no GitOpsSet CRs here).
-# 1) gitopssets-controller installs CRDs via HelmRelease
-# 2) platform-gitopssets applies GitOpsSet CRs after dependsOn is Ready
+# Dev control — GitOpsSets with images mirrored to ms02 registry.
+# 1) gitopssets-controller HelmRelease (CRDs + controller)
+# 2) platform-gitopssets (GitOpsSet CRs) after dependsOn Ready
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

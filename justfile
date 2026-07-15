@@ -74,4 +74,20 @@ create-git-secret keyfile:
 	  --from-file=identity={{keyfile}} \
 	  --from-file=identity.pub={{keyfile}}.pub \
 	  --from-literal=known_hosts="$(ssh-keyscan -t ed25519,rsa github.com 2>/dev/null)" \
-	  --dry-run=client -o yaml | kubectl apply -f -
+	--dry-run=client -o yaml | kubectl apply -f -
+
+# Mirror gitopssets-controller + kube-rbac-proxy into the ms02 in-cluster registry.
+# (Upstream chart pins stale/unpublished tags; we override to these mirrors.)
+push-gitopssets-images registry="10.177.76.220:5000":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	REG="{{registry}}"
+	CTRL_SRC=ghcr.io/weaveworks/gitopssets-controller:v0.17.2
+	PROXY_SRC=registry.k8s.io/kubebuilder/kube-rbac-proxy:v0.16.0
+	docker pull "$CTRL_SRC"
+	docker pull "$PROXY_SRC"
+	docker tag "$CTRL_SRC" "$REG/weaveworks/gitopssets-controller:v0.17.2"
+	docker tag "$PROXY_SRC" "$REG/kubebuilder/kube-rbac-proxy:v0.16.0"
+	docker push "$REG/weaveworks/gitopssets-controller:v0.17.2"
+	docker push "$REG/kubebuilder/kube-rbac-proxy:v0.16.0"
+	echo "Mirrored to $REG — HelmRelease values already point here."

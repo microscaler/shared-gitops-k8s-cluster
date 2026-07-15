@@ -1,0 +1,18 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: stack-namespaces
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: namespaces
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./gitops/root/components/namespaces
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: shared-gitops
