@@ -1,15 +1,21 @@
 # Active context
 
 ## Goal
-All-in on host ZFS + democratic-csi iSCSI to kill w1 data magnet.
+Kill w1 hostPath magnet — all platform RWO on democratic-csi `zfs-iscsi`.
 
-## Proven
-- democratic-csi + SC `zfs-iscsi` + portal-ensure CronJob
-- **postgres-ha on zfs-iscsi** with hard anti-affinity: STS 3/3, HR Ready
-  - pods on w1 / w2 / w3; PVCs `zfs-iscsi`
-  - Fixed invalid `postgresql.configuration` snippet (replaced whole conf)
+## Done
+- democratic-csi + portal-ensure
+- postgres-ha on zfs-iscsi (hard anti-affinity)
+- Bulk migrate: redis, mailpit, minio, openbao, pact, faktory, opensearch, registry
+- Commits: `7ae3247`, `5f8d04a`
+
+## Notes
+- OpenBao needs re-init/unseal (empty volume)
+- MinIO wiped — re-run postgres-backup after Ready
+- imgproxy shares minio RWO PVC — must co-locate with minio
+- Fluvio static hostPath PVs removed; SpuGroup CRD has no storageClass (unused SPUs)
 
 ## Next
-1. Migrate hostPath magnet: redis → mailpit → openbao → minio → faktory/pact
-2. Slim shared-k8s-cluster to Day 0
-3. Optional: tear down `csi-smoke`
+- OpenBao bootstrap if needed
+- Optional: tear down csi-smoke
+- Slim shared-k8s-cluster to Day 0
