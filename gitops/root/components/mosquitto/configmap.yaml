@@ -1,0 +1,50 @@
+# NanoMQ HOCON — same content as hauliage/k8s/data/nanomq/nanomq.conf.
+# Mounted at /etc/nanomq/nanomq.conf; Deployment passes --conf (env vars are unreliable on 0.24.x).
+# Omit http_server{} entirely to keep the management API off.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-nanomq-conf
+  namespace: data
+  labels:
+    app: mosquitto
+    app.kubernetes.io/name: nanomq
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: mosquitto
+data:
+  nanomq.conf: |
+    system {
+        num_taskq_thread = 0
+        max_taskq_thread = 0
+        parallel = 0
+    }
+
+    mqtt {
+        property_size = 32
+        max_packet_size = 1MB
+        max_mqueue_len = 2048
+        retry_interval = 10s
+        keepalive_multiplier = 1.25
+        max_inflight_window = 2048
+        max_awaiting_rel = 10s
+        await_rel_timeout = 10s
+    }
+
+    listeners.tcp {
+        bind = "0.0.0.0:1883"
+    }
+
+    listeners.ws {
+        bind = "0.0.0.0:9001/mqtt"
+    }
+
+    log {
+        to = [console]
+        level = info
+    }
+
+    auth {
+        allow_anonymous = true
+        no_match = allow
+        deny_action = ignore
+    }

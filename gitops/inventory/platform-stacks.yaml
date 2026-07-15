@@ -50,9 +50,14 @@ stacks:
     description: Imgproxy over MinIO PVC
     depends_on: [minio]
 
+  - name: mosquitto
+    path: ./gitops/root/components/mosquitto
+    description: NanoMQ MQTT broker (Service name mosquitto); enable/disable via inventory stack dir
+    depends_on: [namespaces]
+
   - name: platform-data
     path: ./gitops/root/components/platform-data
-    description: Stub — redis/messaging/pact/imgproxy are separate stacks; leftover for scheduling/pipeline later
+    description: Stub — redis/messaging/pact/imgproxy/mosquitto are separate stacks; leftover for scheduling/pipeline later
     depends_on: [namespaces]
 
   - name: observability
