@@ -1,0 +1,55 @@
+# Ensures every LIO target has portal 10.177.76.1:3260.
+# democratic-csi CreateVolume often leaves Portals:0 when the portal already
+# exists on another target; NodeStage then hangs on iscsiadm login.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: iscsi-portal-ensure
+  namespace: democratic-csi
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: democratic-csi
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
+          containers:
+            - name: ensure
+              image: kroniak/ssh-client:3.20
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  mkdir -p /root/.ssh
+                  cp /keys/id_ed25519 /root/.ssh/id_ed25519
+                  chmod 600 /root/.ssh/id_ed25519
+                  ssh -o StrictHostKeyChecking=accept-new -i /root/.ssh/id_ed25519 csi-zfs@10.177.76.1 '
+                    # democratic-csi may leave Portals:0 when portal IP already exists elsewhere
+                    for d in /sys/kernel/config/target/iscsi/iqn.*; do
+                      [ -d "$d" ] || continue
+                      iqn=$(basename "$d")
+                      sudo targetcli "/iscsi/${iqn}/tpg1/portals create 10.177.76.1 3260" >/dev/null 2>&1 || true
+                    done
+                    sudo targetcli saveconfig >/dev/null 2>&1 || true
+                    echo portal-ensure-ok
+                  '
+              volumeMounts:
+                - name: ssh
+                  mountPath: /keys
+                  readOnly: true
+          volumes:
+            - name: ssh
+              secret:
+                secretName: democratic-csi-ssh-key
+                defaultMode: 0400
+                items:
+                  - key: id_ed25519
+                    path: id_ed25519

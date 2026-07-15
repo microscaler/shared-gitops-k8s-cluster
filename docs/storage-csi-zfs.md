@@ -1,6 +1,6 @@
 # Platform storage B-shape: host ZFS + democratic-csi
 
-Status: **Day-0 NFS + iSCSI smokes proven** (2026-07-15/16). Flux CSI not installed yet — **go all-in on iSCSI** for platform RWO volumes.
+Status: **Flux `stack-democratic-csi` live** (2026-07-16). Dynamic `zfs-iscsi` PVC smoke passed (nginx on worker-2).
 
 ## Problem
 
@@ -10,49 +10,85 @@ Static `local-storage` hostPath PVs are pinned to `k8s-worker-1` (`K8S_DATA_NODE
 
 | Use case | Driver / SC |
 |----------|-------------|
-| Platform RWO (redis, minio, openbao, postgres, …) | **`zfs-generic-iscsi`** → StorageClass `zfs-iscsi` |
-| Optional RWX shared files later | `zfs-generic-nfs` → `zfs-nfs` (already smoked) |
+| Platform RWO (redis, minio, openbao, …) | **`zfs-generic-iscsi`** → StorageClass `zfs-iscsi` |
+| Optional RWX shared files later | `zfs-generic-nfs` → `zfs-nfs` (NFS parents ready; not in Flux yet) |
 
-## Architecture (iSCSI primary)
+Keep **postgres-ha on `local-path`** until standbys are healthy; migrate later.
 
-- ZVOL parents on ms02:
-  - `rpool/k8s/iscsi/vols` (zvols)
-  - `rpool/k8s/iscsi/snaps` (sibling — not nested)
+## Architecture
+
+- ZVOL parents: `rpool/k8s/iscsi/{vols,snaps}` (sibling snaps — not nested)
 - LIO via **targetcli-fb**; portal **`10.177.76.1:3260`**
-- Workers: `open-iscsi` / `iscsiadm` (kubelet attaches for in-tree/CSI volumes)
-- Future Flux: democratic-csi `zfs-generic-iscsi` + `shareStrategy: targetCli`
+- Workers: `open-iscsi` on all Multipass nodes
+- Flux stack: `gitops/root/components/democratic-csi/`
+- CSI SSH user: `csi-zfs` @ `10.177.76.1`, key `/etc/microscaler/csi/csi-zfs_ed25519`
 
-NFS parents (kept for optional RWX): `rpool/k8s/nfs/{vols,snaps}` → `/export/k8s/nfs/...`
+NFS parents (optional RWX later): `rpool/k8s/nfs/{vols,snaps}` → `/export/k8s/nfs/...`
 
-## Day-0 checklist (done)
+## Day-0 host (done)
 
-### NFS
+1. UFW from `10.177.76.0/24`: NFS (`2049`, `111`, `20048`), iSCSI (`3260/tcp`), SSH (`22/tcp`)
+2. Packages: `targetcli-fb`, `open-iscsi` on host; `open-iscsi` on **all** workers
+3. User `csi-zfs` + `zfs allow` on `rpool/k8s` + passwordless sudo for `zfs` / `targetcli`
+4. Manual NFS + iSCSI smokes passed before Flux
 
-1. UFW: `10.177.76.0/24` → `2049/tcp`, `111/tcp+udp`, `20048/tcp+udp`
-2. ZFS smoke share + mount from `k8s-worker-1` (NFSv4 read/write OK)
+## Flux stack (done)
 
-### iSCSI
+| Resource | Notes |
+|----------|--------|
+| HelmRelease `democratic-csi` | chart `0.15.1`, driver `zfs-generic-iscsi` |
+| SC `zfs-iscsi` | Retain, Immediate, ext4 |
+| Secret `democratic-csi-driver-config` | SOPS: SSH + ZFS dataset paths |
+| Secret `democratic-csi-ssh-key` | SOPS: same private key for portal CronJob |
+| CronJob `iscsi-portal-ensure` | every minute — see caveat below |
 
-1. Packages: `targetcli-fb`, `open-iscsi` on host; UFW `3260/tcp` from `10.177.76.0/24`
-2. ZVOL `rpool/k8s/iscsi/vols/smoke` (1G) + target `iqn.2026-07.local.microscaler:smoke`
-3. Manual: discovery → login → `mkfs.ext4` → mount/umount on worker-1
-4. K8s: static PV/PVC + `nginx-iscsi-smoke` in ns `csi-smoke`
-   - `AttachVolume` succeeded; `/dev/sdb` mounted in pod
-   - HTTP served from volume; data survived pod delete
+Inventory: `gitops/clusters/dev/inventory/stacks/democratic-csi/`
 
-Cleanup smoke later: `kubectl delete ns csi-smoke` + `kubectl delete pv iscsi-smoke-pv` (keep ZVOL/target until CSI cutover or tear down with targetcli).
+### Known caveat: LIO portals
 
-## Next (Flux — all-in)
+`CreateVolume` often leaves targets with **Portals: 0** when `10.177.76.1:3260` already exists on another target. NodeStage then hangs on `iscsiadm` login until the portal is added:
 
-1. SSH key + `zfs allow` on `rpool/k8s` for CSI service user
-2. Stack `democratic-csi` HelmRelease (`zfs-generic-iscsi`) + SC `zfs-iscsi`
-3. Ensure `open-iscsi` on **all** workers (cloud-init / just recipe)
-4. Migrate off hostPath magnet: redis → mailpit → openbao → minio → faktory / pact
-5. Revisit postgres-ha → `zfs-iscsi` after redis proves stable
+```bash
+sudo targetcli "/iscsi/<iqn>/tpg1/portals create 10.177.76.1 3260"
+sudo targetcli saveconfig
+```
+
+**Mitigation:** CronJob `iscsi-portal-ensure` SSHes as `csi-zfs` and ensures the portal on every IQN. New PVCs may wait up to ~1 minute before NodeStage succeeds.
+
+Manual one-shot (same logic):
+
+```bash
+for d in /sys/kernel/config/target/iscsi/iqn.*; do
+  [ -d "$d" ] || continue
+  sudo targetcli "/iscsi/$(basename "$d")/tpg1/portals create 10.177.76.1 3260" || true
+done
+sudo targetcli saveconfig
+```
+
+## Smoke (done)
+
+Namespace `csi-smoke`: PVCs `zfs-iscsi-smoke{,-2}` + nginx Deployments — Bound, pods Ready after portal ensure.
+
+Tear down when done proving:
+
+```bash
+kubectl delete ns csi-smoke
+# Retain PVs/zvols until explicitly destroyed via CSI / targetcli + zfs destroy
+```
+
+## Next: migrate off hostPath magnet
+
+Order: **redis → mailpit → openbao → minio → faktory / pact**. Pattern per app:
+
+1. GitOps: StorageClass → `zfs-iscsi` (new PVC name or wipe + recreate)
+2. Flux reconcile; wait for portal-ensure if NodeStage stalls
+3. Delete old hostPath PV/PVC only after data cutover verified
+4. Revisit postgres-ha → `zfs-iscsi` after redis proves stable
 
 ## Ops notes
 
 - Portal / shareHost: **`10.177.76.1`**, not `192.168.1.189`
 - Ansible nfs_server owns `/etc/exports` — CSI NFS paths use ZFS `sharenfs` only
 - Re-check UFW after `cylon-local-infra` ansible if firewall role resets rules
-- targetcli config: `/etc/rtslib-fb-target/saveconfig.json` (persist across reboot via `target.service`)
+- targetcli config: `/etc/rtslib-fb-target/saveconfig.json` (`target.service`)
+- SOPS encrypt secrets on ms02: `SOPS_AGE_KEY_FILE=~/.config/sops/age/flux-shared-gitops`
