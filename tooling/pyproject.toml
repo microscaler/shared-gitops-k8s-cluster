@@ -1,0 +1,18 @@
+[project]
+name = "shared-gitops-tooling"
+version = "0.1.0"
+description = "Inventory validation for shared-gitops-k8s-cluster"
+requires-python = ">=3.11"
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.scripts]
+validate-inventory = "shared_gitops.validate_inventory:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

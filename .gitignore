@@ -1,0 +1,24 @@
+# Local / generated
+.DS_Store
+*.pyc
+__pycache__/
+.venv/
+.nfs.*
+._*
+
+# Secrets & kubeconfigs (never commit)
+**/secrets/**/*.dec.yaml
+**/secrets/**/*-key.yaml
+kubeconfig/
+*.pem
+*.key
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+*.egg-info/
+
+# Agent local
+.agent/memory-bank/*.local.md

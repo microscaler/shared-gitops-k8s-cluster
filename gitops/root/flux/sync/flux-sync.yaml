@@ -1,0 +1,32 @@
+# Bootstrap sync — GitRepository + root Flux Kustomization.
+# Cluster patches override path / branch / url (see clusters/*/patches/).
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: shared-gitops
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  timeout: 3m
+  ref:
+    branch: main
+  secretRef:
+    name: gitops-auth
+  url: ssh://git@github.com/microscaler/shared-gitops-k8s-cluster.git
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-control
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  # Overridden per cluster to ./gitops/clusters/<id>/control
+  path: ./gitops/clusters/dev/control
+  prune: true
+  wait: true
+  timeout: 5m0s
+  sourceRef:
+    kind: GitRepository
+    name: shared-gitops

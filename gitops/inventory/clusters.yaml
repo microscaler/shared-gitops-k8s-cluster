@@ -1,0 +1,44 @@
+# Shared cluster inventory (multi-cluster)
+
+# Each cluster entrypoint under gitops/clusters/<id> applies only to that cluster.
+# GitOpsSets may Matrix against this file when a management plane exists; until then
+# each cluster carries an enabled stack list under clusters/<id>/inventory/.
+
+clusters:
+  - id: dev
+    display_name: ms02 Multipass k3s
+    role: development
+    status: active
+    bootstrap:
+      day0_repo: shared-k8s-cluster
+      kubeconfig_hint: ../shared-k8s-cluster/kubeconfig/shared-k8s.yaml
+      context: shared-k8s
+    git:
+      # Patch after the GitHub remote exists (also clusters/dev/patches/git-url.patch.yaml)
+      url: ssh://git@github.com/microscaler/shared-gitops-k8s-cluster.git
+      branch: main
+    network:
+      metallb_pool: 10.177.76.220-10.177.76.239
+      lan_proxy: true
+
+  - id: staging
+    display_name: Staging (future)
+    role: staging
+    status: stub
+    git:
+      url: ssh://git@github.com/microscaler/shared-gitops-k8s-cluster.git
+      branch: main
+    network:
+      metallb_pool: null
+      lan_proxy: false
+
+  - id: prod
+    display_name: Production (future)
+    role: production
+    status: stub
+    git:
+      url: ssh://git@github.com/microscaler/shared-gitops-k8s-cluster.git
+      branch: main
+    network:
+      metallb_pool: null
+      lan_proxy: false

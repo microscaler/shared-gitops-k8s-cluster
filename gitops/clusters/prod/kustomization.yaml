@@ -1,0 +1,16 @@
+# Stub — do not apply until a prod cluster exists.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - ../../root/flux/v2_9_2
+  - ../../root/flux/sync
+patches:
+  - target:
+      kind: Kustomization
+      name: cluster-control
+      namespace: flux-system
+    patch: |-
+      - op: replace
+        path: /spec/path
+        value: ./gitops/clusters/prod/control

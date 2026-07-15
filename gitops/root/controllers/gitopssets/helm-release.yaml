@@ -1,0 +1,53 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: gitopssets-controller-source
+  namespace: flux-system
+spec:
+  interval: 1h
+  timeout: 3m
+  url: https://github.com/weaveworks/gitopssets-controller
+  ref:
+    tag: v0.17.2
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gitopssets-controller
+  namespace: flux-system
+spec:
+  interval: 30m
+  timeout: 10m
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      remediateLastFailure: true
+  chart:
+    spec:
+      chart: ./charts/gitopssets-controller
+      sourceRef:
+        kind: GitRepository
+        name: gitopssets-controller-source
+      interval: 1h
+  values:
+    fullnameOverride: gitopssets
+    controllerManager:
+      manager:
+        args:
+          - --health-probe-bind-address=:8081
+          - --metrics-bind-address=127.0.0.1:8080
+          - --leader-elect
+          # Limit blast radius until we need PullRequests / apiClient / Cluster
+          - --enabled-generators=List,GitRepository,Config,Matrix
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 128Mi

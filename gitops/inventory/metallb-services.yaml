@@ -1,0 +1,181 @@
+# MetalLB LoadBalancer inventory (dev / Multipass bridge 10.177.76.0/24).
+# Host LAN proxy (shared-k8s-cluster) should consume this file — do not fork a second table.
+# Future clusters override via clusters/<id>/inventory/metallb-services.yaml.
+
+services:
+  - name: registry
+    namespace: registry
+    lb_ip: 10.177.76.220
+    ports:
+      - name: http
+        port: 5000
+        protocol: TCP
+    lan_port: 5001
+
+  - name: routellm
+    namespace: cylon
+    lb_ip: 10.177.76.221
+    ports:
+      - name: http
+        port: 4000
+        protocol: TCP
+    lan_port: 4000
+
+  - name: squid-proxy
+    namespace: cylon
+    lb_ip: 10.177.76.222
+    ports:
+      - name: http
+        port: 3128
+        protocol: TCP
+    lan_port: 3128
+
+  - name: freeradius
+    namespace: cylon
+    lb_ip: 10.177.76.223
+    ports:
+      - name: auth
+        port: 1812
+        protocol: UDP
+      - name: acct
+        port: 1813
+        protocol: UDP
+    lan_port: 1812
+
+  - name: postgres
+    namespace: data
+    lb_ip: 10.177.76.224
+    ports:
+      - name: postgres
+        port: 5432
+        protocol: TCP
+    lan_port: 5433
+
+  - name: redis
+    namespace: data
+    lb_ip: 10.177.76.225
+    ports:
+      - name: redis
+        port: 6379
+        protocol: TCP
+    lan_port: 6390
+
+  - name: minio
+    namespace: data
+    lb_ip: 10.177.76.226
+    ports:
+      - name: api
+        port: 9000
+        protocol: TCP
+      - name: console
+        port: 9001
+        protocol: TCP
+    lan_port: 9000
+
+  - name: grafana
+    namespace: observability
+    lb_ip: 10.177.76.227
+    ports:
+      - name: http
+        port: 3000
+        protocol: TCP
+    lan_port: 3000
+
+  - name: prometheus
+    namespace: observability
+    lb_ip: 10.177.76.228
+    ports:
+      - name: http
+        port: 9090
+        protocol: TCP
+    lan_port: 9090
+
+  - name: loki
+    namespace: observability
+    lb_ip: 10.177.76.229
+    ports:
+      - name: http
+        port: 3100
+        protocol: TCP
+    lan_port: 3100
+
+  - name: jaeger
+    namespace: observability
+    lb_ip: 10.177.76.230
+    ports:
+      - name: ui
+        port: 16686
+        protocol: TCP
+    lan_port: 16686
+
+  - name: otel-collector
+    namespace: observability
+    lb_ip: 10.177.76.231
+    ports:
+      - name: grpc
+        port: 4317
+        protocol: TCP
+      - name: http
+        port: 4318
+        protocol: TCP
+    lan_port: 4317
+
+  - name: pact-broker
+    namespace: data
+    lb_ip: 10.177.76.232
+    ports:
+      - name: http
+        port: 9292
+        protocol: TCP
+    lan_port: 9292
+
+  - name: faktory-server
+    namespace: scheduling
+    lb_ip: 10.177.76.233
+    ports:
+      - name: ui
+        port: 7420
+        protocol: TCP
+      - name: worker
+        port: 7419
+        protocol: TCP
+    lan_port: 7420
+
+  - name: mailhog
+    namespace: data
+    lb_ip: 10.177.76.234
+    ports:
+      - name: smtp
+        port: 1025
+        protocol: TCP
+      - name: ui
+        port: 8025
+        protocol: TCP
+    lan_port: 8026
+    lan_ports:
+      - {name: smtp, lan_port: 1026, target_port: 1025}
+      - {name: ui, lan_port: 8026, target_port: 8025}
+
+  - name: mailpit
+    namespace: data
+    lb_ip: 10.177.76.235
+    ports:
+      - name: smtp
+        port: 1025
+        protocol: TCP
+      - name: ui
+        port: 8025
+        protocol: TCP
+    lan_port: 8025
+    lan_ports:
+      - {name: smtp, lan_port: 1025, target_port: 1025}
+      - {name: ui, lan_port: 8025, target_port: 8025}
+
+  - name: resurrection-hub
+    namespace: cylon
+    lb_ip: 10.177.76.236
+    ports:
+      - name: http
+        port: 14000
+        protocol: TCP
+    lan_port: 14000

@@ -1,0 +1,45 @@
+# Product Tilt apps on ms02 (host systemd). Shared with shared-k8s-cluster tooling.
+# GitOpsSets may later emit Ingress/DNS ConfigMaps from this inventory.
+
+defaults:
+  lan_host: "192.168.1.189"
+  ssh_host: "ms02"
+  dns_suffix: "dev.microscaler.local"
+
+apps:
+  - id: platform
+    port: 10349
+    repo: shared-k8s-cluster
+    aliases: [platform, shared-k8s, shared-k8s-cluster]
+  - id: sesame
+    port: 10351
+    repo: seasame-idam
+    aliases: [sesame, sesame-idam]
+  - id: hauliage
+    port: 10352
+    repo: hauliage
+    aliases: [hauliage]
+  - id: rerp
+    port: 10350
+    repo: rerp
+    aliases: [rerp]
+  - id: brrtrouter
+    port: 10353
+    repo: BRRTRouter
+    aliases: [brrtrouter]
+  - id: dcops
+    port: 10354
+    repo: DCops
+    aliases: [dcops]
+  - id: lifeguard
+    port: 10355
+    repo: lifeguard
+    aliases: [lifeguard]
+  - id: fleetingdns
+    port: 10654
+    repo: fleetingdns
+    aliases: [fleetingdns]
+  - id: cylon
+    port: 10450
+    repo: cylon
+    aliases: [cylon]

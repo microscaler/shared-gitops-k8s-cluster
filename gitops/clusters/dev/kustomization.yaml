@@ -1,0 +1,19 @@
+# Bootstrap entrypoint for Multipass shared-k8s (context: shared-k8s).
+# Prerequisites:
+#   1. Day-0 cluster up (shared-k8s-cluster just cluster-create)
+#   2. This repo pushed to the Git URL in flux-sync (or patched)
+#   3. Secret gitops-auth in flux-system (flux create secret git …)
+#
+# Apply: just bootstrap-dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - ../../root/flux/v2_9_2
+  - ../../root/flux/sync
+patches:
+  - target:
+      kind: Kustomization
+      name: cluster-control
+      namespace: flux-system
+    path: patches/control-path.patch.yaml
