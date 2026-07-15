@@ -1,15 +1,15 @@
 # Active context
 
 ## Goal
-Finish Day-1 GitOps cutover so shared-k8s-cluster can be Day-0-only (push + delete local checkout; keep GitHub).
+Platform storage B-shape (host ZFS + democratic-csi NFS) to kill k8s-worker-1 data magnet; then finish Day-0 slim of shared-k8s-cluster.
 
-## Done just now
-- Resumed stack-observability; cluster reconciling from origin/main @ 319bf4b.
-- OpenSearch / Dashboards / Data Prepper HRs Ready.
-- Redis HR Ready (PVC chown + volumePermissions + retries).
-- MinIO HR Ready.
-- postgres-ha upgrade in progress from git; primary up; standbys still 1/2 (known clone/PGDATA issue).
+## Done (2026-07-16)
+- UFW: NFS/rpc from 10.177.76.0/24 → host
+- ZFS: rpool/k8s/nfs/{vols,snaps} + smoke share
+- Smoke mount from k8s-worker-1 NFSv4 read/write OK
+- Doc: docs/storage-csi-zfs.md
 
 ## Next
-- Stabilize postgres-ha standbys via gitops values only, then stack-postgres-ha Ready.
-- Slim shared-k8s-cluster to Day 0 and push.
+- Scaffold Flux democratic-csi (zfs-generic-nfs) + SC zfs-nfs
+- SSH/zfs allow for CSI user
+- Migrate redis first off local-storage hostPath
