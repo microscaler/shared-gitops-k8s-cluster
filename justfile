@@ -125,6 +125,74 @@ heal-minio-pvc:
 	kubectl -n data scale deploy/imgproxy --replicas=1 || true
 	echo "MinIO healed. HostPath /var/lib/data/minio on k8s-worker-1 retained."
 
+# --- SOPS deployment-profiles (canonical secrets process) ---
+# Age key on ms02: ~/.config/sops/age/flux-shared-gitops
+# Docs: deployment-profiles/README.md
+
+sops_age_key := env_var_or_default("SOPS_AGE_KEY_FILE", home_directory() + "/.config/sops/age/flux-shared-gitops")
+
+# Ensure flux-system/sops-age exists from the ms02 age private key
+secrets-ensure-age-key:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	KEY="{{sops_age_key}}"
+	test -f "$KEY" || { echo "missing age key: $KEY (run age-keygen -o $KEY)" >&2; exit 1; }
+	kubectl -n flux-system create secret generic sops-age \
+	  --from-file=age.agekey="$KEY" \
+	  --dry-run=client -o yaml | kubectl apply -f -
+	kubectl -n flux-system get secret sops-age
+
+# Encrypt plaintext dotenv → deployment-profiles/<env>/<component>/application.secrets.env
+secrets-encrypt env component plain:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export SOPS_AGE_KEY_FILE="{{sops_age_key}}"
+	DEST="{{repo_root}}/deployment-profiles/{{env}}/{{component}}"
+	mkdir -p "$DEST"
+	test -f "{{plain}}" || { echo "missing plaintext: {{plain}}" >&2; exit 1; }
+	sops --encrypt --input-type dotenv --output-type dotenv "{{plain}}" \
+	  > "$DEST/application.secrets.env"
+	echo "Wrote $DEST/application.secrets.env"
+	echo "Next: just secrets-sync {{env}} {{component}}"
+
+# Decrypt canonical profile to stdout (keys+values — use carefully)
+secrets-decrypt env component:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export SOPS_AGE_KEY_FILE="{{sops_age_key}}"
+	sops -d "{{repo_root}}/deployment-profiles/{{env}}/{{component}}/application.secrets.env"
+
+# Copy identical ciphertext into Flux component mirror
+secrets-sync env component:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	SRC="{{repo_root}}/deployment-profiles/{{env}}/{{component}}/application.secrets.env"
+	DST_DIR="{{repo_root}}/gitops/root/components/{{component}}/secrets"
+	test -f "$SRC" || { echo "missing $SRC — encrypt first" >&2; exit 1; }
+	mkdir -p "$DST_DIR"
+	cp "$SRC" "$DST_DIR/application.secrets.env"
+	if [ ! -f "$DST_DIR/kustomization.yaml" ]; then
+	  echo "WARN: $DST_DIR/kustomization.yaml missing — add secretGenerator (see deployment-profiles/README.md)" >&2
+	fi
+	echo "Synced → $DST_DIR/application.secrets.env"
+
+# Apply profile kustomization (bootstrap / force secret before Flux)
+secrets-apply env component:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	export SOPS_AGE_KEY_FILE="{{sops_age_key}}"
+	PROFILE="{{repo_root}}/deployment-profiles/{{env}}/{{component}}"
+	test -f "$PROFILE/kustomization.yaml" || { echo "missing $PROFILE/kustomization.yaml" >&2; exit 1; }
+	# kustomize cannot read ENC[] — decrypt to a temp overlay
+	TMP=$(mktemp -d)
+	trap 'rm -rf "$TMP"' EXIT
+	cp "$PROFILE/kustomization.yaml" "$TMP/"
+	sops -d "$PROFILE/application.secrets.env" > "$TMP/application.secrets.env"
+	kubectl apply -k "$TMP"
+	echo "Applied secrets from {{env}}/{{component}}"
+
 # Heal Terminating Retain hostPath PVC/PV for mailpit or pact-postgres
 heal-hostpath-pvc name:
 	#!/usr/bin/env bash

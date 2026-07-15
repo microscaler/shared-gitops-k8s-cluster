@@ -1,13 +1,20 @@
 # Progress — shared-gitops-k8s-cluster
 
-## 2026-07-15
+## Done (2026-07-15)
 
-### Done
-- Phase 2 bootstrap
-- postgres-ha (Bitnami), minio Retain, postgres-backup → MinIO
-- redis, messaging (mailpit/mailhog/inbucket), pact, imgproxy on Flux
-- shared-k8s platform-data kustomize no longer applies data/* (Tilt)
+- [x] Adopt SOPS dotenv as standard secrets process (AGENTS, design, README, just recipes)
+- [x] Create age key on ms02 for shared-gitops SOPS
+- [x] Apply `flux-system/sops-age` for Flux decryption
+- [x] Apply `observability/opensearch-credentials`
+- [x] Encrypt dotenv at `deployment-profiles/dev/observability/application.secrets.env`
+- [x] Mirror under component `secrets/` for Flux
+- [x] Wire OpenSearch HelmRelease `envFrom` → credentials
+- [x] Enable SOPS decryption on platform-stacks GitOpsSet
 
-### Open
-- postgres-ha HelmRelease STS not fully Ready (replicas 1/3)
-- scheduling / pipeline / observability / ai / openbao still Tilt
+## In progress
+
+- OpenSearch observability cutover (Helm + OTel + remove old stack)
+
+## Backlog
+
+- Migrate remaining inline passwords (minio, postgres-ha, pact, …) onto deployment-profiles when those stacks are next touched

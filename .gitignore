@@ -9,9 +9,16 @@ __pycache__/
 # Secrets & kubeconfigs (never commit)
 **/secrets/**/*.dec.yaml
 **/secrets/**/*-key.yaml
+*.secrets.env.plain
+*.secrets.env.dec
+**/application.secrets.env.plain
 kubeconfig/
 *.pem
 *.key
+# Age private keys (cluster secret only — never git)
+**/flux-shared-gitops
+**/*.agekey
+**/sops.age
 
 # Tooling
 .pytest_cache/

@@ -38,17 +38,23 @@ Design: [`docs/design.md`](docs/design.md).
 ## Layout
 
 ```
+deployment-profiles/         # SOPS-encrypted dotenv secrets (canonical)
+  <env>/<component>/
+    application.secrets.env
+    kustomization.yaml
 gitops/
   inventory/                 # shared inventories (clusters, stacks catalog, metallb, apps)
   root/
     flux/v2_9_2/             # pinned Flux install (Namespace owned separately)
     controllers/gitopssets/  # HelmRelease for gitopssets-controller
-    components/              # platform stacks (namespaces first; others migrate next)
+    components/              # platform stacks (+ secrets/ Flux mirror per stack)
     gitopssets/              # GitOpsSet CRs + RBAC templates
   clusters/
     base/                    # shared bootstrap fragments
     {dev,staging,prod}/      # cluster entrypoints + control plane sync path
 ```
+
+Secrets SOP: [`deployment-profiles/README.md`](deployment-profiles/README.md).
 
 ## Commands
 
@@ -58,3 +64,7 @@ gitops/
 | `just build-dev` | `kustomize build gitops/clusters/dev` |
 | `just bootstrap-dev` | Apply cluster entrypoint (Flux + sync) |
 | `just flux-export` | Re-export Flux install into `root/flux/vX_Y_Z` |
+| `just secrets-encrypt` | Encrypt plaintext dotenv → `deployment-profiles/...` |
+| `just secrets-sync` | Copy ciphertext into component `secrets/` for Flux |
+| `just secrets-apply` | `kubectl apply -k` a profile (bootstrap) |
+| `just secrets-ensure-age-key` | Apply `flux-system/sops-age` from ms02 age key |

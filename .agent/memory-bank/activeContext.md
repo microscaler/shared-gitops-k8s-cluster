@@ -1,24 +1,22 @@
 # Active context — shared-gitops-k8s-cluster
 
-Updated: 2026-07-15
+Updated: 2026-07-15 (Helm migrations + OpenSearch cutover)
 
-## Status
+## Deferred
 
-Phase 3: **ns `data` platform workloads on Flux**, including mosquitto (NanoMQ).
+- OpenBao ops polish / postgres-ha standbys
 
-## Flux stacks (dev)
+## Done this session
 
-- namespaces, cluster, cylon-infra, platform-dev-tls
-- postgres-ha, minio, postgres-backup
-- redis, messaging, pact, imgproxy, **mosquitto**
+- SOPS deployment-profiles process (standard)
+- Observability → OpenSearch Helm; removed Grafana/Loki/Prom/Jaeger/Promtail
+- Redis → Bitnami Helm (+ Service alias `redis`)
+- MinIO → official charts.min.io Helm (existingClaim `/data`)
 
-## Toggle mosquitto
+## Keep raw (see docs/helm-stack-status.md)
 
-Enable: `gitops/clusters/dev/inventory/stacks/mosquitto/.gitkeep`  
-Disable: remove that directory and push (Flux prune).
-
-Hauliage Tilt no longer builds/deploys nanomq (local Tiltfile change; commit in hauliage when ready).
+imgproxy, messaging, mosquitto, pact, scheduling, pipeline, ai, cluster, cylon-infra, postgres-backup
 
 ## Next
 
-Fix postgres-ha standbys; scheduling/pipeline/observability/ai/openbao
+Commit/push + Flux reconcile; verify redis/minio/opensearch pods; optional imgproxy later if we accept Service rename.

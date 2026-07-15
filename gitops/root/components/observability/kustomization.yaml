@@ -1,9 +1,5 @@
-# Use kustomize so ConfigMaps are generated from embedded/*:
-#   kubectl apply -k /path/to/shared-kind-cluster/k8s/observability
-#
-# If you use `kubectl apply -f` on this directory, only *.yaml at this level are applied (non-recursive);
-# embedded configs and this file (no .yaml suffix) are skipped — you will miss generated ConfigMaps unless
-# you use `-k` or apply rendered output: `kubectl kustomize . | kubectl apply -f -`
+# OpenSearch + Dashboards + Data Prepper (Helm) + OTel collector (raw).
+# Legacy Grafana/Loki/Prometheus/Jaeger/Promtail removed — telemetry goes OTel → Data Prepper → OpenSearch.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -11,48 +7,17 @@ namespace: observability
 
 resources:
   - namespace.yaml
-  - prometheus-rbac.yaml
-  - prometheus.yaml
-  - loki.yaml
-  - promtail-rbac.yaml
-  - promtail.yaml
-  - jaeger.yaml
+  - secrets
+  - helmrepository.yaml
+  - helm-release-opensearch.yaml
+  - helm-release-dashboards.yaml
+  - helm-release-data-prepper.yaml
+  - dashboards-lb-service.yaml
   - otel-collector.yaml
-  - grafana.yaml
 
 configMapGenerator:
-  - name: prometheus-config
-    files:
-      - prometheus.yml=embedded/prometheus-k8s.yml
-    options:
-      disableNameSuffixHash: true
-  - name: loki-config
-    files:
-      - config.yml=embedded/loki-k8s-config.yml
-    options:
-      disableNameSuffixHash: true
   - name: otel-collector-config
     files:
       - config.yaml=embedded/otel-collector-config.yml
-    options:
-      disableNameSuffixHash: true
-  - name: grafana-datasources
-    files:
-      - datasources.yaml=embedded/grafana-datasources.yml
-    options:
-      disableNameSuffixHash: true
-  - name: grafana-dashboard-providers
-    files:
-      - dashboards.yaml=embedded/grafana-dashboard-providers.yml
-    options:
-      disableNameSuffixHash: true
-  - name: promtail-config
-    files:
-      - promtail.yaml=embedded/promtail-config.yml
-    options:
-      disableNameSuffixHash: true
-  - name: grafana-cluster-dashboards
-    files:
-      - databases.json=embedded/grafana-dashboard-databases.json
     options:
       disableNameSuffixHash: true

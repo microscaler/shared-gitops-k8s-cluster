@@ -12,30 +12,38 @@ processors:
     spike_limit_mib: 100
 
 exporters:
-  prometheus:
-    endpoint: "0.0.0.0:9464"
-    # Embed OTLP resource attributes (e.g. host=nvidia1, cluster=cylon-sparks,
-    # os_kernel=6.17.0-1008-nvidia, set by Spark otel-agents) as labels on
-    # every exported Prometheus metric, instead of dropping them into a
-    # separate `target_info` series. Without this, Grafana panels can't filter
-    # by `host` / `cluster` directly and have to JOIN against target_info,
-    # which is brittle. See cylon-local-infra/llmwiki/concepts/sparks-observability-pipeline.md.
-    resource_to_telemetry_conversion:
-      enabled: true
-  otlp/jaeger:
-    endpoint: "jaeger:4317"
+  # Data Prepper OTLP ports (ClusterIP service data-prepper)
+  otlp/traces:
+    endpoint: data-prepper.observability.svc.cluster.local:21890
     tls:
       insecure: true
-  logging:
-    loglevel: info
+  otlp/metrics:
+    endpoint: data-prepper.observability.svc.cluster.local:21891
+    tls:
+      insecure: true
+  otlp/logs:
+    endpoint: data-prepper.observability.svc.cluster.local:21892
+    tls:
+      insecure: true
+  # Keep a local Prometheus scrape endpoint for quick debugging (not long-term store)
+  prometheus:
+    endpoint: "0.0.0.0:9464"
+    resource_to_telemetry_conversion:
+      enabled: true
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [prometheus, logging]
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/jaeger, logging]
+      exporters: [otlp/traces, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/metrics, prometheus, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/logs, debug]

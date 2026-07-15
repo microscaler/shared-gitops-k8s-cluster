@@ -22,7 +22,7 @@ stacks:
 
   - name: minio
     path: ./gitops/root/components/minio
-    description: MinIO object store (Retain hostPath); target for postgres dumps
+    description: MinIO Helm (charts.min.io standalone, existingClaim Retain); MetalLB .226
     depends_on: [namespaces]
 
   - name: postgres-backup
@@ -32,7 +32,7 @@ stacks:
 
   - name: redis
     path: ./gitops/root/components/redis
-    description: Redis + exporter (Retain hostPath AOF)
+    description: Bitnami Redis Helm (standalone, AOF, existingClaim Retain); MetalLB .225
     depends_on: [namespaces]
 
   - name: messaging
@@ -67,7 +67,7 @@ stacks:
 
   - name: observability
     path: ./gitops/root/components/observability
-    description: Prometheus, Loki, Grafana, Jaeger, OTel, Promtail
+    description: OpenSearch + Dashboards + Data Prepper (Helm) + OTel collector; MetalLB Dashboards .227, OTel .231
     depends_on: [namespaces]
 
   - name: ai

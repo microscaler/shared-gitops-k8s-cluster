@@ -1,0 +1,46 @@
+# Preserve historical Service name `redis` + MetalLB IP for apps and LAN proxy.
+# Bitnami chart creates `redis-master`; this selector matches the standalone master pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: data
+  labels:
+    app: redis
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: redis
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "10.177.76.225"
+spec:
+  type: LoadBalancer
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis
+    app.kubernetes.io/component: master
+---
+# Compat: scrapes that used Service redis-exporter (metrics sidecar on master)
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-exporter
+  namespace: data
+  labels:
+    app: redis-exporter
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9121
+      targetPort: metrics
+      name: metrics
+  selector:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/instance: redis
+    app.kubernetes.io/component: master

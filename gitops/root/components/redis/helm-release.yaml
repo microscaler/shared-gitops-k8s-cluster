@@ -1,0 +1,83 @@
+# Bitnami Redis (standalone). Replaces raw Deployment; keeps Retain PVC redis-storage.
+# Service DNS `redis` is a thin alias (service-redis.yaml) — chart exposes redis-master.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: redis
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: redis
+spec:
+  interval: 30m
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: true
+  chart:
+    spec:
+      chart: redis
+      version: "20.6.3"
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: data
+      interval: 24h
+  values:
+    global:
+      security:
+        allowInsecureImages: true
+
+    fullnameOverride: redis
+    architecture: standalone
+
+    image:
+      registry: docker.io
+      repository: bitnamilegacy/redis
+      tag: 7.4.2-debian-12-r0
+
+    auth:
+      enabled: false
+
+    commonConfiguration: |-
+      appendonly yes
+      save ""
+
+    master:
+      disableCommands: []
+      resources:
+        requests:
+          memory: 64Mi
+          cpu: 25m
+        limits:
+          memory: 256Mi
+          cpu: 200m
+      persistence:
+        enabled: true
+        existingClaim: redis-storage
+        path: /data
+      service:
+        type: ClusterIP
+        ports:
+          redis: 6379
+
+    metrics:
+      enabled: true
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/redis-exporter
+        tag: 1.67.0-debian-12-r0
+      resources:
+        requests:
+          memory: 32Mi
+          cpu: 25m
+        limits:
+          memory: 128Mi
+          cpu: 100m
+      service:
+        type: ClusterIP
+        ports:
+          http: 9121

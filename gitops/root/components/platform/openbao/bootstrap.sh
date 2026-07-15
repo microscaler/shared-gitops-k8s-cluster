@@ -21,7 +21,8 @@ ROLE="secret-manager-controller"
 POLICY="secret-manager-controller"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-kexec() { kubectl -n "$NS" exec -i "$POD" -- "$@"; }
+# Do not use kubectl exec -i here — it can hang waiting on stdin during init.
+kexec() { kubectl -n "$NS" exec "$POD" -- "$@"; }
 
 echo ">> Waiting for OpenBao pod to be Running..."
 kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Running "pod/$POD" --timeout=180s

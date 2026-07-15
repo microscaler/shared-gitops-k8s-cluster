@@ -63,6 +63,17 @@ spec:
         periodSeconds: 10
         timeoutSeconds: 5
         failureThreshold: 36
+      # Reverse DNS of pod IPs times out (~5s/conn) and breaks repmgr clone + local ping
+      # (Bitnami also maps POSTGRESQL_LOG_HOSTNAME → log_hostname)
+      configuration: |
+        log_hostname = off
+      extraEnvVars:
+        - name: POSTGRESQL_LOG_HOSTNAME
+          value: "false"
+        - name: REPMGR_CONNECT_TIMEOUT
+          value: "30"
+        - name: BITNAMI_DEBUG
+          value: "false"
 
     pgpool:
       image:

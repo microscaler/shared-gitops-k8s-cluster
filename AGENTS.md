@@ -20,9 +20,21 @@ Bootstrap target context is **`shared-k8s`** (`shared-k8s-cluster/kubeconfig/sha
 
 Change stacks / MetalLB / apps in `gitops/inventory/` (+ per-cluster overlays). Do not hand-duplicate Flux `Kustomization` CRs when a GitOpsSet template already covers them.
 
-### 3. Never commit secrets or kubeconfigs
+### 3. Secrets = SOPS dotenv under `deployment-profiles/`
 
-Git credentials, SOPS keys, and kubeconfigs stay out of git. Use `flux create secret git` or sealed secrets under an ignored path.
+**Canonical process** (do not invent alternatives for new work):
+
+- Store secrets as SOPS-encrypted **dotenv** at
+  `deployment-profiles/<env>/<component>/application.secrets.env`
+- Mirror identical ciphertext under
+  `gitops/root/components/<component>/secrets/` so Flux can decrypt (stack path)
+- Use kustomize `secretGenerator` + `envs:` (metro / sam-activity-service pattern)
+- Encrypt/decrypt **on ms02** with `SOPS_AGE_KEY_FILE=~/.config/sops/age/flux-shared-gitops`
+- Flux decrypt secret: `flux-system/sops-age` (`age.agekey`)
+- Recipes: `just secrets-encrypt`, `secrets-sync`, `secrets-apply`, `secrets-ensure-age-key`
+
+Authority: [`deployment-profiles/README.md`](./deployment-profiles/README.md).  
+Never commit plaintext, age private keys, git credentials, or kubeconfigs.
 
 ### 4. Do not edit generated Flux install lightly
 

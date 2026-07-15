@@ -1,0 +1,16 @@
+# Flux-compatible dotenv secrets for observability (OpenSearch admin).
+# Encrypted file: application.secrets.env (SOPS age).
+# Private key: flux-system/sops-age (age.agekey).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: observability
+
+secretGenerator:
+  - name: opensearch-credentials
+    envs:
+      - application.secrets.env
+
+generatorOptions:
+  disableNameSuffixHash: true
+  immutable: false

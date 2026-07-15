@@ -2,31 +2,38 @@ apiVersion: v1
 kind: Service
 metadata:
   name: otel-collector
+  namespace: observability
   labels:
     app: otel-collector
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: observability
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 10.177.76.231
+    # Historical MetalLB IP — product apps / LAN proxy (4317/4318)
+    metallb.universe.tf/loadBalancerIPs: "10.177.76.231"
 spec:
   type: LoadBalancer
   selector:
     app: otel-collector
   ports:
-  - name: otlp-grpc
-    port: 4317
-    targetPort: otlp-grpc
-  - name: otlp-http
-    port: 4318
-    targetPort: otlp-http
-  - name: prometheus
-    port: 9464
-    targetPort: prometheus
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+    - name: prometheus
+      port: 9464
+      targetPort: prometheus
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: otel-collector
+  namespace: observability
   labels:
     app: otel-collector
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: observability
 spec:
   replicas: 1
   selector:
@@ -38,38 +45,38 @@ spec:
         app: otel-collector
     spec:
       containers:
-      - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.96.0
-        args:
-        - --config=/conf/config.yaml
-        ports:
-        - name: otlp-grpc
-          containerPort: 4317
-        - name: otlp-http
-          containerPort: 4318
-        - name: prometheus
-          containerPort: 9464
-        volumeMounts:
-        - name: config
-          mountPath: /conf
-        livenessProbe:
-          tcpSocket:
-            port: otlp-grpc
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          tcpSocket:
-            port: prometheus
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.96.0
+          args:
+            - --config=/conf/config.yaml
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+            - name: prometheus
+              containerPort: 9464
+          volumeMounts:
+            - name: config
+              mountPath: /conf
+          livenessProbe:
+            tcpSocket:
+              port: otlp-grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: prometheus
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
       volumes:
-      - name: config
-        configMap:
-          name: otel-collector-config
+        - name: config
+          configMap:
+            name: otel-collector-config
