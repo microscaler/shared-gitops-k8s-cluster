@@ -2,11 +2,16 @@
 
 ## 2026-07-15
 
-- [x] Flux on Multipass `dev` + deploy key
-- [x] Built gitopssets-controller from `~/Workspace/weaveworks/gitopssets-controller`
-- [x] Pushed to `10.177.76.220:5000/weaveworks/gitopssets-controller:v0.17.2`
-- [x] Mirrored kube-rbac-proxy to `10.177.76.220:5000/kubebuilder/kube-rbac-proxy:v0.16.0`
-- [x] HelmRelease Ready; pod 2/2 Running
-- [x] GitOpsSet `platform-stacks` Ready → generated `stack-namespaces` Ready
+### Phase 2 — done
+Flux + GitOpsSets on Multipass `dev` with local registry images.
 
-Refresh images: `just push-gitopssets-images` (builds from local weaveworks checkout).
+### Phase 3 — in progress
+Enabled Flux stacks (all Ready):
+- `stack-namespaces`
+- `stack-cluster` (registry, MetalLB pool, housekeeping)
+- `stack-cylon-infra`
+- `stack-platform-dev-tls`
+
+Remaining: `platform-data`, `observability`, `ai`, `platform-openbao`
+
+shared-k8s-cluster: Tilt no longer applies cylon-infra (commit local, not necessarily pushed).

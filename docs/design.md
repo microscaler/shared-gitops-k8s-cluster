@@ -90,7 +90,7 @@ git commit && git push
 |-------|--------|------|
 | 1 Scaffold | **done** | Repo layout, Flux v2.9.2 export, GitOpsSets HR, namespaces component, inventories, just recipes |
 | 2 Bootstrap | **done** | Flux + deploy key + gitopssets (images from local weaveworks build → ms02 registry) |
-| 3 Migrate stacks | **in progress** | Enabled: `namespaces`, `cluster`, `cylon-infra`, `platform-dev-tls`. Remaining: platform-data, observability, ai, openbao |
+| 3 Migrate stacks | **in progress** | Enabled: `namespaces`, `cluster`, `cylon-infra`, `platform-dev-tls`, `postgres-ha` (Bitnami + bitnamilegacy). Remaining: platform-data (redis/minio/…), observability, ai, openbao |
 | 4 MetalLB dryness | pending | GitOpsSet or tooling from `metallb-services.yaml` → Services + LAN proxy |
 | 5 Secrets | pending | OpenBao + External Secrets |
 | 6 staging/prod | pending | Real clusters; optional Matrix generator |

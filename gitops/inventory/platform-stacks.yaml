@@ -15,10 +15,15 @@ stacks:
     description: In-cluster OCI registry + housekeeping (MetalLB Services)
     depends_on: [namespaces]
 
+  - name: postgres-ha
+    path: ./gitops/root/components/postgres-ha
+    description: Bitnami postgresql-ha (repmgr + Pgpool) with bitnamilegacy images
+    depends_on: [namespaces]
+
   - name: platform-data
     path: ./gitops/root/components/platform-data
-    description: Postgres, redis, minio, messaging, scheduling, gcp emulators
-    depends_on: [cluster]
+    description: Redis, minio, messaging, scheduling, gcp emulators (postgres via postgres-ha stack)
+    depends_on: [postgres-ha]
 
   - name: observability
     path: ./gitops/root/components/observability

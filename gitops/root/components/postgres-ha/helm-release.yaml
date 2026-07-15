@@ -1,0 +1,88 @@
+# Bitnami PostgreSQL HA (repmgr + Pgpool). Images from bitnamilegacy (Bitnami catalog move).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: postgres-ha
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: postgres-ha
+spec:
+  interval: 30m
+  timeout: 15m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: true
+  chart:
+    spec:
+      chart: postgresql-ha
+      version: "16.3.2"
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: data
+      interval: 24h
+  values:
+    global:
+      defaultStorageClass: local-path
+      security:
+        # Required when pulling bitnamilegacy/* instead of bitnami/*
+        allowInsecureImages: true
+
+    fullnameOverride: postgres-ha
+
+    postgresql:
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/postgresql-repmgr
+        tag: 17.6.0-debian-12-r2
+      replicaCount: 3
+      username: postgres
+      password: postgres
+      database: postgres
+      postgresPassword: postgres
+      repmgrUsername: repmgr
+      repmgrPassword: postgres
+      repmgrDatabase: repmgr
+      podAntiAffinityPreset: soft
+
+    pgpool:
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/pgpool
+        tag: 4.6.3-debian-12-r0
+      replicaCount: 2
+      adminUsername: admin
+      adminPassword: postgres
+      # Custom users that apps may use via Pgpool (dev parity)
+      customUsers:
+        usernames: ""
+        passwords: ""
+
+    metrics:
+      enabled: true
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/postgres-exporter
+        tag: 0.17.1-debian-12-r16
+
+    volumePermissions:
+      enabled: true
+      image:
+        registry: docker.io
+        repository: bitnamilegacy/os-shell
+        tag: 12-debian-12-r51
+
+    persistence:
+      enabled: true
+      storageClass: local-path
+      size: 10Gi
+
+    # Chart services stay ClusterIP; LoadBalancer alias is postgres-lb-service.yaml
+    service:
+      type: ClusterIP
+      ports:
+        postgresql: 5432
