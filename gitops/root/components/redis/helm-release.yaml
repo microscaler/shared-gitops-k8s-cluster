@@ -13,10 +13,11 @@ spec:
   timeout: 10m
   install:
     remediation:
-      retries: 3
+      retries: 5
   upgrade:
     remediation:
       remediateLastFailure: false
+      retries: 5
   chart:
     spec:
       chart: redis
