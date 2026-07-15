@@ -1,6 +1,8 @@
+# Dev control plane — ordered Flux Kustomizations only (no GitOpsSet CRs here).
+# 1) gitopssets-controller installs CRDs via HelmRelease
+# 2) platform-gitopssets applies GitOpsSet CRs after dependsOn is Ready
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  # Controllers + GitOpsSets continuously reconciled by Flux
-  - ../../../root/controllers/gitopssets
-  - ../../../root/gitopssets
+  - gitopssets-controller-ks.yaml
+  - platform-gitopssets-ks.yaml

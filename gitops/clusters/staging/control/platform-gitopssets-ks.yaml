@@ -1,0 +1,20 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-gitopssets
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  # Staging inventory path is selected by patching the GitOpsSet in this layer
+  path: ./gitops/clusters/staging/control/gitopssets
+  prune: true
+  wait: true
+  dependsOn:
+    - name: gitopssets-controller
+  sourceRef:
+    kind: GitRepository
+    name: shared-gitops
