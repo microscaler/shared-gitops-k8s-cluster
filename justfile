@@ -76,18 +76,24 @@ create-git-secret keyfile:
 	  --from-literal=known_hosts="$(ssh-keyscan -t ed25519,rsa github.com 2>/dev/null)" \
 	--dry-run=client -o yaml | kubectl apply -f -
 
-# Mirror gitopssets-controller + kube-rbac-proxy into the ms02 in-cluster registry.
-# (Upstream chart pins stale/unpublished tags; we override to these mirrors.)
-push-gitopssets-images registry="10.177.76.220:5000":
+# Build gitopssets-controller from local checkout and push to ms02 registry.
+# Source: ~/Workspace/weaveworks/gitopssets-controller
+push-gitopssets-images registry="10.177.76.220:5000" version="v0.17.2":
 	#!/usr/bin/env bash
 	set -euo pipefail
 	REG="{{registry}}"
-	CTRL_SRC=ghcr.io/weaveworks/gitopssets-controller:v0.17.2
+	VERSION="{{version}}"
+	SRC="${GITOPSSETS_SRC:-$HOME/Workspace/weaveworks/gitopssets-controller}"
+	IMG="$REG/weaveworks/gitopssets-controller:$VERSION"
 	PROXY_SRC=registry.k8s.io/kubebuilder/kube-rbac-proxy:v0.16.0
-	docker pull "$CTRL_SRC"
+	PROXY_DST="$REG/kubebuilder/kube-rbac-proxy:v0.16.0"
+	cd "$SRC"
+	make docker-build IMG="$IMG" VERSION="$VERSION"
+	make docker-push IMG="$IMG"
+	DESC=$(git describe --tags --always)
+	docker tag "$IMG" "$REG/weaveworks/gitopssets-controller:$DESC"
+	docker push "$REG/weaveworks/gitopssets-controller:$DESC"
 	docker pull "$PROXY_SRC"
-	docker tag "$CTRL_SRC" "$REG/weaveworks/gitopssets-controller:v0.17.2"
-	docker tag "$PROXY_SRC" "$REG/kubebuilder/kube-rbac-proxy:v0.16.0"
-	docker push "$REG/weaveworks/gitopssets-controller:v0.17.2"
-	docker push "$REG/kubebuilder/kube-rbac-proxy:v0.16.0"
-	echo "Mirrored to $REG — HelmRelease values already point here."
+	docker tag "$PROXY_SRC" "$PROXY_DST"
+	docker push "$PROXY_DST"
+	echo "Pushed $IMG (+ $DESC) and $PROXY_DST"

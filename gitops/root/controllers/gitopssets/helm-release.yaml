@@ -11,8 +11,8 @@ spec:
   ref:
     tag: v0.17.2
 ---
-# Images are mirrored to the ms02 in-cluster registry (no public ghcr publish required).
-# Refresh mirrors: just push-gitopssets-images
+# Images built from ~/Workspace/weaveworks/gitopssets-controller and pushed to
+# the ms02 in-cluster registry. Refresh: just push-gitopssets-images
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
