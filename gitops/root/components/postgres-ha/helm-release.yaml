@@ -50,20 +50,39 @@ spec:
       repmgrUsername: repmgr
       repmgrPassword: postgres
       repmgrDatabase: repmgr
-      podAntiAffinityPreset: soft
+      # Hard anti-affinity: primary + 2 standbys must land on different nodes.
+      # Soft was already spreading them; hard makes it a scheduling guarantee.
+      podAntiAffinityPreset: hard
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+              app.kubernetes.io/instance: postgres-ha
+              app.kubernetes.io/name: postgresql-ha
+      # Give the scheduler explicit budget (workers are ~90% CPU-request packed).
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
       # Standbys need longer than default while repmgr clones from primary
       livenessProbe:
         enabled: true
-        initialDelaySeconds: 60
+        initialDelaySeconds: 120
         periodSeconds: 20
         timeoutSeconds: 10
-        failureThreshold: 18
+        failureThreshold: 30
       readinessProbe:
         enabled: true
-        initialDelaySeconds: 10
+        initialDelaySeconds: 30
         periodSeconds: 10
         timeoutSeconds: 5
-        failureThreshold: 36
+        failureThreshold: 60
       # Reverse DNS of pod IPs times out (~5s/conn) and breaks repmgr clone + local ping.
       # Use chart knobs — do NOT set these via extraEnvVars (duplicates chart env keys → SSA fail).
       audit:
@@ -78,6 +97,7 @@ spec:
         repository: bitnamilegacy/pgpool
         tag: 4.6.3-debian-12-r0
       replicaCount: 2
+      podAntiAffinityPreset: hard
       adminUsername: admin
       adminPassword: postgres
       logHostname: false
