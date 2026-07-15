@@ -27,8 +27,9 @@ spec:
       interval: 24h
   values:
     global:
-      # Retain SC: PVC/STS deletes must not wipe host disks (see docs/postgres-pvc-reuse.md)
-      defaultStorageClass: local-path-retain
+      # Keep aligned with existing STS volumeClaimTemplates (immutable).
+      # HA PVs are patched to Retain separately — see docs/postgres-pvc-reuse.md
+      defaultStorageClass: local-path
       security:
         # Required when pulling bitnamilegacy/* instead of bitnami/*
         allowInsecureImages: true
@@ -49,6 +50,19 @@ spec:
       repmgrPassword: postgres
       repmgrDatabase: repmgr
       podAntiAffinityPreset: soft
+      # Standbys need longer than default while repmgr clones from primary
+      livenessProbe:
+        enabled: true
+        initialDelaySeconds: 60
+        periodSeconds: 20
+        timeoutSeconds: 10
+        failureThreshold: 18
+      readinessProbe:
+        enabled: true
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 36
 
     pgpool:
       image:
@@ -58,6 +72,10 @@ spec:
       replicaCount: 2
       adminUsername: admin
       adminPassword: postgres
+      # Must be stable — random chart default drifts from DB after upgrades
+      srCheckUsername: sr_check_user
+      srCheckPassword: postgres
+      srCheckDatabase: postgres
       # Custom users that apps may use via Pgpool (dev parity)
       customUsers:
         usernames: ""
@@ -79,7 +97,7 @@ spec:
 
     persistence:
       enabled: true
-      storageClass: local-path-retain
+      storageClass: local-path
       size: 10Gi
 
     # Chart services stay ClusterIP; LoadBalancer alias is postgres-lb-service.yaml
