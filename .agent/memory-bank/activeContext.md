@@ -1,22 +1,13 @@
-# Active context — shared-gitops-k8s-cluster
+# Active context
 
-Updated: 2026-07-15 (Helm migrations + OpenSearch cutover)
+## Goal
+Finish Day-1 GitOps cutover so shared-k8s-cluster can be pushed as Day-0-only and deleted locally (remote kept).
 
-## Deferred
+## Just done
+- Pushed shared-gitops-k8s-cluster main → origin @ 6cdd320 (OpenSearch, SOPS, redis/minio Helm, postgres-ha env harden).
+- Branch tracks origin/main cleanly.
 
-- OpenBao ops polish / postgres-ha standbys
-
-## Done this session
-
-- SOPS deployment-profiles process (standard)
-- Observability → OpenSearch Helm; removed Grafana/Loki/Prom/Jaeger/Promtail
-- Redis → Bitnami Helm (+ Service alias `redis`)
-- MinIO → official charts.min.io Helm (existingClaim `/data`)
-
-## Keep raw (see docs/helm-stack-status.md)
-
-imgproxy, messaging, mosquitto, pact, scheduling, pipeline, ai, cluster, cylon-infra, postgres-backup
-
-## Next
-
-Commit/push + Flux reconcile; verify redis/minio/opensearch pods; optional imgproxy later if we accept Service rename.
+## Still blocked
+- stack-observability suspended (must resume so Flux matches git).
+- postgres-ha HelmRelease suspended/stalled; standbys fail (PGDATA deleted after clone).
+- shared-k8s-cluster still ahead + dirty; Tilt still applies platform k8s/.
