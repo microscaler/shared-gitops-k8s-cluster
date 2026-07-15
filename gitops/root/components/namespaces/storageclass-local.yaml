@@ -1,10 +1,10 @@
-# Static / hostPath volumes (MinIO, etc.). Prefer Retain so Day-1 cutovers
-# do not wipe worker disks when PVCs are deleted.
+# Static / hostPath volumes (MinIO, mailpit, pact, redis, …).
+# Reclaim is set on each PV (Retain). Do not set reclaimPolicy here —
+# the field is immutable on an existing StorageClass.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: local-storage
 provisioner: kubernetes.io/no-provisioner
-reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
