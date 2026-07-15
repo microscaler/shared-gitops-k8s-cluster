@@ -33,8 +33,12 @@ bootstrap-dev:
 	  exit 1
 	}
 	just validate-inventory
+	# Flux CRDs and CRs cannot land in one shot — apply twice with a CRD wait.
+	kubectl apply -k {{repo_root}}/gitops/clusters/dev || true
+	kubectl wait --for=condition=Established crd/gitrepositories.source.toolkit.fluxcd.io --timeout=120s
+	kubectl wait --for=condition=Established crd/kustomizations.kustomize.toolkit.fluxcd.io --timeout=120s
 	kubectl apply -k {{repo_root}}/gitops/clusters/dev
-	echo "Bootstrap applied. Ensure secret flux-system/gitops-auth exists, then: flux get all -A"
+	echo "Bootstrap applied. Ensure secret flux-system/gitops-auth exists + GitHub deploy key, then: flux get all -A"
 
 # Re-export Flux install (pins a new version directory manually)
 flux-export version="2.9.2":
