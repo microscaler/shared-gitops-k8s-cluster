@@ -261,7 +261,7 @@ def desired_monitors() -> list[dict[str, Any]]:
     ]
 
 
-def existing_monitors(client: JsonClient) -> dict[str, dict[str, Any]]:
+def existing_monitors(client: JsonClient) -> dict[str, list[dict[str, Any]]]:
     status, response = client.request(
         "_plugins/_alerting/monitors/_search",
         method="POST",
@@ -274,24 +274,31 @@ def existing_monitors(client: JsonClient) -> dict[str, dict[str, Any]]:
     )
     if status == 404:
         return {}
-    hits = response.get("hits", {}).get("hits", [])
-    return {
-        hit.get("_source", {}).get("monitor", {}).get("name"): hit
-        for hit in hits
-        if hit.get("_source", {}).get("monitor", {}).get("name")
-    }
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for hit in response.get("hits", {}).get("hits", []):
+        source = hit.get("_source", {})
+        name = source.get("name") or source.get("monitor", {}).get("name")
+        if name:
+            grouped.setdefault(name, []).append(hit)
+    return grouped
 
 
 def upsert_monitors(client: JsonClient) -> None:
     current = existing_monitors(client)
     for monitor in desired_monitors():
-        hit = current.get(monitor["name"])
-        if hit is None:
+        hits = current.get(monitor["name"], [])
+        if not hits:
             client.request(
                 "_plugins/_alerting/monitors", method="POST", payload=monitor
             )
             current = existing_monitors(client)
             continue
+        hit, *duplicates = sorted(hits, key=lambda item: item["_seq_no"], reverse=True)
+        for duplicate in duplicates:
+            client.request(
+                f"_plugins/_alerting/monitors/{quote(duplicate['_id'])}",
+                method="DELETE",
+            )
         query = urlencode(
             {
                 "if_seq_no": hit["_seq_no"],

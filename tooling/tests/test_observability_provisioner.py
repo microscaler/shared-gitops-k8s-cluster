@@ -59,6 +59,27 @@ def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
     )
 
 
+def test_existing_monitors_accepts_alerting_api_root_source_shape() -> None:
+    class Client:
+        def request(self, *_args: object, **_kwargs: object) -> tuple[int, object]:
+            return 200, {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "monitor-id",
+                            "_seq_no": 4,
+                            "_primary_term": 1,
+                            "_source": {"name": "Telemetry metrics stale"},
+                        }
+                    ]
+                }
+            }
+
+    monitors = provisioner.existing_monitors(Client())
+
+    assert monitors["Telemetry metrics stale"][0]["_id"] == "monitor-id"
+
+
 def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     profile = ROOT / "deployment-configuration/profiles/dev/observability"
     otel = yaml.safe_load((profile / "helm-values-otel.yaml").read_text())
