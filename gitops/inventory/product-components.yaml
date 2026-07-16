@@ -7,8 +7,17 @@ sources:
     url: ssh://git@github.com/microscaler/rerp.git
     branch: main
     secret_ref: gitops-auth
+  - name: sesame-idam
+    url: ssh://git@github.com/microscaler/seasame-idam.git
+    branch: main
+    secret_ref: gitops-auth
+  - name: hauliage
+    url: ssh://git@github.com/microscaler/hauliage.git
+    branch: main
+    secret_ref: gitops-auth
 
 components:
+  # --- RERP Accounting ---
   - name: rerp-accounting
     source: rerp
     product: rerp
@@ -31,21 +40,131 @@ components:
     suite: accounting
     path: ./deployment-configuration/profiles/dev/rerp/accounting/catalog
     depends_on: rerp-accounting
-    # Catalog HelmReleases are deliberately suspended. Apply and prune them,
-    # but do not make active workloads wait for suspended-release health.
     wait: false
     force: false
 
-# Image discovery is cluster integration, while update markers stay beside the
-# Helm releases in the product repository. dev-N tags are monotonically
-# increasing and intentionally scoped to this non-production environment.
+  # --- Sesame-IDAM ---
+  - name: sesame-idam-idam
+    source: sesame-idam
+    product: sesame-idam
+    suite: idam
+    path: ./deployment-configuration/profiles/dev/sesame-idam/idam
+    depends_on: stack-namespaces
+    wait: true
+    force: true
+  - name: sesame-idam-idam-services
+    source: sesame-idam
+    product: sesame-idam
+    suite: idam
+    path: ./deployment-configuration/profiles/dev/sesame-idam/idam/services
+    depends_on: sesame-idam-idam
+    wait: true
+    force: false
+
+  # --- Hauliage ---
+  - name: hauliage-core
+    source: hauliage
+    product: hauliage
+    suite: core
+    path: ./deployment-configuration/profiles/dev/hauliage/core
+    depends_on: stack-namespaces
+    wait: true
+    force: true
+  - name: hauliage-core-services
+    source: hauliage
+    product: hauliage
+    suite: core
+    path: ./deployment-configuration/profiles/dev/hauliage/core/services
+    depends_on: hauliage-core
+    wait: true
+    force: false
+
+# Image discovery is cluster integration; update markers stay beside Helm
+# releases in each product repository. Tags: dev-<nanoseconds>.
 images:
   - name: rerp-accounting-db-init
     image: 10.177.76.220:5000/rerp-accounting-db-init
+    product: rerp
   - name: rerp-accounting-general-ledger
     image: 10.177.76.220:5000/rerp-accounting-general-ledger
+    product: rerp
   - name: rerp-accounting-invoice
     image: 10.177.76.220:5000/rerp-accounting-invoice
+    product: rerp
+
+  - name: sesame-idam-db-init
+    image: 10.177.76.220:5000/sesame-idam-db-init
+    product: sesame-idam
+  - name: sesame-idam-identity-login-service
+    image: 10.177.76.220:5000/sesame-idam-identity-login-service
+    product: sesame-idam
+  - name: sesame-idam-identity-session-service
+    image: 10.177.76.220:5000/sesame-idam-identity-session-service
+    product: sesame-idam
+  - name: sesame-idam-identity-user-mgmt-service
+    image: 10.177.76.220:5000/sesame-idam-identity-user-mgmt-service
+    product: sesame-idam
+  - name: sesame-idam-authz-core
+    image: 10.177.76.220:5000/sesame-idam-authz-core
+    product: sesame-idam
+  - name: sesame-idam-api-keys
+    image: 10.177.76.220:5000/sesame-idam-api-keys
+    product: sesame-idam
+  - name: sesame-idam-org-mgmt
+    image: 10.177.76.220:5000/sesame-idam-org-mgmt
+    product: sesame-idam
+
+  - name: hauliage-db-init
+    image: 10.177.76.220:5000/hauliage-db-init
+    product: hauliage
+  - name: hauliage-identity
+    image: 10.177.76.220:5000/hauliage-identity
+    product: hauliage
+  - name: hauliage-company
+    image: 10.177.76.220:5000/hauliage-company
+    product: hauliage
+  - name: hauliage-fleet
+    image: 10.177.76.220:5000/hauliage-fleet
+    product: hauliage
+  - name: hauliage-consignments
+    image: 10.177.76.220:5000/hauliage-consignments
+    product: hauliage
+  - name: hauliage-bidding
+    image: 10.177.76.220:5000/hauliage-bidding
+    product: hauliage
+  - name: hauliage-inbox
+    image: 10.177.76.220:5000/hauliage-inbox
+    product: hauliage
+  - name: hauliage-notifications
+    image: 10.177.76.220:5000/hauliage-notifications
+    product: hauliage
+  - name: hauliage-analytics
+    image: 10.177.76.220:5000/hauliage-analytics
+    product: hauliage
+  - name: hauliage-telemetry
+    image: 10.177.76.220:5000/hauliage-telemetry
+    product: hauliage
+  - name: hauliage-marketing
+    image: 10.177.76.220:5000/hauliage-marketing
+    product: hauliage
+  - name: hauliage-reviews
+    image: 10.177.76.220:5000/hauliage-reviews
+    product: hauliage
+  - name: hauliage-locations
+    image: 10.177.76.220:5000/hauliage-locations
+    product: hauliage
+  - name: hauliage-customs
+    image: 10.177.76.220:5000/hauliage-customs
+    product: hauliage
+  - name: hauliage-gics
+    image: 10.177.76.220:5000/hauliage-gics
+    product: hauliage
+  - name: hauliage-terminals
+    image: 10.177.76.220:5000/hauliage-terminals
+    product: hauliage
+  - name: hauliage-bff
+    image: 10.177.76.220:5000/hauliage-bff
+    product: hauliage
 
 automations:
   - name: rerp-dev-images
@@ -55,3 +174,17 @@ automations:
     path: ./deployment-configuration/profiles/dev/rerp
     author_name: RERP Flux image automation
     author_email: flux-rerp@microscaler.local
+  - name: sesame-idam-dev-images
+    source: sesame-idam
+    product: sesame-idam
+    branch: main
+    path: ./deployment-configuration/profiles/dev/sesame-idam
+    author_name: Sesame-IDAM Flux image automation
+    author_email: flux-sesame-idam@microscaler.local
+  - name: hauliage-dev-images
+    source: hauliage
+    product: hauliage
+    branch: main
+    path: ./deployment-configuration/profiles/dev/hauliage
+    author_name: Hauliage Flux image automation
+    author_email: flux-hauliage@microscaler.local

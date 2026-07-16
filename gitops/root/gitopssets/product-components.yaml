@@ -77,7 +77,7 @@ spec:
           name: "${{ .Repeat.name }}"
           namespace: flux-system
           labels:
-            app.kubernetes.io/part-of: rerp
+            app.kubernetes.io/part-of: "${{ .Repeat.product }}"
             gitops.microscaler.io/environment: dev
         spec:
           image: "${{ .Repeat.image }}"
@@ -91,7 +91,7 @@ spec:
           name: "${{ .Repeat.name }}"
           namespace: flux-system
           labels:
-            app.kubernetes.io/part-of: rerp
+            app.kubernetes.io/part-of: "${{ .Repeat.product }}"
             gitops.microscaler.io/environment: dev
         spec:
           imageRepositoryRef:
@@ -130,7 +130,7 @@ spec:
                 name: "${{ .Repeat.author_name }}"
                 email: "${{ .Repeat.author_email }}"
               messageTemplate: |
-                chore(images): update RERP dev image references
+                chore(images): update ${{ .Repeat.product }} dev image references
 
                 Automated by Flux ImageUpdateAutomation.
             push:
