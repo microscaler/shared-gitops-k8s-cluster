@@ -1,0 +1,31 @@
+# Dev overlay for jouve/mailpit (Flux valuesFrom).
+# PVC root already has mailpit.db from raw /data mount — chart mounts at /var/lib/mailpit.
+image:
+  registry: docker.io
+  repository: axllent/mailpit
+  tag: v1.30.0
+  pullPolicy: IfNotPresent
+
+persistence:
+  enabled: true
+  existingClaim: mailpit-storage-pv-claim
+
+# Chart services stay ClusterIP; combined LB is service-mailpit.yaml.
+service:
+  http:
+    type: ClusterIP
+    port: 8025
+  smtp:
+    type: ClusterIP
+    port: 1025
+
+resources:
+  requests:
+    memory: 64Mi
+    cpu: 50m
+  limits:
+    memory: 256Mi
+    cpu: 200m
+
+podAnnotations:
+  prometheus.io/scrape: "true"

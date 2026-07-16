@@ -1,31 +1,35 @@
 # Helm vs raw platform stacks
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## Policy
 
-Prefer Flux `HelmRelease` when an upstream chart preserves Service DNS, MetalLB IPs, and Retain PVCs. Keep raw manifests when the chart fights those constraints.
+Prefer Flux `HelmRelease` when an upstream chart preserves Service DNS, MetalLB IPs, and Retain PVCs. Keep raw manifests when the chart fights those constraints or is site-specific glue. **Do not vendor charts** — use `HelmRepository` / public `GitRepository` only.
 
 ## Status
 
 | Stack | Form | Chart | Notes |
 |-------|------|-------|-------|
-| postgres-ha | Helm | bitnami/postgresql-ha | bitnamilegacy images |
+| postgres-ha | Helm | bitnami/postgresql-ha | bitnamilegacy images; LB alias Service |
 | platform-openbao | Helm | openbao/openbao | deferred ops (init/unseal) |
-| observability | Helm + raw OTel | opensearch-* | Grafana/Loki/Prom/Jaeger removed |
-| **redis** | **Helm** | bitnami/redis 20.6.3 | alias Service `redis` + MetalLB .225; existingClaim |
-| **minio** | **Helm** | minio/minio 5.4.0 | existingClaim; mountPath `/data`; LB .226 shared |
-| imgproxy | raw | — | chart renames Service/ports (`imgproxy-imgproxy:80`); keep raw |
-| messaging | raw | — | mailpit only maybe later; mailhog abandoned |
+| observability | Helm | opensearch-* + otel-collector | dashboards LB alias |
+| redis | Helm | bitnami/redis 20.6.3 | alias Service `redis` + MetalLB .225 |
+| minio | Helm | minio/minio 5.4.0 | existingClaim; LB .226 |
+| imgproxy | Helm | imgproxy 1.1.0 | official |
+| **cluster** | **Helm** | twuni/docker-registry @ git | existingClaim; custom tag-prune CronJob kept |
+| **messaging** | **Helm + raw** | jouve/mailpit 0.34.1 | MailHog retired; Inbucket stays raw |
+| pact | Helm + raw PG | pact-broker 6.2.2 | dedicated alpine `pact-postgres` kept (PGDATA ≠ Bitnami) |
+| pipeline | Helm | fluvio-sys + fluvio-app @ git | SpuGroup + `fluvio-sc` alias |
+| cylon-infra/routellm | Helm | litellm-helm 1.92.0 | official OCI |
+| democratic-csi | Helm | democratic-csi 0.15.1 | iscsi-portal-ensure CronJob kept |
 | mosquitto | raw | — | NanoMQ behind historical `mosquitto` name |
-| pact | raw | — | broker+dedicated PG; later |
 | scheduling | raw | — | faktory + config-watcher sidecar |
-| pipeline | raw | — | Fluvio CRDs |
 | ai | raw | — | internal llmrouter image |
-| cluster | raw | — | registry + prune CronJob |
-| cylon-infra | raw | — | site-specific proxy/RADIUS |
+| cylon-infra/proxy | raw | — | Squid + reloader |
+| cylon-infra/freeradius | raw | — | site AAA config |
 | postgres-backup | raw | — | thin CronJob |
+| namespaces / platform-dev-tls | raw | — | platform glue / cert-manager CRs |
 
-## Redis DNS note
+## Intentional keep-raw
 
-Bitnami creates `redis-master`. We keep LoadBalancer Service `redis` selecting the master pod so app DNS and LAN proxy stay unchanged.
+NanoMQ, FreeRADIUS, Squid, llmrouter, postgres-backup, Faktory (sidecar), pact-postgres (vanilla alpine data dir), MetalLB pools, cert-manager Certificates.

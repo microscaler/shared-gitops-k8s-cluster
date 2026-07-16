@@ -11,9 +11,10 @@ stacks:
   - name: stack-namespaces
 - name: cluster
   path: ./gitops/root/components/cluster
-  description: In-cluster OCI registry + housekeeping (MetalLB Services)
+  description: In-cluster OCI registry (twuni helm) + tag-prune CronJob; MetalLB .220
   depends:
   - name: stack-namespaces
+  - name: profile-config-cluster
 - name: cylon-infra
   path: ./gitops/root/components/cylon-infra
   description: routellm, squid, freeradius, resurrection-hub
@@ -34,7 +35,7 @@ stacks:
   - name: profile-config-imgproxy
 - name: messaging
   path: ./gitops/root/components/messaging
-  description: Mailpit (Retain), Mailhog, Inbucket
+  description: Mailpit (jouve helm, Retain PVC) + Inbucket; MailHog retired
   depends:
   - name: stack-namespaces
   - name: profile-config-messaging

@@ -148,20 +148,7 @@ services:
         protocol: TCP
     lan_port: 7420
 
-  - name: mailhog
-    namespace: data
-    lb_ip: 10.177.76.234
-    ports:
-      - name: smtp
-        port: 1025
-        protocol: TCP
-      - name: ui
-        port: 8025
-        protocol: TCP
-    lan_port: 8026
-    lan_ports:
-      - {name: smtp, lan_port: 1026, target_port: 1025}
-      - {name: ui, lan_port: 8026, target_port: 8025}
+  # MailHog retired (2026-07-16) — use mailpit .235
 
   - name: mailpit
     namespace: data

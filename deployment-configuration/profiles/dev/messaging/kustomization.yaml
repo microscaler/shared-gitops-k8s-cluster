@@ -7,6 +7,9 @@ configMapGenerator:
   - name: messaging-config
     envs:
       - application.properties
+  - name: messaging-helm-values-mailpit
+    files:
+      - values.yaml=helm-values-mailpit.yaml
 
 generatorOptions:
   disableNameSuffixHash: true

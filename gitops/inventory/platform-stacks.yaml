@@ -21,8 +21,9 @@ stacks:
 
   - name: cluster
     path: ./gitops/root/components/cluster
-    description: In-cluster OCI registry + housekeeping (MetalLB Services)
+    description: In-cluster OCI registry (twuni helm) + tag-prune CronJob; MetalLB .220
     depends_on: [namespaces]
+    profile: cluster
 
   - name: postgres-ha
     path: ./gitops/root/components/postgres-ha
@@ -50,7 +51,7 @@ stacks:
 
   - name: messaging
     path: ./gitops/root/components/messaging
-    description: Mailpit (Retain), Mailhog, Inbucket
+    description: Mailpit (jouve helm, Retain PVC) + Inbucket; MailHog retired
     depends_on: [namespaces]
     profile: messaging
 

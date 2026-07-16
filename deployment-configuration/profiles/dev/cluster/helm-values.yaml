@@ -1,0 +1,33 @@
+# Dev overlay for twuni/docker-registry (Flux valuesFrom).
+# Existing PVC + no chart securityContext (raw deploy ran as default/root).
+image:
+  repository: registry
+  tag: "3"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+persistence:
+  enabled: true
+  existingClaim: registry-data
+  deleteEnabled: true
+
+storage: filesystem
+
+# Match prior raw Deployment — do not force uid 1000 on existing ZFS data.
+securityContext:
+  enabled: false
+containerSecurityContext:
+  enabled: false
+
+# Tag prune stays in registry-housekeeping.yaml; chart GC optional later.
+garbageCollect:
+  enabled: false
+
+resources:
+  requests:
+    memory: 64Mi
+    cpu: 50m
+  limits:
+    memory: 512Mi
+    cpu: 500m

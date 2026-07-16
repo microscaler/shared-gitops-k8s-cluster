@@ -1,0 +1,14 @@
+# Profile: Helm overlay for in-cluster OCI registry (namespace registry).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: registry
+
+configMapGenerator:
+  - name: cluster-helm-values
+    files:
+      - values.yaml=helm-values.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+  immutable: false

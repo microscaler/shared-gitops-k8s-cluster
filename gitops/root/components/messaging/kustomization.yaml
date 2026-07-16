@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
   # Config: deployment-configuration/profiles/dev/messaging (Flux profile-config)
   - mailpit-storage.yaml
-  - mailpit.yaml
-  - mailhog.yaml
+  - helmrepository.yaml
+  - helm-release-mailpit.yaml
+  - service-mailpit.yaml
   - inbucket.yaml
+  # MailHog retired — use Mailpit (LB .235).
