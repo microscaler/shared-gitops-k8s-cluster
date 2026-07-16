@@ -1,26 +1,30 @@
 # Active Context
 
-**Last updated:** 2026-07-16 — GitOpsSets audit migration complete on dev.
+**Last updated:** 2026-07-16 — Helm valuesFrom overlays live on dev.
 
-## GitOpsSets (live)
+## Config layout
 
-| Set | Role | Status |
-|-----|------|--------|
-| `platform-stacks` | Catalog + cluster enablement → `stack-*` KS with `dependsOn` | Ready (18) |
-| `profile-config` | Matrix cluster×profile → `profile-config-*` (+ SOPS) | Ready (9) |
-| `product-components` | ImageRepository/ImagePolicy from inventory | Ready (9) |
+```
+deployment-configuration/profiles/<env>/<component>/
+  application.properties     # app KEY=value → ConfigMap (envFrom)
+  helm-values.yaml           # Helm overlay → ConfigMap → HR valuesFrom
+  application.secrets.env    # SOPS secrets
+```
 
-Catalog: `gitops/inventory/platform-stacks.yaml`  
-Generated: `just sync-stack-inventory <id>` → `clusters/<id>/inventory/stacks.yaml`  
-Profiles: `deployment-configuration/profiles/<env>/<component>/`
+HelmRelease `spec.values` = structural only (existingSecret, MetalLB, affinity).
+Env knobs live in `helm-values*.yaml`.
 
-## Staging / prod
+## valuesFrom (Ready)
 
-Do **not** enable GitOpsSets until static `stack-namespaces-ks.yaml` is removed from that cluster’s `control/` (name collision). See `gitops/deferred/gitopssets/README.md`.
+| Chart | ConfigMap |
+|-------|-----------|
+| postgres-ha | `postgres-ha-helm-values` |
+| minio | `minio-helm-values` |
+| redis | `redis-helm-values` (+ new `profile-config-redis`) |
+| opensearch / dashboards / data-prepper | `observability-helm-values` (keys) |
 
 ## Next (backlog)
 
-1. Helm `valuesFrom` for observability / postgres-ha / minio / redis knobs.
-2. FreeRADIUS / Squid passwords → SOPS.
-3. MetalLB annotation patches / LAN proxy sync (inventory check OK).
-4. Add Matrix rows when staging/prod go live.
+1. FreeRADIUS / Squid passwords → SOPS.
+2. MetalLB annotation patches / LAN proxy sync.
+3. Staging/prod Matrix enablement when clusters exist.

@@ -1,23 +1,20 @@
 # Progress
 
-## 2026-07-16 — GitOpsSets audit migration
+## 2026-07-16 — Helm valuesFrom
 
-Pushed:
-- `c661f6e` feat(gitopssets): catalog-driven stacks with dependsOn and profiles
-- `21d8484` chore(gitopssets): add sync/check recipes and inventory validation
-- `95d742c` fix(gitopssets): grant image toolkit RBAC to platform SA
+Pushed: `52fed52` feat(profiles): Helm valuesFrom overlays for platform charts
 
-Verified on ms02 (rev `main@sha1:95d742c`):
-- `just validate-inventory` OK (dev/staging/prod stacks.yaml)
-- `just check-metallb-inventory` OK
-- All GitOpsSets Ready: platform-stacks, profile-config, product-components
-- `platform-gitopssets` KS Ready
-- All `stack-*` and `profile-config-*` Ready
-- Sample dependsOn: pact → namespaces + profile-config-pact; postgres-backup → postgres-ha + minio + profile-config
+Verified on ms02 (rev `main@sha1:52fed52`):
+- `profile-config` → 10 resources (includes redis)
+- ConfigMaps present; stack-redis dependsOn profile-config-redis
+- HelmReleases Ready: postgres-ha, minio, redis, opensearch, dashboards, data-prepper
+
+## Earlier — GitOpsSets audit migration
+
+- `c661f6e` / `21d8484` / `95d742c` / `45302e0`
 
 ## Earlier — profiles on main
 
-- `d54a6da` feat(profiles): deployment-configuration + SOPS + application.properties
-- `8ee45b3` fix(csi): encrypt only Secret data/stringData for Flux SOPS
+- `d54a6da` / `8ee45b3`
 
-Next: Helm chart env knobs via valuesFrom; cylon FreeRADIUS/Squid secrets.
+Next: FreeRADIUS/Squid → SOPS; MetalLB annotation dryness.
