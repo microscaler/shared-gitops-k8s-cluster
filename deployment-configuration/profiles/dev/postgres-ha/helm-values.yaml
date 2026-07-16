@@ -50,6 +50,14 @@ pgpool:
   logHostname: false
   srCheckUsername: sr_check_user
   srCheckDatabase: postgres
+  # Init was OOM-killed at 384Mi (containerd); leave headroom for 2 replicas.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
 
 metrics:
   enabled: true
