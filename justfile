@@ -167,6 +167,16 @@ postgres-backup-now:
 	kubectl -n data logs "job/$NAME" -c dump
 	kubectl -n data logs "job/$NAME" -c upload
 
+# Download the latest backup and restore it into a disposable local Postgres.
+# This never connects the restore stream to the live cluster database.
+postgres-backup-restore-drill database="rerp":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	PYTHONPATH={{repo_root}}/tooling/src python3 \
+	  {{repo_root}}/tooling/src/shared_gitops/postgres_restore_drill.py \
+	  --kubeconfig "$KUBECONFIG" --database "{{database}}"
+
 # Heal stuck Terminating MinIO PVC/PV (Retain hostPath kept on disk), then apply Flux component
 heal-minio-pvc:
 	#!/usr/bin/env bash

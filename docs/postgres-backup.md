@@ -18,6 +18,7 @@ object store (Retain hostPath) is the recovery source of truth.
 | Upload | `minio/mc` → bucket `postgres-backups` |
 | Schedule | CronJob every 6h; on-demand via `just postgres-backup-now` |
 | Retention | Delete objects older than 7 days |
+| Content gate | Every uploaded dump must contain each `REQUIRED_DATABASES` entry (`rerp` in dev) |
 | MinIO disk | PV `minio-pv` → hostPath `/var/lib/data/minio` on `k8s-worker-1`, **Retain** |
 
 ## Enable on dev
@@ -42,6 +43,11 @@ just postgres-backup-now
 # mc ls local/postgres-backups/
 ```
 
+The Job validates required database creation and connection sections before it
+uploads. An object in MinIO is therefore evidence that the configured product
+databases were present, but it is not a substitute for the disposable restore
+drill below.
+
 ## Restore (dev)
 
 ```bash
@@ -53,6 +59,20 @@ gunzip -c postgres-all-STAMP.sql.gz | \
 
 Prefer restoring against Pgpool LB (`postgres` Service) once HA is healthy. For a
 brand-new empty cluster, restore after `stack-postgres-ha` is Ready.
+
+Never test a whole-cluster `pg_dumpall --clean` restore against the live dev
+cluster. Use a disposable PostgreSQL container or an isolated recovery cluster,
+then prove that the `rerp` database opens and contains the expected schema.
+
+The automated disposable drill is:
+
+```bash
+just postgres-backup-restore-drill rerp
+```
+
+It retrieves the latest MinIO object without printing credentials or dump
+content, restores into a temporary PostgreSQL 17 container, checks the `rerp`
+schema table count, and destroys the container and downloaded dump.
 
 ## MinIO PVC stuck Terminating
 

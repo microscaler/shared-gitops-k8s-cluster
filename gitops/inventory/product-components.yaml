@@ -4,8 +4,9 @@ environment: dev
 
 sources:
   - name: rerp
-    url: https://github.com/microscaler/rerp.git
+    url: ssh://git@github.com/microscaler/rerp.git
     branch: main
+    secret_ref: gitops-auth
 
 components:
   - name: rerp-accounting
@@ -45,3 +46,12 @@ images:
     image: 10.177.76.220:5000/rerp-accounting-general-ledger
   - name: rerp-accounting-invoice
     image: 10.177.76.220:5000/rerp-accounting-invoice
+
+automations:
+  - name: rerp-dev-images
+    source: rerp
+    product: rerp
+    branch: main
+    path: ./deployment-configuration/profiles/dev/rerp
+    author_name: RERP Flux image automation
+    author_email: flux-rerp@microscaler.local

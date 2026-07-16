@@ -57,7 +57,10 @@ def validate_stacks() -> list[str]:
             errors.append(f"duplicate stack name: {name}")
         names.add(name)
         rel = ROOT / path.lstrip("./")
-        if not (rel / "kustomization.yaml").exists() and not (rel / "kustomization.yml").exists():
+        if (
+            not (rel / "kustomization.yaml").exists()
+            and not (rel / "kustomization.yml").exists()
+        ):
             errors.append(f"stack {name}: no kustomization.yaml under {path}")
         profile = s.get("profile")
         if profile is not None and not isinstance(profile, str):
@@ -147,6 +150,7 @@ def validate_product_components() -> list[str]:
     sources = data.get("sources") or []
     components = data.get("components") or []
     images = data.get("images") or []
+    automations = data.get("automations") or []
     app_ids = {app.get("id") for app in (_load("apps.yaml").get("apps") or [])}
     dns_label = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
 
@@ -172,6 +176,8 @@ def validate_product_components() -> list[str]:
         source_urls.add(url)
         if not (url.startswith("https://") or url.startswith("ssh://")):
             errors.append(f"product source {name}: unsupported URL {url!r}")
+        if url.startswith("ssh://") and not source.get("secret_ref"):
+            errors.append(f"product source {name}: SSH URL requires secret_ref")
 
     component_names: set[str] = set()
     component_paths: set[tuple[str, str]] = set()
@@ -247,6 +253,43 @@ def validate_product_components() -> list[str]:
         if ":" not in repository.split("/")[0]:
             errors.append(
                 f"product image {name}: expected an explicit registry port in {repository!r}"
+            )
+
+    automation_names: set[str] = set()
+    for automation in automations:
+        name = automation.get("name")
+        source = automation.get("source")
+        product = automation.get("product")
+        branch = automation.get("branch")
+        path = automation.get("path")
+        author_name = automation.get("author_name")
+        author_email = automation.get("author_email")
+        if not all((name, source, product, branch, path, author_name, author_email)):
+            errors.append(
+                "product automation missing "
+                "name/source/product/branch/path/author_name/author_email: "
+                f"{automation!r}"
+            )
+            continue
+        if not dns_label.fullmatch(name):
+            errors.append(f"product automation has invalid DNS label: {name!r}")
+        if name in automation_names:
+            errors.append(f"duplicate product automation name: {name}")
+        automation_names.add(name)
+        if source not in source_names:
+            errors.append(f"product automation {name}: unknown source {source}")
+        if product not in app_ids:
+            errors.append(f"product automation {name}: unknown product app {product}")
+        normalized = PurePosixPath(path.removeprefix("./"))
+        expected_prefix = PurePosixPath(
+            "deployment-configuration", "profiles", str(environment), product
+        )
+        if ".." in normalized.parts or not (
+            normalized == expected_prefix or expected_prefix in normalized.parents
+        ):
+            errors.append(
+                f"product automation {name}: path must be ./{expected_prefix} "
+                f"or a child, got {path!r}"
             )
 
     return errors

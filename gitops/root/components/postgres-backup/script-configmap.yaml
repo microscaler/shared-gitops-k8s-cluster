@@ -24,6 +24,18 @@ data:
       --clean \
       --if-exists \
       | gzip -c > "${OUT}"
+    for database in $(printf '%s' "${REQUIRED_DATABASES}" | tr ',' ' '); do
+      [ -n "${database}" ] || continue
+      if ! gzip -cd "${OUT}" | grep -Fq "CREATE DATABASE ${database} "; then
+        echo "required database missing from dump: ${database}" >&2
+        exit 1
+      fi
+      if ! gzip -cd "${OUT}" | grep -Fq "\\connect ${database}"; then
+        echo "required database connection section missing from dump: ${database}" >&2
+        exit 1
+      fi
+      echo "verified required database in dump: ${database}"
+    done
     ls -lh "${OUT}"
     echo "dump complete"
   upload.sh: |

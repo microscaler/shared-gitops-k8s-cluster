@@ -33,6 +33,8 @@ spec:
           url: "${{ .Repeat.url }}"
           ref:
             branch: "${{ .Repeat.branch }}"
+          secretRef:
+            name: "${{ .Repeat.secret_ref }}"
           ignore: |
             /*
             !/.sops.yaml
@@ -100,3 +102,39 @@ spec:
           policy:
             numerical:
               order: asc
+    - repeat: "{ .automations }"
+      content:
+        apiVersion: image.toolkit.fluxcd.io/v1
+        kind: ImageUpdateAutomation
+        metadata:
+          name: "${{ .Repeat.name }}"
+          namespace: flux-system
+          labels:
+            app.kubernetes.io/part-of: "${{ .Repeat.product }}"
+            gitops.microscaler.io/environment: dev
+        spec:
+          interval: 1m
+          sourceRef:
+            kind: GitRepository
+            name: "product-${{ .Repeat.source }}"
+          policySelector:
+            matchLabels:
+              app.kubernetes.io/part-of: "${{ .Repeat.product }}"
+              gitops.microscaler.io/environment: dev
+          git:
+            checkout:
+              ref:
+                branch: "${{ .Repeat.branch }}"
+            commit:
+              author:
+                name: "${{ .Repeat.author_name }}"
+                email: "${{ .Repeat.author_email }}"
+              messageTemplate: |
+                chore(images): update RERP dev image references
+
+                Automated by Flux ImageUpdateAutomation.
+            push:
+              branch: "${{ .Repeat.branch }}"
+          update:
+            path: "${{ .Repeat.path }}"
+            strategy: Setters
