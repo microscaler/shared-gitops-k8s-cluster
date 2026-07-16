@@ -1,0 +1,18 @@
+[Unit]
+Description=Shared k3s cluster infrastructure (Multipass + MetalLB + in-cluster registry)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ tilt_user_units_shared_k8s }}/deploy/cluster-start.sh
+ExecStop={{ tilt_user_units_shared_k8s }}/deploy/cluster-stop.sh
+Environment=HOME=%h
+Environment=PATH=/snap/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shared-k8s-infra
+
+[Install]
+WantedBy=default.target

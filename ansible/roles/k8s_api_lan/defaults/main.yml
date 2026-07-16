@@ -1,0 +1,21 @@
+---
+# Kubernetes API LAN path for Mac kubectl:
+#   haproxy 192.168.1.189:6443 → k3s CP :6443
+#   k3s tls-san includes MS02_LAN_IP
+#   kubeconfig/shared-k8s-mac.yaml with server rewritten to LAN IP
+
+k8s_api_lan_enabled: true
+k8s_api_lan_ip: "{{ ms02_lan_ip }}"
+k8s_api_lan_cidr: "{{ ms02_lan_cidr }}"
+k8s_api_lan_port: "6443"
+
+k8s_api_lan_shared_k8s_root: "{{ shared_k8s_root }}"
+k8s_api_lan_cluster_env: "{{ shared_k8s_cluster_env }}"
+k8s_api_lan_kubeconfig: "{{ shared_k8s_kubeconfig }}"
+k8s_api_lan_kubeconfig_mac: "{{ shared_k8s_kubeconfig_mac }}"
+
+# Also ensure UFW allow (idempotent with cylon-local firewall rules)
+k8s_api_lan_ufw: true
+
+# Multipass client auth is per-user on ms02 — never run as root.
+k8s_api_lan_multipass_user: casibbald

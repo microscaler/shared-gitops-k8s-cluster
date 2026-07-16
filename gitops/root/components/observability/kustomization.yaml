@@ -7,7 +7,7 @@ namespace: observability
 
 resources:
   - namespace.yaml
-  - secrets
+  # Secrets: deployment-configuration/profiles/dev/observability (Flux profile-secrets)
   - helmrepository.yaml
   - helm-release-opensearch.yaml
   - helm-release-dashboards.yaml

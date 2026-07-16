@@ -1,11 +1,45 @@
-# shared-gitops-k8s-cluster — run on ms02
+# shared-gitops-k8s-cluster — Flux/kubectl on ms02; thin Ansible from Mac (or any controller)
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
 repo_root := justfile_directory()
 day0_kubeconfig := repo_root + "/../shared-k8s-cluster/kubeconfig/shared-k8s.yaml"
+ansible_dir := repo_root + "/ansible"
 
 default:
 	@just --list
+
+# ── Day-0 host edge (thin Ansible — run ON ms02) ───────────────────────────
+# Docs: docs/day0-host-edge-ansible.md
+# From Mac: ssh ms02 'cd ~/Workspace/microscaler/shared-gitops-k8s-cluster && just cluster-edge-apply'
+#
+# Usage: just cluster-edge-apply
+#         just cluster-edge-apply multipass_bridge
+#         just cluster-edge-apply lan_proxy,k8s_api_lan
+#         just cluster-edge-apply tilt_units
+
+cluster-edge-apply *tags:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	cd "{{ansible_dir}}"
+	if [[ -n "{{tags}}" ]]; then
+	  ansible-playbook playbooks/ms02_cluster_edge.yml --tags "{{tags}}"
+	else
+	  ansible-playbook playbooks/ms02_cluster_edge.yml
+	fi
+
+cluster-edge-check *tags:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	cd "{{ansible_dir}}"
+	if [[ -n "{{tags}}" ]]; then
+	  ansible-playbook playbooks/ms02_cluster_edge.yml --check --diff --tags "{{tags}}"
+	else
+	  ansible-playbook playbooks/ms02_cluster_edge.yml --check --diff
+	fi
+
+# Install/refresh ~/.config/systemd/user/tilt-*.service (replaces shared-k8s just install-systemd)
+tilt-units-apply:
+	just cluster-edge-apply tilt_units
 
 # Schema-check inventory YAML
 validate-inventory:
@@ -125,11 +159,13 @@ heal-minio-pvc:
 	kubectl -n data scale deploy/imgproxy --replicas=1 || true
 	echo "MinIO healed. HostPath /var/lib/data/minio on k8s-worker-1 retained."
 
-# --- SOPS deployment-profiles (canonical secrets process) ---
+# --- SOPS deployment-configuration (canonical secrets; SMC-aligned) ---
 # Age key on ms02: ~/.config/sops/age/flux-shared-gitops
-# Docs: deployment-profiles/README.md
+# Docs: deployment-configuration/README.md
+# Path: deployment-configuration/profiles/<env>/<component>/
 
 sops_age_key := env_var_or_default("SOPS_AGE_KEY_FILE", home_directory() + "/.config/sops/age/flux-shared-gitops")
+profiles_root := repo_root + "/deployment-configuration/profiles"
 
 # Ensure flux-system/sops-age exists from the ms02 age private key
 secrets-ensure-age-key:
@@ -143,55 +179,62 @@ secrets-ensure-age-key:
 	  --dry-run=client -o yaml | kubectl apply -f -
 	kubectl -n flux-system get secret sops-age
 
-# Encrypt plaintext dotenv → deployment-profiles/<env>/<component>/application.secrets.env
+# Encrypt plaintext dotenv → deployment-configuration/profiles/<env>/<component>/application.secrets.env
+# Write to the final path first so .sops.yaml path_regex matches (stdout encrypt uses /tmp path).
 secrets-encrypt env component plain:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	export SOPS_AGE_KEY_FILE="{{sops_age_key}}"
-	DEST="{{repo_root}}/deployment-profiles/{{env}}/{{component}}"
+	DEST="{{profiles_root}}/{{env}}/{{component}}"
 	mkdir -p "$DEST"
 	test -f "{{plain}}" || { echo "missing plaintext: {{plain}}" >&2; exit 1; }
-	sops --encrypt --input-type dotenv --output-type dotenv "{{plain}}" \
-	  > "$DEST/application.secrets.env"
+	cp "{{plain}}" "$DEST/application.secrets.env"
+	sops --encrypt --in-place --input-type dotenv --output-type dotenv \
+	  "$DEST/application.secrets.env"
 	echo "Wrote $DEST/application.secrets.env"
-	echo "Next: just secrets-sync {{env}} {{component}}"
+	echo "Next: just secrets-apply {{env}} {{component}}  # or wait for Flux profile-secrets"
 
-# Decrypt canonical profile to stdout (keys+values — use carefully)
+# Decrypt canonical profile dotenv to stdout (keys+values — use carefully)
 secrets-decrypt env component:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	export SOPS_AGE_KEY_FILE="{{sops_age_key}}"
-	sops -d "{{repo_root}}/deployment-profiles/{{env}}/{{component}}/application.secrets.env"
+	sops -d "{{profiles_root}}/{{env}}/{{component}}/application.secrets.env"
 
-# Copy identical ciphertext into Flux component mirror
+# Verify canonical profile path (no gitops mirrors — Flux path is deployment-configuration/)
 secrets-sync env component:
 	#!/usr/bin/env bash
 	set -euo pipefail
-	SRC="{{repo_root}}/deployment-profiles/{{env}}/{{component}}/application.secrets.env"
-	DST_DIR="{{repo_root}}/gitops/root/components/{{component}}/secrets"
-	test -f "$SRC" || { echo "missing $SRC — encrypt first" >&2; exit 1; }
-	mkdir -p "$DST_DIR"
-	cp "$SRC" "$DST_DIR/application.secrets.env"
-	if [ ! -f "$DST_DIR/kustomization.yaml" ]; then
-	  echo "WARN: $DST_DIR/kustomization.yaml missing — add secretGenerator (see deployment-profiles/README.md)" >&2
-	fi
-	echo "Synced → $DST_DIR/application.secrets.env"
+	SRC_DIR="{{profiles_root}}/{{env}}/{{component}}"
+	test -d "$SRC_DIR" || { echo "missing $SRC_DIR" >&2; exit 1; }
+	test -f "$SRC_DIR/kustomization.yaml" || { echo "missing $SRC_DIR/kustomization.yaml" >&2; exit 1; }
+	echo "OK canonical profile: $SRC_DIR"
+	echo "Flux applies via profile-config-{{component}} (path ./deployment-configuration/profiles/{{env}}/{{component}})"
 
-# Apply profile kustomization (bootstrap / force secret before Flux)
+# Apply profile kustomization (bootstrap ConfigMaps + Secrets before Flux)
 secrets-apply env component:
 	#!/usr/bin/env bash
 	set -euo pipefail
 	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
 	export SOPS_AGE_KEY_FILE="{{sops_age_key}}"
-	PROFILE="{{repo_root}}/deployment-profiles/{{env}}/{{component}}"
+	PROFILE="{{profiles_root}}/{{env}}/{{component}}"
 	test -f "$PROFILE/kustomization.yaml" || { echo "missing $PROFILE/kustomization.yaml" >&2; exit 1; }
-	# kustomize cannot read ENC[] — decrypt to a temp overlay
+	# kustomize cannot read ENC[] — decrypt secrets into a temp overlay
 	TMP=$(mktemp -d)
 	trap 'rm -rf "$TMP"' EXIT
 	cp "$PROFILE/kustomization.yaml" "$TMP/"
-	sops -d "$PROFILE/application.secrets.env" > "$TMP/application.secrets.env"
+	if [ -f "$PROFILE/application.properties" ]; then
+	  cp "$PROFILE/application.properties" "$TMP/"
+	fi
+	if [ -f "$PROFILE/application.secrets.env" ]; then
+	  sops -d "$PROFILE/application.secrets.env" > "$TMP/application.secrets.env"
+	fi
+	shopt -s nullglob
+	for f in "$PROFILE"/*.secret.yaml; do
+	  sops -d "$f" > "$TMP/$(basename "$f")"
+	done
 	kubectl apply -k "$TMP"
-	echo "Applied secrets from {{env}}/{{component}}"
+	echo "Applied profile profiles/{{env}}/{{component}}"
 
 # Heal Terminating Retain hostPath PVC/PV for mailpit or pact-postgres
 heal-hostpath-pvc name:

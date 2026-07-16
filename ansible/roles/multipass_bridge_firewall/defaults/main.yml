@@ -1,0 +1,28 @@
+---
+# UFW rules: Multipass bridge (10.177.76.0/24) → ms02 host services.
+# Required for democratic-csi (iSCSI portal on host) and NFS/SSH to host.
+
+multipass_bridge_firewall_enabled: true
+multipass_bridge_cidr: "10.177.76.0/24"
+
+# democratic-csi / host ZFS iSCSI + optional NFS
+multipass_bridge_csi_rules:
+  - {port: "3260", proto: tcp, comment: "multipass iSCSI for democratic-csi"}
+  - {port: "2049", proto: tcp, comment: "multipass NFS for democratic-csi"}
+  - {port: "111", proto: tcp, comment: "multipass rpcbind for NFS"}
+  - {port: "111", proto: udp, comment: "multipass rpcbind UDP"}
+  - {port: "20048", proto: tcp, comment: "multipass mountd"}
+  - {port: "20048", proto: udp, comment: "multipass mountd udp"}
+  - {port: "22", proto: tcp, comment: "multipass SSH for democratic-csi"}
+
+# Host daemons reached from Multipass guests (cylon / hub)
+multipass_bridge_host_service_rules:
+  - {port: "14100", proto: tcp, comment: "multipass resurrection-hub bridge"}
+  - {port: "4000", proto: tcp, comment: "multipass llmrouter bridge"}
+  - {port: "3128", proto: tcp, comment: "multipass squid bridge"}
+
+# Legacy Kind docker0 ↔ Multipass (still present on ms02; keep idempotent)
+multipass_bridge_docker_forward_enabled: true
+multipass_bridge_docker_cidr: "172.19.0.0/16"
+multipass_bridge_iface: mpqemubr0
+multipass_bridge_docker_iface: docker0

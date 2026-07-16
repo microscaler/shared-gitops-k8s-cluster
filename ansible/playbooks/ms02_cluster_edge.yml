@@ -1,0 +1,20 @@
+---
+# Thin Day-0 host edge for platform cluster — run ON ms02:
+#   just cluster-edge-apply
+# Docs: docs/day0-host-edge-ansible.md
+#
+# Tags: multipass_bridge | lan_proxy | k8s_api_lan | tilt_units | firewall | network
+
+- name: ms02 cluster edge (CSI UFW, lan-proxy, k8s API LAN, Tilt user units)
+  hosts: ms02
+  gather_facts: true
+  become: true
+  roles:
+    - role: multipass_bridge_firewall
+      tags: [multipass_bridge, firewall, csi, network]
+    - role: lan_proxy
+      tags: [lan_proxy, haproxy, network]
+    - role: k8s_api_lan
+      tags: [k8s_api_lan, kubeconfig, network]
+    - role: tilt_user_units
+      tags: [tilt_units, tilt, systemd]

@@ -1,0 +1,11 @@
+---
+# Paths relative to ms02 filesystem (NFS-synced Workspace).
+shared_k8s_root: /home/casibbald/Workspace/microscaler/shared-k8s-cluster
+shared_k8s_cluster_env: "{{ shared_k8s_root }}/config/cluster.env"
+shared_k8s_runtime_env: "{{ shared_k8s_root }}/.cluster/runtime.env"
+shared_k8s_kubeconfig: "{{ shared_k8s_root }}/kubeconfig/shared-k8s.yaml"
+shared_k8s_kubeconfig_mac: "{{ shared_k8s_root }}/kubeconfig/shared-k8s-mac.yaml"
+
+ms02_lan_ip: "192.168.1.189"
+ms02_lan_cidr: "192.168.1.0/24"
+multipass_bridge_cidr: "10.177.76.0/24"

@@ -1,8 +1,8 @@
 # shared-gitops-k8s-cluster — agent rules
 
-> **What this repository is** — FluxCD + GitOpsSets source of truth for Microscaler **platform** clusters. Day-0 Multipass/k3s bootstrap remains in [`../shared-k8s-cluster`](../shared-k8s-cluster/).
+> **What this repository is** — FluxCD + GitOpsSets source of truth for Microscaler **platform** clusters. Day-0 Multipass/k3s **VM bootstrap** remains in [`../shared-k8s-cluster`](../shared-k8s-cluster/). **Cluster-adjacent host edge** (CSI UFW, lan-proxy unit, k8s API LAN/tls-san/mac kubeconfig) is thin Ansible under [`ansible/`](./ansible/) — see [`docs/day0-host-edge-ansible.md`](./docs/day0-host-edge-ansible.md).
 
-Desktop topology: [`cylon-local-infra/docs/desktop-dev-environment.md`](https://github.com/microscaler/cylon-local-infra/blob/main/docs/desktop-dev-environment.md). **Run flux/kubectl/just on ms02**, not the Mac.
+Desktop topology (Mac resolver, L3 route, split DNS): [`cylon-local-infra`](https://github.com/microscaler/cylon-local-infra/blob/main/docs/desktop-dev-environment.md). **Run flux/kubectl and thin Ansible on ms02** (`just cluster-edge-apply`, `just tilt-units-apply`). From Mac: `ssh ms02 'cd ~/Workspace/microscaler/shared-gitops-k8s-cluster && just …'`.
 
 ## Before you start
 
@@ -20,20 +20,21 @@ Bootstrap target context is **`shared-k8s`** (`shared-k8s-cluster/kubeconfig/sha
 
 Change stacks / MetalLB / apps in `gitops/inventory/` (+ per-cluster overlays). Do not hand-duplicate Flux `Kustomization` CRs when a GitOpsSet template already covers them.
 
-### 3. Secrets = SOPS dotenv under `deployment-profiles/`
+### 3. Env config + secrets under `deployment-configuration/profiles/`
 
-**Canonical process** (do not invent alternatives for new work):
+**Canonical process** (SMC / metro-aligned; do not invent alternatives):
 
-- Store secrets as SOPS-encrypted **dotenv** at
-  `deployment-profiles/<env>/<component>/application.secrets.env`
-- Mirror identical ciphertext under
-  `gitops/root/components/<component>/secrets/` so Flux can decrypt (stack path)
-- Use kustomize `secretGenerator` + `envs:` (metro / sam-activity-service pattern)
+- Path: `deployment-configuration/profiles/<env>/<component>/`
+- Non-secret config → `application.properties` → ConfigMap (`configMapGenerator`)
+- Secrets → `application.secrets.env` (SOPS) or `*.secret.yaml`
+- Do **not** hardcode env hosts/flags/buckets in Helm values or component ConfigMaps
+- Do **not** put secrets under `gitops/root/components/*/secrets/`
+- Flux: GitOpsSet `profile-config` → `profile-config-<component>`
 - Encrypt/decrypt **on ms02** with `SOPS_AGE_KEY_FILE=~/.config/sops/age/flux-shared-gitops`
-- Flux decrypt secret: `flux-system/sops-age` (`age.agekey`)
-- Recipes: `just secrets-encrypt`, `secrets-sync`, `secrets-apply`, `secrets-ensure-age-key`
+- Recipes: `just secrets-encrypt`, `secrets-apply`, `secrets-ensure-age-key`
 
-Authority: [`deployment-profiles/README.md`](./deployment-profiles/README.md).  
+Authority: [`deployment-configuration/README.md`](./deployment-configuration/README.md).  
+Audit: [`docs/secrets-audit.md`](./docs/secrets-audit.md).  
 Never commit plaintext, age private keys, git credentials, or kubeconfigs.
 
 ### 4. Do not edit generated Flux install lightly

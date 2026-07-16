@@ -92,21 +92,21 @@ git commit && git push
 | 2 Bootstrap | **done** | Flux + deploy key + gitopssets (images from local weaveworks build → ms02 registry) |
 | 3 Migrate stacks | **done (shared platform)** | Flux owns data + observability + scheduling + pipeline + ai + openbao + cylon/tls/cluster. Product apps (hauliage/sesame/rerp) stay on their Tiltfiles. postgres-ha replicas still degraded (deferred). |
 | 4 MetalLB dryness | pending | GitOpsSet or tooling from `metallb-services.yaml` → Services + LAN proxy |
-| 5 Secrets | **active (SOPS dotenv)** | `deployment-profiles/<env>/<component>/application.secrets.env` + Flux `sops-age`; OpenBao/SMC dogfood next |
+| 5 Secrets + env config | **active** | `deployment-configuration/profiles/<env>/<component>/` (`application.properties` + SOPS secrets) + Flux `profile-config`; OpenBao/SMC next |
 | 6 staging/prod | pending | Real clusters; optional Matrix generator |
 
 ### Secrets process (locked)
 
 | Item | Choice |
 |------|--------|
-| Format | Dotenv `application.secrets.env` (SOPS age), Flux-compatible |
-| Canonical path | `deployment-profiles/<env>/<component>/` |
-| Flux mirror | `gitops/root/components/<component>/secrets/` (same ciphertext) |
-| Apply | kustomize `secretGenerator` / `envs:` (metro prior art) |
+| Format | `application.properties` (config) + `application.secrets.env` (SOPS) |
+| Canonical path | `deployment-configuration/profiles/<env>/<component>/` |
+| Flux apply | GitOpsSet `profile-config` → `./deployment-configuration/profiles/dev/<component>` |
+| Apply | kustomize `configMapGenerator` + `secretGenerator` (metro prior art) |
 | Decrypt in-cluster | Flux `decryption.provider: sops` → `flux-system/sops-age` |
 | Encrypt workstation | ms02 only; `just secrets-*` recipes |
 
-Details: [`deployment-profiles/README.md`](../deployment-profiles/README.md). OpenBao remains the future backend; this is the GitOps contract we use now.
+Details: [`deployment-configuration/README.md`](../deployment-configuration/README.md). OpenBao remains the future backend; this is the GitOps contract we use now.
 
 ---
 

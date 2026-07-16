@@ -1,0 +1,81 @@
+---
+- name: Multipass bridge → host UFW (CSI + guest services)
+  when: multipass_bridge_firewall_enabled | default(true) | bool
+  tags: [multipass_bridge, firewall, csi]
+  block:
+    - name: Ensure ufw is installed
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: true
+
+    - name: Allow CSI / NFS / SSH from Multipass bridge
+      ansible.builtin.command:
+        argv:
+          - ufw
+          - allow
+          - from
+          - "{{ multipass_bridge_cidr }}"
+          - to
+          - any
+          - port
+          - "{{ item.port }}"
+          - proto
+          - "{{ item.proto }}"
+          - comment
+          - "{{ item.comment }}"
+      loop: "{{ multipass_bridge_csi_rules + multipass_bridge_host_service_rules }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Allow UFW forward Multipass ↔ docker0 (legacy Kind bridge)
+      when: multipass_bridge_docker_forward_enabled | default(true) | bool
+      block:
+        - name: Forward mpqemubr0 → docker0
+          ansible.builtin.command:
+            argv:
+              - ufw
+              - route
+              - allow
+              - in
+              - on
+              - "{{ multipass_bridge_iface }}"
+              - out
+              - on
+              - "{{ multipass_bridge_docker_iface }}"
+              - from
+              - "{{ multipass_bridge_cidr }}"
+              - to
+              - "{{ multipass_bridge_docker_cidr }}"
+              - comment
+              - "kind to multipass"
+          changed_when: false
+          failed_when: false
+
+        - name: Forward docker0 → mpqemubr0
+          ansible.builtin.command:
+            argv:
+              - ufw
+              - route
+              - allow
+              - in
+              - on
+              - "{{ multipass_bridge_docker_iface }}"
+              - out
+              - on
+              - "{{ multipass_bridge_iface }}"
+              - from
+              - "{{ multipass_bridge_docker_cidr }}"
+              - to
+              - "{{ multipass_bridge_cidr }}"
+              - comment
+              - "multipass to kind"
+          changed_when: false
+          failed_when: false
+
+    - name: Summarize multipass bridge firewall
+      ansible.builtin.debug:
+        msg:
+          - "CSI/iSCSI/NFS/SSH allowed from {{ multipass_bridge_cidr }}"
+          - "Host services 14100/4000/3128 allowed from bridge"
+          - "See docs/storage-csi-zfs.md + docs/day0-host-edge-ansible.md"

@@ -1,0 +1,17 @@
+---
+# Install + enable microscaler-lan-proxy. Config *content* still rendered by
+# shared-k8s-cluster tools/configure_lan_proxy.py (exposure YAML + TLS sync).
+
+lan_proxy_enabled: true
+lan_proxy_unit_name: microscaler-lan-proxy.service
+lan_proxy_shared_k8s_root: "{{ shared_k8s_root }}"
+lan_proxy_operator_home: /home/casibbald
+lan_proxy_operator_user: casibbald
+lan_proxy_kubeconfig: "{{ shared_k8s_kubeconfig }}"
+lan_proxy_tls_dir: /etc/microscaler/haproxy/certs
+lan_proxy_cfg_path: "{{ lan_proxy_shared_k8s_root }}/deploy/generated/haproxy.cfg"
+lan_proxy_render_script: "{{ lan_proxy_shared_k8s_root }}/tools/configure_lan_proxy.py"
+lan_proxy_tls_script: "{{ lan_proxy_shared_k8s_root }}/tools/sync_haproxy_tls.py"
+
+# When true, stop/render/start so bind probes see free ports (same as just lan-proxy-up).
+lan_proxy_render_on_apply: true

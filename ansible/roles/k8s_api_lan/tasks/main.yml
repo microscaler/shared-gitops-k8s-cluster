@@ -1,0 +1,139 @@
+---
+- name: Kubernetes API LAN access (tls-san + mac kubeconfig + UFW)
+  when: k8s_api_lan_enabled | default(true) | bool
+  tags: [k8s_api_lan, kubeconfig, network]
+  block:
+    - name: Allow UFW Kubernetes API from home LAN
+      ansible.builtin.command:
+        argv:
+          - ufw
+          - allow
+          - from
+          - "{{ k8s_api_lan_cidr }}"
+          - to
+          - any
+          - port
+          - "{{ k8s_api_lan_port }}"
+          - proto
+          - tcp
+          - comment
+          - "Microscaler dev Kubernetes API (kubectl from Mac)"
+      when: k8s_api_lan_ufw | default(true) | bool
+      changed_when: false
+      failed_when: false
+
+    - name: Load K8S_CP / MS02_LAN_IP from shared-k8s cluster.env
+      ansible.builtin.shell: |
+        set -euo pipefail
+        # shellcheck disable=SC1090
+        source "{{ k8s_api_lan_cluster_env }}"
+        if [[ -f "{{ shared_k8s_runtime_env }}" ]]; then
+          # shellcheck disable=SC1090
+          source "{{ shared_k8s_runtime_env }}"
+        fi
+        echo "K8S_CP=${K8S_CP:-k8s-cp-1}"
+        echo "MS02_LAN_IP=${MS02_LAN_IP:-{{ k8s_api_lan_ip }}}"
+      args:
+        executable: /bin/bash
+      register: k8s_api_lan_env
+      changed_when: false
+
+    - name: Parse cluster env facts
+      ansible.builtin.set_fact:
+        k8s_api_lan_cp: "{{ k8s_api_lan_env.stdout_lines | select('match', '^K8S_CP=') | first | regex_replace('^K8S_CP=', '') }}"
+        k8s_api_lan_san: "{{ k8s_api_lan_env.stdout_lines | select('match', '^MS02_LAN_IP=') | first | regex_replace('^MS02_LAN_IP=', '') }}"
+
+    - name: Check whether k3s tls-san already includes LAN IP
+      become: true
+      become_user: "{{ k8s_api_lan_multipass_user }}"
+      ansible.builtin.command:
+        argv:
+          - multipass
+          - exec
+          - "{{ k8s_api_lan_cp }}"
+          - --
+          - sudo
+          - grep
+          - -q
+          - "{{ k8s_api_lan_san }}"
+          - /etc/rancher/k3s/config.yaml
+      register: k8s_api_lan_san_present
+      changed_when: false
+      failed_when: false
+
+    - name: Add tls-san for MS02_LAN_IP on k3s control plane
+      when: k8s_api_lan_san_present.rc != 0
+      become: true
+      become_user: "{{ k8s_api_lan_multipass_user }}"
+      block:
+        - name: Append tls-san to k3s config.yaml
+          ansible.builtin.shell: |
+            set -euo pipefail
+            multipass exec "{{ k8s_api_lan_cp }}" -- sudo bash -c \
+              "printf '\ntls-san:\n  - %s\n' '{{ k8s_api_lan_san }}' >> /etc/rancher/k3s/config.yaml"
+          args:
+            executable: /bin/bash
+
+        - name: Restart k3s on control plane
+          ansible.builtin.command:
+            argv:
+              - multipass
+              - exec
+              - "{{ k8s_api_lan_cp }}"
+              - --
+              - sudo
+              - systemctl
+              - restart
+              - k3s
+
+        - name: Wait for k3s API after tls-san restart
+          ansible.builtin.command:
+            argv:
+              - multipass
+              - exec
+              - "{{ k8s_api_lan_cp }}"
+              - --
+              - sudo
+              - kubectl
+              - get
+              - nodes
+              - --kubeconfig
+              - /etc/rancher/k3s/k3s.yaml
+          register: k8s_api_lan_ready
+          until: k8s_api_lan_ready.rc == 0
+          retries: 40
+          delay: 3
+          changed_when: false
+
+    - name: Ensure in-cluster kubeconfig exists on ms02
+      ansible.builtin.stat:
+        path: "{{ k8s_api_lan_kubeconfig }}"
+      register: k8s_api_lan_kc_stat
+
+    - name: Fail if shared-k8s.yaml missing (run shared-k8s just cluster-fetch-kubeconfig first)
+      ansible.builtin.fail:
+        msg: >-
+          Missing {{ k8s_api_lan_kubeconfig }}. On ms02:
+          cd {{ k8s_api_lan_shared_k8s_root }} && just cluster-fetch-kubeconfig
+      when: not k8s_api_lan_kc_stat.stat.exists
+
+    - name: Write Mac kubeconfig (server → https://LAN_IP:6443)
+      become: true
+      become_user: "{{ k8s_api_lan_multipass_user }}"
+      ansible.builtin.shell: |
+        set -euo pipefail
+        mkdir -p "$(dirname "{{ k8s_api_lan_kubeconfig_mac }}")"
+        sed "s|server: https://[^:]*:6443|server: https://{{ k8s_api_lan_san }}:6443|" \
+          "{{ k8s_api_lan_kubeconfig }}" > "{{ k8s_api_lan_kubeconfig_mac }}"
+        chmod 600 "{{ k8s_api_lan_kubeconfig_mac }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Summarize k8s API LAN
+      ansible.builtin.debug:
+        msg:
+          - "tls-san {{ k8s_api_lan_san }} on {{ k8s_api_lan_cp }} ({{ 'already present' if k8s_api_lan_san_present.rc == 0 else 'applied' }})"
+          - "Mac kubeconfig: {{ k8s_api_lan_kubeconfig_mac }}"
+          - "export KUBECONFIG=…/shared-k8s-mac.yaml && kubectl get nodes"
+          - "Requires lan-proxy listening on {{ k8s_api_lan_san }}:6443"

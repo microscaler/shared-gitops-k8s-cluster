@@ -40,7 +40,10 @@ spec:
               name: postgres
           env:
             - name: POSTGRES_USER
-              value: pact
+              valueFrom:
+                configMapKeyRef:
+                  name: pact-config
+                  key: PACT_POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:

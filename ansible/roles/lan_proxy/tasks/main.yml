@@ -1,0 +1,93 @@
+---
+- name: LAN proxy (haproxy unit — render still shared-k8s Python)
+  when: lan_proxy_enabled | default(true) | bool
+  tags: [lan_proxy, haproxy, network]
+  block:
+    - name: Ensure haproxy package is installed
+      ansible.builtin.apt:
+        name: haproxy
+        state: present
+        update_cache: true
+
+    - name: Stop and disable distro haproxy.service (Conflicts with microscaler unit)
+      ansible.builtin.systemd:
+        name: haproxy
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Ensure TLS sync directory exists
+      ansible.builtin.file:
+        path: "{{ lan_proxy_tls_dir }}"
+        state: directory
+        owner: "{{ lan_proxy_operator_user }}"
+        group: "{{ lan_proxy_operator_user }}"
+        mode: "0755"
+
+    - name: Ensure generated haproxy cfg directory exists
+      ansible.builtin.file:
+        path: "{{ lan_proxy_cfg_path | dirname }}"
+        state: directory
+        owner: "{{ lan_proxy_operator_user }}"
+        group: "{{ lan_proxy_operator_user }}"
+        mode: "0755"
+
+    - name: Install microscaler-lan-proxy systemd unit
+      ansible.builtin.template:
+        src: microscaler-lan-proxy.service.j2
+        dest: "/etc/systemd/system/{{ lan_proxy_unit_name }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - reload systemd
+        - restart microscaler-lan-proxy
+
+    - name: Flush handlers before render/start
+      ansible.builtin.meta: flush_handlers
+
+    - name: Stop lan-proxy before render (free bind ports)
+      ansible.builtin.systemd:
+        name: "{{ lan_proxy_unit_name }}"
+        state: stopped
+      when: lan_proxy_render_on_apply | default(true) | bool
+      failed_when: false
+
+    - name: Sync TLS PEM best-effort (cert-manager → host)
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ lan_proxy_tls_script }}"
+          - sync
+      environment:
+        HOME: "{{ lan_proxy_operator_home }}"
+        KUBECONFIG: "{{ lan_proxy_kubeconfig }}"
+      when: lan_proxy_render_on_apply | default(true) | bool
+      changed_when: false
+      failed_when: false
+
+    - name: Render haproxy.cfg from shared-k8s exposure YAML
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ lan_proxy_render_script }}"
+          - render
+      environment:
+        HOME: "{{ lan_proxy_operator_home }}"
+        KUBECONFIG: "{{ lan_proxy_kubeconfig }}"
+      when: lan_proxy_render_on_apply | default(true) | bool
+      changed_when: true
+
+    - name: Enable and start microscaler-lan-proxy
+      ansible.builtin.systemd:
+        name: "{{ lan_proxy_unit_name }}"
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Summarize lan-proxy
+      ansible.builtin.debug:
+        msg:
+          - "unit {{ lan_proxy_unit_name }} → {{ lan_proxy_cfg_path }}"
+          - "includes kubernetes-api {{ ms02_lan_ip }}:6443 → K8S_CP_IP from runtime.env"
+          - "Mac kubectl: just cluster-edge-apply tags=k8s_api_lan"

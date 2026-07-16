@@ -2,11 +2,11 @@
 # Decrypt in-cluster: flux-system/sops-age (age.agekey).
 # Encrypt on ms02: SOPS_AGE_KEY_FILE=~/.config/sops/age/flux-shared-gitops
 creation_rules:
-  - path_regex: (deployment-profiles/.*|gitops/root/components/.*/secrets/.*)application\.secrets\.env$
+  - path_regex: deployment-configuration/profiles/.*/application\.secrets\.env$
     key_groups:
       - age:
           - age1lh3s2uyxrqu0u7hqgulnd43q3v0xvktukq3fcxuu6gw97uye59rqgjsd07
-  - path_regex: gitops/root/components/.*/secrets/.*\.(yaml|yml)$
+  - path_regex: deployment-configuration/profiles/.*\.(yaml|yml)$
     key_groups:
       - age:
           - age1lh3s2uyxrqu0u7hqgulnd43q3v0xvktukq3fcxuu6gw97uye59rqgjsd07

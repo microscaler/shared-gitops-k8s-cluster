@@ -36,5 +36,6 @@ Static `local-storage` hostPath PVs were pinned to `k8s-worker-1` (`K8S_DATA_NOD
 ## Ops notes
 
 - Portal: **`10.177.76.1:3260`**
+- Host UFW (bridge → iSCSI/NFS/SSH): `just cluster-edge-apply tags=multipass_bridge` — see [`day0-host-edge-ansible.md`](./day0-host-edge-ansible.md)
 - SOPS: `SOPS_AGE_KEY_FILE=~/.config/sops/age/flux-shared-gitops`
 - Do not set Bitnami `postgresql.configuration` to a one-line snippet (replaces whole conf)

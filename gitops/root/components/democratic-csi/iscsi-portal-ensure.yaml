@@ -1,4 +1,4 @@
-# Ensures every LIO target has portal 10.177.76.1:3260.
+# Ensures every LIO target has the portal from democratic-csi-config (dev: 10.177.76.1:3260).
 # democratic-csi CreateVolume often leaves Portals:0 when the portal already
 # exists on another target; NodeStage then hangs on iscsiadm login.
 apiVersion: batch/v1
@@ -25,22 +25,43 @@ spec:
           containers:
             - name: ensure
               image: kroniak/ssh-client:3.20
+              env:
+                - name: CSI_SSH_USER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: democratic-csi-config
+                      key: CSI_SSH_USER
+                - name: CSI_SSH_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: democratic-csi-config
+                      key: CSI_SSH_HOST
+                - name: CSI_ISCSI_PORTAL_IP
+                  valueFrom:
+                    configMapKeyRef:
+                      name: democratic-csi-config
+                      key: CSI_ISCSI_PORTAL_IP
+                - name: CSI_ISCSI_PORTAL_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: democratic-csi-config
+                      key: CSI_ISCSI_PORTAL_PORT
               command: ["/bin/sh", "-ec"]
               args:
                 - |
                   mkdir -p /root/.ssh
                   cp /keys/id_ed25519 /root/.ssh/id_ed25519
                   chmod 600 /root/.ssh/id_ed25519
-                  ssh -o StrictHostKeyChecking=accept-new -i /root/.ssh/id_ed25519 csi-zfs@10.177.76.1 '
-                    # democratic-csi may leave Portals:0 when portal IP already exists elsewhere
+                  ssh -o StrictHostKeyChecking=accept-new -i /root/.ssh/id_ed25519 \
+                    "${CSI_SSH_USER}@${CSI_SSH_HOST}" "
                     for d in /sys/kernel/config/target/iscsi/iqn.*; do
-                      [ -d "$d" ] || continue
-                      iqn=$(basename "$d")
-                      sudo targetcli "/iscsi/${iqn}/tpg1/portals create 10.177.76.1 3260" >/dev/null 2>&1 || true
+                      [ -d \"\$d\" ] || continue
+                      iqn=\$(basename \"\$d\")
+                      sudo targetcli \"/iscsi/\${iqn}/tpg1/portals create ${CSI_ISCSI_PORTAL_IP} ${CSI_ISCSI_PORTAL_PORT}\" >/dev/null 2>&1 || true
                     done
                     sudo targetcli saveconfig >/dev/null 2>&1 || true
                     echo portal-ensure-ok
-                  '
+                  "
               volumeMounts:
                 - name: ssh
                   mountPath: /keys

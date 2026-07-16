@@ -1,0 +1,51 @@
+[Unit]
+Description={{ item.description }}
+{% if item.use_preflight | default(true) | bool -%}
+After=network-online.target microscaler-shared-k8s-infra.service{% if item.after_tilt_shared | default(true) | bool %} tilt-shared-k8s.service{% endif %}
+
+Wants=microscaler-shared-k8s-infra.service
+{% else -%}
+After=network-online.target
+Wants=network-online.target
+{% endif %}
+
+[Service]
+Type=simple
+{% if item.use_preflight | default(true) | bool -%}
+ExecStartPre=/bin/sh -c "docker info >/dev/null 2>&1"
+ExecStartPre={{ tilt_user_units_preflight }}
+{% endif -%}
+WorkingDirectory={{ tilt_user_units_workspace }}/{{ item.workdir }}
+{% if item.use_cluster_env | default(true) | bool -%}
+EnvironmentFile=-{{ tilt_user_units_shared_k8s }}/config/tilt-cluster.env
+Environment=TILT_K8S_CLUSTER=shared-k8s
+Environment=KUBECONFIG={{ tilt_user_units_kubeconfig }}
+{% if item.use_shared_kind_env | default(true) | bool -%}
+Environment=TILT_USE_SHARED_KIND_INFRA=1
+{% endif -%}
+EnvironmentFile=-%h/.config/microscaler/tilt-cluster.env
+{% endif -%}
+Environment=TILT_PORT={{ item.port }}
+Environment=TILT_HOST=0.0.0.0
+Environment=HOME=%h
+Environment=PATH=%h/.cargo/bin:%h/.local/bin:/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=CARGO_HOME=%h/.cargo
+Environment=RUSTUP_HOME=%h/.rustup
+{% if item.tilt_exec is defined -%}
+ExecStart={{ item.tilt_exec }}
+{% else -%}
+ExecStart=/usr/local/bin/tilt up --host 0.0.0.0 --port {{ item.port }}{% if item.exec_args is defined %} {{ item.exec_args }}{% endif %}
+
+{% endif -%}
+Restart=on-failure
+RestartSec={{ item.restart_sec | default(10) }}
+{% if item.timeout_stop_sec is defined -%}
+TimeoutStopSec={{ item.timeout_stop_sec }}
+KillSignal=SIGINT
+{% endif -%}
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier={{ item.unit }}
+
+[Install]
+WantedBy=default.target

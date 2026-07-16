@@ -1,0 +1,97 @@
+---
+# systemd --user Tilt units for ms02 (was shared-k8s just install-systemd).
+# HTTP vhosts tilt-*.dev.microscaler.local are rendered by lan_proxy from
+# shared-k8s tooling/tilt-apps.yaml — keep ports in sync with that file.
+
+tilt_user_units_enabled: true
+tilt_user_units_operator: casibbald
+tilt_user_units_home: "/home/{{ tilt_user_units_operator }}"
+tilt_user_units_dir: "{{ tilt_user_units_home }}/.config/systemd/user"
+tilt_user_units_microscaler_cfg: "{{ tilt_user_units_home }}/.config/microscaler"
+tilt_user_units_workspace: "{{ tilt_user_units_home }}/Workspace/microscaler"
+tilt_user_units_shared_k8s: "{{ tilt_user_units_workspace }}/shared-k8s-cluster"
+tilt_user_units_cluster_env_src: "{{ tilt_user_units_shared_k8s }}/config/tilt-cluster.env"
+tilt_user_units_preflight: "{{ tilt_user_units_shared_k8s }}/deploy/tilt-preflight.sh"
+tilt_user_units_kubeconfig: "{{ tilt_user_units_shared_k8s }}/kubeconfig/shared-k8s.yaml"
+
+# Enable linger so user units survive logout
+tilt_user_units_linger: true
+
+# Install + enable microscaler-shared-k8s-infra oneshot
+tilt_user_units_infra: true
+
+# When true, systemctl --user enable --now each unit with enable: true
+tilt_user_units_start: false
+
+# App Tilts (ports must match tooling/.../tilt-apps.yaml + lan-proxy vhosts)
+tilt_user_units_apps:
+  - unit: tilt-shared-k8s
+    description: Shared k3s platform Tilt (port 10349)
+    port: 10349
+    workdir: shared-k8s-cluster
+    after_tilt_shared: false
+    enable: true
+
+  - unit: tilt-hauliage
+    description: Hauliage Tilt (port 10352, shared-k8s)
+    port: 10352
+    workdir: hauliage
+    enable: true
+
+  - unit: tilt-sesame-idam
+    description: Sesame-IDAM Tilt (port 10351, shared-k8s)
+    port: 10351
+    workdir: seasame-idam
+    enable: true
+
+  - unit: tilt-brrtrouter
+    description: BRRTRouter Tilt (port 10353; shared-k8s default, Kind via drop-in)
+    port: 10353
+    workdir: BRRTRouter
+    enable: true
+
+  - unit: tilt-rerp
+    description: Rerp Tilt (port 10350, shared-k8s)
+    port: 10350
+    workdir: rerp
+    enable: true
+
+  - unit: tilt-dcops
+    description: DCops Tilt (port 10354, shared-k8s)
+    port: 10354
+    workdir: DCops
+    use_shared_kind_env: false
+    enable: true
+
+  - unit: tilt-lifeguard
+    description: Lifeguard Tilt (port 10355, shared-k8s; Kind toggle via drop-in)
+    port: 10355
+    workdir: lifeguard
+    enable: true
+
+  - unit: tilt-fleetingdns
+    description: FleetingDNS Tilt (port 10654, shared-k8s)
+    port: 10654
+    workdir: fleetingdns
+    enable: true
+
+  - unit: tilt-cylon
+    description: Cylon platform Tilt (port 10450, shared-k8s)
+    port: 10450
+    workdir: cylon
+    exec_args: "-f deployment-configuration/k8s/daemon/Tiltfile"
+    enable: true
+
+  - unit: tilt-aether
+    description: Tilt build/test watch for Project Aether
+    port: 10750
+    workdir: Aether
+    use_preflight: false
+    use_cluster_env: false
+    tilt_exec: "/usr/bin/env tilt up --host 0.0.0.0 --port 10750 --stream"
+    enable: true
+
+# Legacy Kind units to remove
+tilt_user_units_legacy_remove:
+  - microscaler-shared-kind-infra.service
+  - tilt-shared-kind.service

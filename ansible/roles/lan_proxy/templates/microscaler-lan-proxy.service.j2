@@ -1,0 +1,19 @@
+[Unit]
+Description=Microscaler LAN proxy (Mac → MetalLB on mpqemubr0)
+Documentation=file://{{ lan_proxy_shared_k8s_root }}/README.md
+Documentation=file:///home/casibbald/Workspace/microscaler/shared-gitops-k8s-cluster/docs/day0-host-edge-ansible.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME={{ lan_proxy_operator_home }}
+Environment=KUBECONFIG={{ lan_proxy_kubeconfig }}
+ExecStartPre=-/usr/bin/python3 {{ lan_proxy_tls_script }} sync
+ExecStartPre=/usr/bin/python3 {{ lan_proxy_render_script }} render
+ExecStart=/usr/sbin/haproxy -W -db -f {{ lan_proxy_cfg_path }}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

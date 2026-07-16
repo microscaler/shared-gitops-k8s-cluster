@@ -1,0 +1,163 @@
+---
+- name: Tilt systemd --user units (ms02)
+  when: tilt_user_units_enabled | default(true) | bool
+  tags: [tilt_units, tilt, systemd]
+  block:
+    - name: Resolve operator UID for user systemd bus
+      ansible.builtin.command:
+        argv: [id, -u, "{{ tilt_user_units_operator }}"]
+      register: tilt_user_units_id
+      changed_when: false
+
+    - name: Set operator UID fact
+      ansible.builtin.set_fact:
+        tilt_user_units_uid: "{{ tilt_user_units_id.stdout | trim }}"
+
+    - name: Enable systemd linger for operator (units survive logout)
+      ansible.builtin.command:
+        argv: [loginctl, enable-linger, "{{ tilt_user_units_operator }}"]
+      when: tilt_user_units_linger | default(true) | bool
+      changed_when: false
+      failed_when: false
+
+    - name: Ensure systemd user + microscaler config dirs
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ tilt_user_units_dir }}"
+        - "{{ tilt_user_units_microscaler_cfg }}"
+
+    - name: Stat shared-k8s tilt-cluster.env
+      ansible.builtin.stat:
+        path: "{{ tilt_user_units_cluster_env_src }}"
+      register: tilt_cluster_env_stat
+
+    - name: Install tilt-cluster.env for user units
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.copy:
+        src: "{{ tilt_user_units_cluster_env_src }}"
+        dest: "{{ tilt_user_units_microscaler_cfg }}/tilt-cluster.env"
+        remote_src: true
+        mode: "0644"
+      when: tilt_cluster_env_stat.stat.exists | default(false)
+
+    - name: Make tilt-preflight / cluster scripts executable
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "0755"
+      loop:
+        - "{{ tilt_user_units_preflight }}"
+        - "{{ tilt_user_units_shared_k8s }}/deploy/cluster-start.sh"
+        - "{{ tilt_user_units_shared_k8s }}/deploy/cluster-stop.sh"
+      failed_when: false
+
+    - name: Install microscaler-shared-k8s-infra user unit
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.template:
+        src: microscaler-shared-k8s-infra.service.j2
+        dest: "{{ tilt_user_units_dir }}/microscaler-shared-k8s-infra.service"
+        mode: "0644"
+      when: tilt_user_units_infra | default(true) | bool
+      notify: reload user systemd
+
+    - name: Install Tilt app user units
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.template:
+        src: tilt-app.service.j2
+        dest: "{{ tilt_user_units_dir }}/{{ item.unit }}.service"
+        mode: "0644"
+      loop: "{{ tilt_user_units_apps }}"
+      loop_control:
+        label: "{{ item.unit }}:{{ item.port }}"
+      notify: reload user systemd
+
+    - name: Remove legacy Kind user units
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.file:
+        path: "{{ tilt_user_units_dir }}/{{ item }}"
+        state: absent
+      loop: "{{ tilt_user_units_legacy_remove }}"
+      notify: reload user systemd
+
+    - name: Flush handlers (daemon-reload before enable)
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable microscaler-shared-k8s-infra
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.systemd:
+        name: microscaler-shared-k8s-infra.service
+        scope: user
+        enabled: true
+        daemon_reload: true
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ tilt_user_units_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ tilt_user_units_uid }}/bus"
+      when: tilt_user_units_infra | default(true) | bool
+
+    - name: Enable Tilt app user units
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.systemd:
+        name: "{{ item.unit }}.service"
+        scope: user
+        enabled: true
+        daemon_reload: true
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ tilt_user_units_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ tilt_user_units_uid }}/bus"
+      loop: "{{ tilt_user_units_apps }}"
+      when: item.enable | default(true) | bool
+      loop_control:
+        label: "{{ item.unit }}"
+
+    - name: Start Tilt app user units (optional)
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.systemd:
+        name: "{{ item.unit }}.service"
+        scope: user
+        state: started
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ tilt_user_units_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ tilt_user_units_uid }}/bus"
+      loop: "{{ tilt_user_units_apps }}"
+      when:
+        - tilt_user_units_start | default(false) | bool
+        - item.enable | default(true) | bool
+      loop_control:
+        label: "{{ item.unit }}"
+      failed_when: false
+
+    - name: Disable leftover legacy Kind units (ignore if absent)
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - --user
+          - disable
+          - --now
+          - "{{ item }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ tilt_user_units_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ tilt_user_units_uid }}/bus"
+      loop: "{{ tilt_user_units_legacy_remove }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Summarize Tilt user units
+      ansible.builtin.debug:
+        msg:
+          - "Installed {{ tilt_user_units_apps | length }} tilt-*.service under {{ tilt_user_units_dir }}"
+          - "Vhosts: tilt-<app>.dev.microscaler.local via lan_proxy (tilt-apps.yaml ports)"
+          - "Enable/start: systemctl --user enable --now tilt-hauliage.service"
+          - "Apply: just cluster-edge-apply tilt_units"

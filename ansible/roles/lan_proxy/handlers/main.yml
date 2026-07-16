@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: restart microscaler-lan-proxy
+  ansible.builtin.systemd:
+    name: "{{ lan_proxy_unit_name }}"
+    state: restarted

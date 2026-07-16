@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - config.yaml
+  # Config: deployment-configuration/profiles/dev/messaging (Flux profile-config)
   - mailpit-storage.yaml
   - mailpit.yaml
   - mailhog.yaml

@@ -2,8 +2,10 @@
 
 FluxCD GitOps + [gitopssets-controller](https://github.com/weaveworks/gitopssets-controller) for Microscaler platform clusters.
 
-**Day 0** (VMs, k3s, MetalLB CRDs, LAN proxy) lives in [`shared-k8s-cluster`](../shared-k8s-cluster/).  
-**Day 1+** (continuous reconcile of platform workloads) lives **here**.
+**Day 0 VMs / k3s / render scripts** live in [`shared-k8s-cluster`](../shared-k8s-cluster/).  
+**Day 0 host edge** (CSI UFW, lan-proxy systemd unit, k8s API LAN) is thin Ansible here: [`docs/day0-host-edge-ansible.md`](docs/day0-host-edge-ansible.md) / `just cluster-edge-apply`.  
+**Day 1+** (continuous reconcile of platform workloads) is Flux in this repo.  
+**Desktop** (Mac resolver, L3 route, DNS) is [`cylon-local-infra`](../cylon-local-infra/) (Mac-local checkout).
 
 ## Clusters
 
@@ -38,23 +40,25 @@ Design: [`docs/design.md`](docs/design.md).
 ## Layout
 
 ```
-deployment-profiles/         # SOPS-encrypted dotenv secrets (canonical)
-  <env>/<component>/
-    application.secrets.env
+deployment-configuration/    # env config + SOPS secrets (SMC-aligned)
+  profiles/<env>/<component>/
+    application.properties   # non-secret KEY=value → ConfigMap
+    application.secrets.env  # SOPS dotenv → Secret
+    *.secret.yaml            # SOPS Secret YAML when dotenv unfit
     kustomization.yaml
 gitops/
   inventory/                 # shared inventories (clusters, stacks catalog, metallb, apps)
   root/
     flux/v2_9_2/             # pinned Flux install (Namespace owned separately)
     controllers/gitopssets/  # HelmRelease for gitopssets-controller
-    components/              # platform stacks (+ secrets/ Flux mirror per stack)
-    gitopssets/              # GitOpsSet CRs + RBAC templates
+    components/              # platform stacks (no embedded env config/secrets)
+    gitopssets/              # GitOpsSet CRs (platform-stacks + profile-config)
   clusters/
     base/                    # shared bootstrap fragments
     {dev,staging,prod}/      # cluster entrypoints + control plane sync path
 ```
 
-Secrets SOP: [`deployment-profiles/README.md`](deployment-profiles/README.md).
+Secrets SOP: [`deployment-configuration/README.md`](deployment-configuration/README.md).
 
 ## Commands
 
@@ -64,7 +68,6 @@ Secrets SOP: [`deployment-profiles/README.md`](deployment-profiles/README.md).
 | `just build-dev` | `kustomize build gitops/clusters/dev` |
 | `just bootstrap-dev` | Apply cluster entrypoint (Flux + sync) |
 | `just flux-export` | Re-export Flux install into `root/flux/vX_Y_Z` |
-| `just secrets-encrypt` | Encrypt plaintext dotenv → `deployment-profiles/...` |
-| `just secrets-sync` | Copy ciphertext into component `secrets/` for Flux |
+| `just secrets-encrypt` | Encrypt plaintext dotenv → `deployment-configuration/profiles/...` |
 | `just secrets-apply` | `kubectl apply -k` a profile (bootstrap) |
 | `just secrets-ensure-age-key` | Apply `flux-system/sops-age` from ms02 age key |

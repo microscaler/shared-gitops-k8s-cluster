@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - helmrepository.yaml
-  - secrets/driver-config.secret.yaml
-  - secrets/ssh-key.secret.yaml
+  # Secrets: deployment-configuration/profiles/dev/democratic-csi (Flux profile-secrets)
   - helm-release.yaml
   - iscsi-portal-ensure.yaml

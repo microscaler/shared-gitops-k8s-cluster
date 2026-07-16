@@ -45,11 +45,10 @@ spec:
         tag: 17.6.0-debian-12-r2
       replicaCount: 3
       username: postgres
-      password: postgres
       database: postgres
-      postgresPassword: postgres
+      # Passwords from SOPS Secret data/postgres-credentials (deployment-profiles/dev/postgres-ha)
+      existingSecret: postgres-credentials
       repmgrUsername: repmgr
-      repmgrPassword: postgres
       repmgrDatabase: repmgr
       # Hard anti-affinity: primary + 2 standbys must land on different nodes.
       # Soft was already spreading them; hard makes it a scheduling guarantee.
@@ -100,11 +99,11 @@ spec:
       replicaCount: 2
       podAntiAffinityPreset: hard
       adminUsername: admin
-      adminPassword: postgres
+      # admin-password + sr-check-password from same SOPS Secret
+      existingSecret: postgres-credentials
       logHostname: false
       # Must be stable — random chart default drifts from DB after upgrades
       srCheckUsername: sr_check_user
-      srCheckPassword: postgres
       srCheckDatabase: postgres
       # Custom users that apps may use via Pgpool (dev parity)
       customUsers:

@@ -3,5 +3,5 @@ kind: Kustomization
 resources:
   - helmrepository.yaml
   - claim.yaml
-  - credentials-secret.yaml
+  # Secrets: deployment-configuration/profiles/dev/minio (Flux profile-secrets)
   - helm-release.yaml
