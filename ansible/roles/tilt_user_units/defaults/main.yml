@@ -41,7 +41,7 @@ tilt_user_units_apps:
   - unit: tilt-sesame-idam
     description: Sesame-IDAM Tilt (port 10351, shared-k8s)
     port: 10351
-    workdir: seasame-idam
+    workdir: sesame-idam
     enable: true
 
   - unit: tilt-brrtrouter
@@ -89,6 +89,12 @@ tilt_user_units_apps:
     use_preflight: false
     use_cluster_env: false
     tilt_exec: "/usr/bin/env tilt up --host 0.0.0.0 --port 10750 --stream"
+    enable: true
+
+  - unit: tilt-opengroupware
+    description: OpenGroupware Tilt (port 10852, shared-k8s)
+    port: 10852
+    workdir: opengroupware
     enable: true
 
 # Legacy Kind units to remove

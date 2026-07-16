@@ -1,6 +1,20 @@
 # Active Context
 
-**Last updated:** 2026-07-16 — registry + mailpit on Helm; MailHog retired; Fluvio already Helm.
+**Last updated:** 2026-07-16 — product GitOps cutover (sesame + hauliage) following rerp split.
+
+## Product deploy ownership (rerp pattern)
+
+| Owner | Owns |
+|-------|------|
+| Flux bootstrap Job | Pgpool contract, role, database, schema, grants, login verify (`scripts/db-init-job.sh`) |
+| Tilt | Publish `*-db-init` image + `*-apply-migrations` (Lifeguard SQL/seeds) |
+| Flux services KS | HelmReleases (after bootstrap Ready) |
+
+Foundation Ready: `sesame-idam-idam`, `hauliage-core`. Next: push microservice images + `FLUX_OWNS_DEPLOY=1`.
+
+---
+
+**Earlier:** registry + mailpit on Helm; MailHog retired; Fluvio already Helm.
 
 ## Helm migrations done
 

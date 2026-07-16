@@ -14,7 +14,7 @@ apps:
     aliases: [platform, shared-k8s, shared-k8s-cluster]
   - id: sesame
     port: 10351
-    repo: seasame-idam
+    repo: sesame-idam
     aliases: [sesame, sesame-idam]
   - id: hauliage
     port: 10352
@@ -44,3 +44,7 @@ apps:
     port: 10450
     repo: cylon
     aliases: [cylon]
+  - id: opengroupware
+    port: 10852
+    repo: opengroupware
+    aliases: [opengroupware, ogw]

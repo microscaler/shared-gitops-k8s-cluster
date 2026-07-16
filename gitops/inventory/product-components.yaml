@@ -8,7 +8,7 @@ sources:
     branch: main
     secret_ref: gitops-auth
   - name: sesame-idam
-    # GitHub repo is sesame-idam; local checkout path remains seasame-idam.
+    # GitHub repo and local checkout path: sesame-idam (was historically seasame-idam).
     url: ssh://git@github.com/microscaler/sesame-idam.git
     branch: main
     secret_ref: gitops-auth
