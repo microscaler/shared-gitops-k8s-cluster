@@ -1,0 +1,23 @@
+# Flux-owned LoadBalancer — must stay in this kustomization.
+# If Helm alone owns Service/registry, Flux prune (after raw→Helm cutover) deletes it
+# and breaks REGISTRY_LB_IP / tilt-preflight.
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: registry
+  labels:
+    app: registry
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: cluster
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "10.177.76.220"
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
+  selector:
+    app: registry
+    release: registry

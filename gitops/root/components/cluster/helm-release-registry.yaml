@@ -32,9 +32,10 @@ spec:
       name: cluster-helm-values
       valuesKey: values.yaml
   values:
-    fullnameOverride: registry
+    # Deployment/Service name != historical LB Service `registry` (Flux-owned).
+    # Keep nameOverride so pod labels stay app=registry for service selectors.
+    fullnameOverride: docker-registry
     nameOverride: registry
     service:
-      type: LoadBalancer
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "10.177.76.220"
+      type: ClusterIP
+

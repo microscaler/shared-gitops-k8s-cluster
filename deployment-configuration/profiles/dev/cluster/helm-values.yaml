@@ -1,5 +1,6 @@
 # Dev overlay for twuni/docker-registry (Flux valuesFrom).
 # Existing PVC + no chart securityContext (raw deploy ran as default/root).
+# MetalLB Service `registry` is Flux-owned (service-registry.yaml), not this chart.
 image:
   repository: registry
   tag: "3"
@@ -13,6 +14,9 @@ persistence:
   deleteEnabled: true
 
 storage: filesystem
+
+service:
+  type: ClusterIP
 
 # Match prior raw Deployment — do not force uid 1000 on existing ZFS data.
 securityContext:

@@ -6,6 +6,8 @@ resources:
   - claim.yaml
   - docker-registry-gitrepository.yaml
   - helm-release-registry.yaml
+  # LB must be Flux-owned (see service-registry.yaml) — Helm ClusterIP is docker-registry.
+  - service-registry.yaml
   - service-registry-cluster.yaml
   # Site-specific tag prune + GC (chart GC alone does not prune tags).
   - registry-housekeeping.yaml
