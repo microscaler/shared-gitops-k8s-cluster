@@ -1,0 +1,98 @@
+# Dev overlay for official OpenTelemetry Collector chart (Flux valuesFrom).
+# MetalLB annotations stay on the HelmRelease (inventory source of truth).
+mode: deployment
+fullnameOverride: otel-collector
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.114.0"
+  pullPolicy: IfNotPresent
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+    appProtocol: grpc
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  metrics:
+    enabled: false
+  prometheus:
+    enabled: true
+    containerPort: 9464
+    servicePort: 9464
+    protocol: TCP
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: ${env:MY_POD_IP}:4317
+        http:
+          endpoint: ${env:MY_POD_IP}:4318
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 400
+      spike_limit_mib: 100
+  exporters:
+    otlp/traces:
+      endpoint: data-prepper.observability.svc.cluster.local:21890
+      tls:
+        insecure: true
+    otlp/metrics:
+      endpoint: data-prepper.observability.svc.cluster.local:21891
+      tls:
+        insecure: true
+    otlp/logs:
+      endpoint: data-prepper.observability.svc.cluster.local:21892
+      tls:
+        insecure: true
+    prometheus:
+      endpoint: ${env:MY_POD_IP}:9464
+      resource_to_telemetry_conversion:
+        enabled: true
+    debug:
+      verbosity: basic
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+  service:
+    extensions: [health_check]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp/traces, debug]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp/metrics, prometheus, debug]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp/logs, debug]

@@ -1,0 +1,40 @@
+# Official OpenTelemetry Collector chart. Env knobs: profile helm-values-otel.yaml.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: observability
+spec:
+  interval: 30m
+  timeout: 10m
+  dependsOn:
+    - name: data-prepper
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: true
+      retries: 3
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: "0.110.7"
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+        namespace: observability
+      interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: observability-helm-values
+      valuesKey: otel.yaml
+  values:
+    # MetalLB IPs: gitops/inventory/metallb-services.yaml
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.universe.tf/loadBalancerIPs: "10.177.76.231"

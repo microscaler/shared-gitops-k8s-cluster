@@ -82,11 +82,11 @@ Flux reconcile, or `just secrets-apply` for an immediate ConfigMap refresh.
 |-----------|--------------|-----------|
 | pact | `pact-config` | `pact-credentials` |
 | messaging | `messaging-config` | — |
-| imgproxy | `imgproxy-config` | — |
+| imgproxy | `imgproxy-helm-values` | — |
 | postgres-backup | `postgres-backup-config` | (uses postgres/minio secrets) |
 | democratic-csi | `democratic-csi-config` | driver-config + ssh-key |
 | cylon-infra | `routellm-config` | — |
-| observability | `observability-helm-values` | `opensearch-credentials` |
+| observability | `observability-helm-values` (OS/dashboards/prepper/otel) | `opensearch-credentials` |
 | postgres-ha | `postgres-ha-helm-values` | `postgres-credentials` |
 | minio | `minio-helm-values` | `minio-credentials` |
 | redis | `redis-helm-values` | — |

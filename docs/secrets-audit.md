@@ -9,11 +9,11 @@
 |-----------|----------------|-----------------|---------|--------|
 | pact | `pact-config` | — | `pact-credentials` | OK |
 | messaging | `messaging-config` | — | — | OK |
-| imgproxy | `imgproxy-config` | — | — | OK |
+| imgproxy | — | `imgproxy-helm-values` | — | OK |
 | postgres-backup | `postgres-backup-config` | — | uses postgres/minio | OK |
 | democratic-csi | `democratic-csi-config` | — | driver + ssh YAML | OK |
 | cylon-infra | `routellm-config` | — | — | OK |
-| observability | — | `observability-helm-values` | `opensearch-credentials` | OK |
+| observability | — | `observability-helm-values` (OS/dashboards/prepper/otel) | `opensearch-credentials` | OK |
 | postgres-ha | — | `postgres-ha-helm-values` | `postgres-credentials` | OK |
 | minio | — | `minio-helm-values` | `minio-credentials` | OK |
 | redis | — | `redis-helm-values` | — | OK |

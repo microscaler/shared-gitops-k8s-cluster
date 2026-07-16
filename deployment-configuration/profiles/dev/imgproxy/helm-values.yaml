@@ -1,0 +1,56 @@
+# Dev overlay for official imgproxy chart (Flux valuesFrom).
+image:
+  repo: ghcr.io/imgproxy/imgproxy
+  tag: v3.30.0
+  pullPolicy: IfNotPresent
+
+resources:
+  deployment:
+    replicas:
+      default: 1
+      minCount: 1
+      maxCount: 1
+    # Shares RWO PVC minio-storage with MinIO — same node required.
+    affinity:
+      podAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: minio
+            topologyKey: kubernetes.io/hostname
+    resources:
+      requests:
+        memory: 32Mi
+        cpu: 25m
+      limits:
+        memory: 128Mi
+        cpu: 100m
+    readinessProbe:
+      initialDelaySeconds: 5
+      timeoutSeconds: 5
+      successThreshold: 1
+      failureThreshold: 5
+    livenessProbe:
+      initialDelaySeconds: 30
+      timeoutSeconds: 5
+      successThreshold: 1
+      failureThreshold: 5
+  service:
+    type: ClusterIP
+    port: 5001
+  serviceMonitor:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+
+persistence:
+  enabled: true
+  existingClaim: minio-storage
+  mountPath: /var/lib/storage
+
+env:
+  IMGPROXY_BIND: ":5001"
+  IMGPROXY_LOCAL_FILESYSTEM_ROOT: "/"
+  IMGPROXY_USE_ETAG: "true"
+  IMGPROXY_ENABLE_WEBP_DETECTION: "true"
+  IMGPROXY_PROMETHEUS_BIND: ":8081"

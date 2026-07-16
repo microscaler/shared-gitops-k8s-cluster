@@ -1,0 +1,36 @@
+# Official imgproxy chart. Env knobs: profile helm-values.yaml.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: imgproxy
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: imgproxy
+spec:
+  interval: 30m
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: true
+      retries: 3
+  chart:
+    spec:
+      chart: imgproxy
+      version: "1.1.0"
+      sourceRef:
+        kind: HelmRepository
+        name: imgproxy
+        namespace: data
+      interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: imgproxy-helm-values
+      valuesKey: values.yaml
+  values:
+    # Keep Service/Deployment DNS name `imgproxy` (matches prior raw manifests).
+    fullnameOverride: imgproxy
+    nameOverride: imgproxy

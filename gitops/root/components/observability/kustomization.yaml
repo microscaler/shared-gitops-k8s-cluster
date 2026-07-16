@@ -1,5 +1,4 @@
-# OpenSearch + Dashboards + Data Prepper (Helm) + OTel collector (raw).
-# Legacy Grafana/Loki/Prometheus/Jaeger/Promtail removed — telemetry goes OTel → Data Prepper → OpenSearch.
+# OpenSearch + Dashboards + Data Prepper + OTel Collector (official Helm charts).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -7,17 +6,11 @@ namespace: observability
 
 resources:
   - namespace.yaml
-  # Secrets: deployment-configuration/profiles/dev/observability (Flux profile-secrets)
+  # Config + secrets: deployment-configuration/profiles/dev/observability (Flux profile-config)
   - helmrepository.yaml
+  - helmrepository-otel.yaml
   - helm-release-opensearch.yaml
   - helm-release-dashboards.yaml
   - helm-release-data-prepper.yaml
+  - helm-release-otel.yaml
   - dashboards-lb-service.yaml
-  - otel-collector.yaml
-
-configMapGenerator:
-  - name: otel-collector-config
-    files:
-      - config.yaml=embedded/otel-collector-config.yml
-    options:
-      disableNameSuffixHash: true

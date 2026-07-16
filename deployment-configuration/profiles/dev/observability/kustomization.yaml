@@ -10,6 +10,7 @@ configMapGenerator:
       - opensearch.yaml=helm-values-opensearch.yaml
       - dashboards.yaml=helm-values-dashboards.yaml
       - data-prepper.yaml=helm-values-data-prepper.yaml
+      - otel.yaml=helm-values-otel.yaml
 
 secretGenerator:
   - name: opensearch-credentials
