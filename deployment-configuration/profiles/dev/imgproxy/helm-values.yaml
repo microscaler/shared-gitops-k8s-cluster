@@ -49,8 +49,9 @@ persistence:
   mountPath: /var/lib/storage
 
 env:
-  IMGPROXY_BIND: ":5001"
+  # Chart hardcodes probes/targetPort to 8080; Service still exposes 5001→8080.
+  IMGPROXY_BIND: ":8080"
   IMGPROXY_LOCAL_FILESYSTEM_ROOT: "/"
   IMGPROXY_USE_ETAG: "true"
-  IMGPROXY_ENABLE_WEBP_DETECTION: "true"
+  IMGPROXY_AUTO_WEBP: "true"
   IMGPROXY_PROMETHEUS_BIND: ":8081"
