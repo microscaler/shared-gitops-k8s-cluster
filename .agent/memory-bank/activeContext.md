@@ -1,17 +1,26 @@
 # Active Context
 
-**Last updated:** 2026-07-16 — application.properties migration started.
+**Last updated:** 2026-07-16 — GitOpsSets audit migration complete on dev.
 
-## Profiles (SMC)
+## GitOpsSets (live)
 
-```
-deployment-configuration/profiles/dev/<component>/
-  application.properties   # → ConfigMap
-  application.secrets.env  # → Secret (SOPS)
-```
+| Set | Role | Status |
+|-----|------|--------|
+| `platform-stacks` | Catalog + cluster enablement → `stack-*` KS with `dependsOn` | Ready (18) |
+| `profile-config` | Matrix cluster×profile → `profile-config-*` (+ SOPS) | Ready (9) |
+| `product-components` | ImageRepository/ImagePolicy from inventory | Ready (9) |
 
-Migrated to properties: pact, messaging, imgproxy, postgres-backup, democratic-csi, cylon-infra/routellm.
+Catalog: `gitops/inventory/platform-stacks.yaml`  
+Generated: `just sync-stack-inventory <id>` → `clusters/<id>/inventory/stacks.yaml`  
+Profiles: `deployment-configuration/profiles/<env>/<component>/`
 
-Flux GitOpsSet renamed: `profile-config` (was profile-secrets).
+## Staging / prod
 
-Still in Helm values: observability, postgres-ha, minio, redis (replicas/tags/storage).
+Do **not** enable GitOpsSets until static `stack-namespaces-ks.yaml` is removed from that cluster’s `control/` (name collision). See `gitops/deferred/gitopssets/README.md`.
+
+## Next (backlog)
+
+1. Helm `valuesFrom` for observability / postgres-ha / minio / redis knobs.
+2. FreeRADIUS / Squid passwords → SOPS.
+3. MetalLB annotation patches / LAN proxy sync (inventory check OK).
+4. Add Matrix rows when staging/prod go live.
