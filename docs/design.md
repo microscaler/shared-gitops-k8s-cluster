@@ -82,6 +82,9 @@ duplicate GitRepository fetches.
 Accounting is reconciled as an ordered pair. `rerp-accounting` owns SOPS
 runtime configuration and completion-gated database/object-store Jobs;
 `rerp-accounting-services` depends on it and owns only delivered Helm releases.
+`rerp-accounting-catalog` applies and prunes suspended HelmRelease declarations
+for the rest of the Accounting source inventory without treating those APIs as
+delivered or blocking active-service readiness.
 The image inventory generates registry scanners and numeric policies for
 monotonic `dev-<nanoseconds>` tags. Git-writing image automation is omitted
 until the product-specific credential gate is satisfied.

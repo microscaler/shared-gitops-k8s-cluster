@@ -55,7 +55,7 @@ spec:
           timeout: 5m
           path: "${{ .Repeat.path }}"
           prune: true
-          wait: true
+          wait: ${{ .Repeat.wait }}
           force: ${{ .Repeat.force }}
           dependsOn:
             - name: "${{ .Repeat.depends_on }}"

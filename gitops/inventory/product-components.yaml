@@ -14,6 +14,7 @@ components:
     suite: accounting
     path: ./deployment-configuration/profiles/dev/rerp/accounting
     depends_on: stack-namespaces
+    wait: true
     force: true
   - name: rerp-accounting-services
     source: rerp
@@ -21,6 +22,17 @@ components:
     suite: accounting
     path: ./deployment-configuration/profiles/dev/rerp/accounting/services
     depends_on: rerp-accounting
+    wait: true
+    force: false
+  - name: rerp-accounting-catalog
+    source: rerp
+    product: rerp
+    suite: accounting
+    path: ./deployment-configuration/profiles/dev/rerp/accounting/catalog
+    depends_on: rerp-accounting
+    # Catalog HelmReleases are deliberately suspended. Apply and prune them,
+    # but do not make active workloads wait for suspended-release health.
+    wait: false
     force: false
 
 # Image discovery is cluster integration, while update markers stay beside the

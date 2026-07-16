@@ -182,6 +182,7 @@ def validate_product_components() -> list[str]:
         suite = component.get("suite")
         path = component.get("path")
         dependency = component.get("depends_on")
+        wait = component.get("wait")
         force = component.get("force")
         if not all((name, source, product, suite, path, dependency)):
             errors.append(
@@ -212,6 +213,8 @@ def validate_product_components() -> list[str]:
             )
         if not isinstance(force, bool):
             errors.append(f"product component {name}: force must be a boolean")
+        if not isinstance(wait, bool):
+            errors.append(f"product component {name}: wait must be a boolean")
         source_path = (source, str(normalized))
         if source_path in component_paths:
             errors.append(f"duplicate product component source/path: {source_path}")

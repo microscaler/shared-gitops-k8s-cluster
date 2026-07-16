@@ -55,8 +55,9 @@ shared-gitops-k8s-cluster             │ Flux source + reconcile
 
 `product-components.yaml` separates repository sources, ordered component
 paths, and image repositories so one monorepo source can serve several
-independently installed suites. RERP Accounting uses two components: foundation
-first, then services. To add a component:
+independently installed suites. RERP Accounting uses three components:
+foundation first, active services second, and a non-waiting catalog of
+explicitly suspended scaffold releases. To add a component:
 
 1. Add the suite-qualified Kustomize/SOPS profile to the product repository.
 2. Add its product source once, then add one component row for each reconciled
