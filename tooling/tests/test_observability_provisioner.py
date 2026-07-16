@@ -124,12 +124,20 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     processors = otel["config"]["processors"]
     assert processors["memory_limiter"]["limit_mib"] == 192
     assert "filter/drop-low-severity" in processors
+    assert processors["filter/drop-no-recorded-value"]["metrics"]["datapoint"] == [
+        "flags == 1"
+    ]
     assert otel["config"]["service"]["pipelines"]["logs"]["processors"] == [
         "memory_limiter",
         "filter/drop-low-severity",
         "batch",
     ]
     assert "debug" not in otel["config"]["exporters"]
+    assert otel["config"]["service"]["pipelines"]["metrics"]["processors"] == [
+        "memory_limiter",
+        "filter/drop-no-recorded-value",
+        "batch",
+    ]
 
     pipelines = prepper["pipelineConfig"]["config"]
     metric_sink = pipelines["otel-metrics-pipeline"]["sink"][0]["opensearch"]

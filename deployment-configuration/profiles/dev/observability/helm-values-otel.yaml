@@ -65,6 +65,15 @@ config:
       logs:
         log_record:
           - 'IsMatch(severity_text, "^(DEBUG|TRACE)$")'
+    # Prometheus staleness markers are OTLP datapoints with
+    # DATA_POINT_FLAGS_NO_RECORDED_VALUE (currently bit value 1). Data Prepper
+    # cannot index a gauge without a value, so discard the marker, not a real
+    # measurement, before export.
+    filter/drop-no-recorded-value:
+      error_mode: ignore
+      metrics:
+        datapoint:
+          - flags == 1
   exporters:
     otlp/traces:
       endpoint: data-prepper.observability.svc.cluster.local:21890
@@ -94,7 +103,7 @@ config:
         exporters: [otlp/traces]
       metrics:
         receivers: [otlp]
-        processors: [memory_limiter, batch]
+        processors: [memory_limiter, filter/drop-no-recorded-value, batch]
         exporters: [otlp/metrics, prometheus]
       logs:
         receivers: [otlp]

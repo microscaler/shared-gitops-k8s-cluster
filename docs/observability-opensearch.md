@@ -48,6 +48,10 @@ sets `OBSERVABILITY_RETENTION_DAYS=7`.
 - Dev stores `INFO` and above. Explicit `DEBUG` and `TRACE` records are dropped
   by the Collector before export; pod logs remain available for immediate
   development diagnosis.
+- Prometheus staleness markers carry the OpenTelemetry
+  `NO_RECORDED_VALUE` flag rather than a measurement. The Collector drops those
+  flagged points before Data Prepper so they cannot become false zeroes or
+  invalid null-valued gauges in OpenSearch.
 - Dev telemetry indices use one primary and zero replicas because OpenSearch is
   deliberately single-node. This avoids permanently yellow indices and wasted
   capacity.
