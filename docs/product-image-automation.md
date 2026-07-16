@@ -1,6 +1,6 @@
 # Product image discovery and automation
 
-Status: **shared Flux credential validated; activation ready**.
+Status: **active and end-to-end proven for RERP Accounting dev images**.
 
 The dev cluster separates three responsibilities:
 
@@ -26,10 +26,10 @@ copies and rotation drift.
 The activation gate requires the credential to:
 
 - authenticate to `microscaler/rerp` for read and dry-run push;
-- is accepted for the `main` branch by the repository's branch policy;
+- be accepted for the `main` branch by the repository's branch policy;
 - remain owned by the Flux bootstrap lifecycle and never be copied or committed
   in plaintext;
-- is tested for pull and push before automation is enabled.
+- pass pull and push validation before automation is enabled.
 
 ## Activation sequence
 
@@ -46,6 +46,10 @@ Automation is limited by both an RERP-only policy selector and update path
 `./deployment-configuration/profiles/dev/rerp`. A proving run must retag an
 existing dev image, then verify that Flux changes only the matching image marker
 and that the workload returns Ready.
+
+The first proving run selected Invoice tag `dev-1784204646457677023`, wrote
+only its image-policy marker in RERP commit `16907bf`, and completed the Invoice
+rollout and Accounting deployment acceptance successfully.
 
 Do not broaden the update path to the repository root, bypass protected-branch
 policy, or copy the shared private key into product-owned configuration.
