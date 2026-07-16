@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 METRICS_PATTERN = "otel-v1-apm-metrics*"
 LOGS_PATTERN = "otel-v1-apm-logs*"
+TRACES_PATTERN = "otel-v1-apm-span-*"
 MANAGED_BY = "shared-gitops-k8s-cluster"
 
 
@@ -101,6 +102,12 @@ def lifecycle_policy(retention_days: int, patterns: list[str]) -> dict[str, Any]
 def upsert_policy(
     client: JsonClient, policy_id: str, retention_days: int, patterns: list[str]
 ) -> None:
+    upsert_policy_payload(client, policy_id, lifecycle_policy(retention_days, patterns))
+
+
+def upsert_policy_payload(
+    client: JsonClient, policy_id: str, payload: dict[str, Any]
+) -> None:
     path = f"_plugins/_ism/policies/{quote(policy_id)}"
     status, current = client.request(path, allowed=(404,))
     query = ""
@@ -114,8 +121,52 @@ def upsert_policy(
     client.request(
         path + query,
         method="PUT",
-        payload=lifecycle_policy(retention_days, patterns),
+        payload=payload,
     )
+
+
+def trace_lifecycle_policy(retention_days: int) -> dict[str, Any]:
+    """Extend Data Prepper's raw-span rollover policy with bounded retention."""
+    return {
+        "policy": {
+            "description": (
+                "Roll raw spans daily and delete dev telemetry after "
+                f"{retention_days} days; managed by {MANAGED_BY}"
+            ),
+            "default_state": "current_write_index",
+            "states": [
+                {
+                    "name": "current_write_index",
+                    "actions": [
+                        {
+                            "retry": {
+                                "count": 3,
+                                "backoff": "exponential",
+                                "delay": "1m",
+                            },
+                            "rollover": {
+                                "min_size": "50gb",
+                                "min_index_age": "24h",
+                                "copy_alias": False,
+                            },
+                        }
+                    ],
+                    "transitions": [
+                        {
+                            "state_name": "delete",
+                            "conditions": {"min_index_age": f"{retention_days}d"},
+                        }
+                    ],
+                },
+                {
+                    "name": "delete",
+                    "actions": [{"delete": {}}],
+                    "transitions": [],
+                },
+            ],
+            "ism_template": [{"index_patterns": [TRACES_PATTERN], "priority": 200}],
+        }
+    }
 
 
 def index_template(pattern: str, time_field: str) -> dict[str, Any]:
@@ -192,6 +243,25 @@ def reconcile_matching_indices(
     """Apply the contract to indices created before their template existed."""
     for index in matching_indices(client, pattern):
         attach_existing_index(client, index, policy_id, time_field)
+
+
+def reconcile_trace_storage(client: JsonClient) -> None:
+    """Keep Data Prepper trace mappings/alias while applying dev storage settings."""
+    template_name = "otel-v1-apm-span-index-template"
+    status, response = client.request(f"_template/{template_name}", allowed=(404,))
+    if status == 404:
+        raise ApiError(f"Data Prepper trace template {template_name} is missing")
+    template = response[template_name]
+    settings = template.setdefault("settings", {}).setdefault("index", {})
+    settings["number_of_replicas"] = 0
+    settings["refresh_interval"] = "30s"
+    client.request(f"_template/{template_name}", method="PUT", payload=template)
+    for index in matching_indices(client, TRACES_PATTERN):
+        client.request(
+            f"{quote(index)}/_settings",
+            method="PUT",
+            payload={"index": {"number_of_replicas": 0, "refresh_interval": "30s"}},
+        )
 
 
 def monitor_payload(
@@ -605,6 +675,7 @@ def verify(opensearch: JsonClient, dashboards: JsonClient, retention_days: int) 
     for policy_id in (
         "observability-metrics-retention",
         "observability-logs-retention",
+        "raw-span-policy",
     ):
         _, policy = opensearch.request(f"_plugins/_ism/policies/{policy_id}")
         transitions = policy["policy"]["states"][0]["transitions"]
@@ -639,6 +710,11 @@ def main() -> int:
         retention_days,
         ["otel-v1-apm-logs", "otel-v1-apm-logs-*"],
     )
+    upsert_policy_payload(
+        opensearch,
+        "raw-span-policy",
+        trace_lifecycle_policy(retention_days),
+    )
     opensearch.request(
         "_index_template/observability-metrics",
         method="PUT",
@@ -661,6 +737,7 @@ def main() -> int:
         "observability-logs-retention",
         "observedTime",
     )
+    reconcile_trace_storage(opensearch)
     upsert_monitors(opensearch)
     upsert_dashboards(dashboards)
     verify(opensearch, dashboards, retention_days)

@@ -29,6 +29,22 @@ def test_lifecycle_policy_enforces_seven_day_delete() -> None:
     assert policy["ism_template"][0]["index_patterns"] == ["otel-v1-apm-logs-*"]
 
 
+def test_trace_policy_keeps_rollover_and_adds_seven_day_delete() -> None:
+    policy = provisioner.trace_lifecycle_policy(7)["policy"]
+
+    current = policy["states"][0]
+    assert current["name"] == "current_write_index"
+    assert current["actions"][0]["rollover"] == {
+        "min_size": "50gb",
+        "min_index_age": "24h",
+        "copy_alias": False,
+    }
+    assert current["transitions"] == [
+        {"state_name": "delete", "conditions": {"min_index_age": "7d"}}
+    ]
+    assert policy["states"][1]["actions"] == [{"delete": {}}]
+
+
 def test_dashboard_references_are_complete_and_stable() -> None:
     objects = provisioner.dashboard_objects()
     identities = {(object_type, object_id) for object_type, object_id, _ in objects}

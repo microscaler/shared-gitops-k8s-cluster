@@ -41,7 +41,8 @@ sets `OBSERVABILITY_RETENTION_DAYS=7`.
 - Data Prepper writes daily `otel-v1-apm-metrics-YYYY.MM.DD` and
   `otel-v1-apm-logs-YYYY.MM.DD` indices.
 - OpenSearch ISM policies delete metrics and logs when the index age reaches
-  seven days.
+  seven days. Raw spans retain Data Prepper's daily rollover and are deleted at
+  the same age instead of accumulating indefinitely.
 - The legacy unsuffixed metrics and logs indices are attached to the same
   policies and stop receiving writes after the Data Prepper rollout.
 - Dev stores `INFO` and above. Explicit `DEBUG` and `TRACE` records are dropped
