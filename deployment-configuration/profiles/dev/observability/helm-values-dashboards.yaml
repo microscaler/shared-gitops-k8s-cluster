@@ -1,0 +1,20 @@
+# Dev overlay for OpenSearch Dashboards (Flux valuesFrom).
+opensearchHosts: "http://opensearch-nodes:9200"
+
+service:
+  type: ClusterIP
+  port: 5601
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 768Mi
+
+opensearchAccount:
+  secret: ""
+extraEnvs:
+  - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
+    value: "true"

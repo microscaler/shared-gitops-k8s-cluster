@@ -13,20 +13,27 @@ secret-manager-controller `deployment-configuration/profiles/dev`.
 
 | File | Purpose | Cluster object |
 |------|---------|----------------|
-| `application.properties` | Non-secret env config (`KEY=value`) | ConfigMap via `configMapGenerator` |
+| `application.properties` | Non-secret app env (`KEY=value`) | ConfigMap via `configMapGenerator` (`envs:`) |
+| `helm-values.yaml` / `helm-values-*.yaml` | Non-secret Helm chart overlays (replicas, tags, storage, resources, security flags) | ConfigMap via `configMapGenerator` (`files:`) → HelmRelease `valuesFrom` |
 | `application.secrets.env`, `*.secrets.env` | SOPS-encrypted secrets (dotenv); use separate files for least-privilege Secrets | Secret via `secretGenerator` |
 | `*.secret.yaml` | SOPS-encrypted Secret YAML (when dotenv unfit) | Secret resources |
 | `kustomization.yaml` | Generators + resources for this profile | applied by Flux |
 
-Do **not** hardcode env-specific hosts, flags, usernames, or buckets in
-`gitops/root/components/` Helm values or ConfigMaps. Put them in
-`application.properties` and reference the generated ConfigMap
-(`configMapKeyRef` / `envFrom`).
+Do **not** hardcode env-specific hosts, flags, usernames, buckets, replicas,
+image tags, or storage sizes in `gitops/root/components/` HelmRelease `values`.
 
-Do **not** put secrets in `application.properties` — use
-`application.secrets.env` (or `*.secret.yaml`).
+| Kind of config | Where |
+|----------------|-------|
+| Pod/env `KEY=value` | `application.properties` → `configMapKeyRef` / `envFrom` |
+| Helm chart knobs | `helm-values.yaml` → ConfigMap → HelmRelease `valuesFrom` |
+| Secrets | `application.secrets.env` / `*.secret.yaml` (SOPS) |
+| MetalLB IPs | `gitops/inventory/metallb-services.yaml` (+ annotations on Services/HR) |
 
-MetalLB IPs stay in `gitops/inventory/metallb-services.yaml` (not properties).
+HelmRelease `spec.values` keeps only structural wiring (chart identity,
+`existingSecret`, MetalLB annotations, instance-bound affinity). Flux merges
+`valuesFrom` then applies `spec.values` on top (inline wins on conflicts).
+
+Do **not** put secrets in `application.properties` or `helm-values*.yaml`.
 
 ## Layout example
 
@@ -71,20 +78,41 @@ Flux reconcile, or `just secrets-apply` for an immediate ConfigMap refresh.
 
 ## Existing profiles (`dev`)
 
-| Component | ConfigMap | Secret(s) |
-|-----------|-----------|-----------|
+| Component | ConfigMap(s) | Secret(s) |
+|-----------|--------------|-----------|
 | pact | `pact-config` | `pact-credentials` |
 | messaging | `messaging-config` | — |
 | imgproxy | `imgproxy-config` | — |
 | postgres-backup | `postgres-backup-config` | (uses postgres/minio secrets) |
 | democratic-csi | `democratic-csi-config` | driver-config + ssh-key |
 | cylon-infra | `routellm-config` | — |
-| observability | — | `opensearch-credentials` |
-| postgres-ha | — | `postgres-credentials` |
-| minio | — | `minio-credentials` |
+| observability | `observability-helm-values` | `opensearch-credentials` |
+| postgres-ha | `postgres-ha-helm-values` | `postgres-credentials` |
+| minio | `minio-helm-values` | `minio-credentials` |
+| redis | `redis-helm-values` | — |
 
-Still to extract from Helm values (replicas, tags, storage): observability,
-postgres-ha, minio, redis — use Helm `valuesFrom` ConfigMap when ready.
+### Helm `valuesFrom` example
+
+```yaml
+# profiles/dev/postgres-ha/kustomization.yaml
+configMapGenerator:
+  - name: postgres-ha-helm-values
+    files:
+      - values.yaml=helm-values.yaml
+```
+
+```yaml
+# gitops/root/components/postgres-ha/helm-release.yaml
+spec:
+  valuesFrom:
+    - kind: ConfigMap
+      name: postgres-ha-helm-values
+      valuesKey: values.yaml
+  values:
+    fullnameOverride: postgres-ha
+    postgresql:
+      existingSecret: postgres-credentials
+```
 
 Product and suite profiles are owned by their product repositories and
 reconciled by Flux `GitRepository`/`Kustomization` components from this

@@ -1,4 +1,4 @@
-# Single-node OpenSearch (dev). Security plugin disabled for Multipass.
+# Single-node OpenSearch (dev). Env knobs: profile helm-values-opensearch.yaml.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -26,55 +26,11 @@ spec:
         name: opensearch
         namespace: observability
       interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: observability-helm-values
+      valuesKey: opensearch.yaml
   values:
-    clusterName: opensearch
-    nodeGroup: nodes
-    singleNode: true
-    replicas: 1
-
-    # Disable OpenSearch Security (dev only)
-    securityConfig:
-      enabled: false
-    extraEnvs:
-      - name: DISABLE_INSTALL_DEMO_CONFIG
-        value: "true"
-      - name: DISABLE_SECURITY_PLUGIN
-        value: "true"
     envFrom:
       - secretRef:
           name: opensearch-credentials
-
-    config:
-      opensearch.yml: |
-        cluster.name: opensearch
-        network.host: 0.0.0.0
-        discovery.type: single-node
-        plugins.security.disabled: true
-
-    opensearchJavaOpts: "-Xmx768M -Xms768M"
-
-    resources:
-      requests:
-        cpu: 200m
-        memory: 1Gi
-      limits:
-        cpu: "2"
-        memory: 2Gi
-
-    persistence:
-      enabled: true
-      enableInitChown: true
-      storageClass: zfs-iscsi
-      size: 30Gi
-      accessModes:
-        - ReadWriteOnce
-
-    # Multipass workers need vm.max_map_count
-    sysctlInit:
-      enabled: true
-
-    antiAffinity: soft
-
-    service:
-      type: ClusterIP
-      annotations: {}

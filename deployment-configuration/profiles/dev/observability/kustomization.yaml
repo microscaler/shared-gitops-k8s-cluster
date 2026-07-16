@@ -1,10 +1,15 @@
-# Flux-compatible dotenv secrets for observability (OpenSearch admin).
-# Encrypted file: application.secrets.env (SOPS age).
-# Private key: flux-system/sops-age (age.agekey).
+# Secrets: application.secrets.env (SOPS). Helm overlays: helm-values-*.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: observability
+
+configMapGenerator:
+  - name: observability-helm-values
+    files:
+      - opensearch.yaml=helm-values-opensearch.yaml
+      - dashboards.yaml=helm-values-dashboards.yaml
+      - data-prepper.yaml=helm-values-data-prepper.yaml
 
 secretGenerator:
   - name: opensearch-credentials

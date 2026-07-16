@@ -1,0 +1,71 @@
+# Dev overlay for Bitnami postgresql-ha (Flux valuesFrom).
+# Structural refs (existingSecret, fullnameOverride) stay in the HelmRelease.
+global:
+  defaultStorageClass: zfs-iscsi
+  security:
+    allowInsecureImages: true
+
+postgresql:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql-repmgr
+    tag: 17.6.0-debian-12-r2
+  replicaCount: 3
+  username: postgres
+  database: postgres
+  repmgrUsername: repmgr
+  repmgrDatabase: repmgr
+  podAntiAffinityPreset: hard
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 120
+    periodSeconds: 20
+    timeoutSeconds: 10
+    failureThreshold: 30
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+  audit:
+    logHostname: false
+  repmgrConnectTimeout: 30
+
+pgpool:
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/pgpool
+    tag: 4.6.3-debian-12-r0
+  replicaCount: 2
+  podAntiAffinityPreset: hard
+  adminUsername: admin
+  logHostname: false
+  srCheckUsername: sr_check_user
+  srCheckDatabase: postgres
+
+metrics:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgres-exporter
+    tag: 0.17.1-debian-12-r16
+
+volumePermissions:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r51
+
+persistence:
+  enabled: true
+  storageClass: zfs-iscsi
+  size: 10Gi

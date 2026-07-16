@@ -1,5 +1,6 @@
 # Flux Kustomizations for deployment-configuration/profiles/<env>/<component>
-# (application.properties → ConfigMap, application.secrets.env / *.secret.yaml → Secret).
+# (application.properties → ConfigMap, helm-values*.yaml → Helm valuesFrom ConfigMap,
+#  application.secrets.env / *.secret.yaml → Secret).
 #
 # Matrix: cluster list × profile directories (named generators → .Element.cluster / .Element.profile).
 apiVersion: sets.gitops.pro/v1alpha1

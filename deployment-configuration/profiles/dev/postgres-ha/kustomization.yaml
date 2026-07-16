@@ -1,8 +1,13 @@
-# Encrypted: application.secrets.env (SOPS age). Secret: data/postgres-credentials
+# Secrets: application.secrets.env (SOPS). Helm overlay: helm-values.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: data
+
+configMapGenerator:
+  - name: postgres-ha-helm-values
+    files:
+      - values.yaml=helm-values.yaml
 
 secretGenerator:
   - name: postgres-credentials

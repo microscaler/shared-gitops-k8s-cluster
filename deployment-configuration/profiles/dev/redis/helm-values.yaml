@@ -1,0 +1,61 @@
+# Dev overlay for Bitnami Redis (Flux valuesFrom).
+global:
+  security:
+    allowInsecureImages: true
+
+architecture: standalone
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/redis
+  tag: 7.4.2-debian-12-r0
+
+auth:
+  enabled: false
+
+commonConfiguration: |-
+  appendonly yes
+  save ""
+
+master:
+  disableCommands: []
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 25m
+    limits:
+      memory: 256Mi
+      cpu: 200m
+  persistence:
+    enabled: true
+    existingClaim: redis-storage
+    path: /data
+  service:
+    type: ClusterIP
+    ports:
+      redis: 6379
+
+volumePermissions:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r51
+
+metrics:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/redis-exporter
+    tag: 1.67.0-debian-12-r0
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 25m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+  service:
+    type: ClusterIP
+    ports:
+      http: 9121

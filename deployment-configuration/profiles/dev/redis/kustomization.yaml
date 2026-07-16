@@ -1,18 +1,13 @@
-# Secrets: application.secrets.env (SOPS). Helm overlay: helm-values.yaml.
+# Dev Redis Helm overlay (no secrets — auth disabled on shared platform).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: data
 
 configMapGenerator:
-  - name: minio-helm-values
+  - name: redis-helm-values
     files:
       - values.yaml=helm-values.yaml
-
-secretGenerator:
-  - name: minio-credentials
-    envs:
-      - application.secrets.env
 
 generatorOptions:
   disableNameSuffixHash: true

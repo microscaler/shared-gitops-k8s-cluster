@@ -1,4 +1,4 @@
-# Bitnami Redis (standalone). Replaces raw Deployment; keeps Retain PVC redis-storage.
+# Bitnami Redis (standalone). Env knobs: profile helm-values.yaml.
 # Service DNS `redis` is a thin alias (service-redis.yaml) — chart exposes redis-master.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -27,66 +27,9 @@ spec:
         name: bitnami
         namespace: data
       interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: redis-helm-values
+      valuesKey: values.yaml
   values:
-    global:
-      security:
-        allowInsecureImages: true
-
     fullnameOverride: redis
-    architecture: standalone
-
-    image:
-      registry: docker.io
-      repository: bitnamilegacy/redis
-      tag: 7.4.2-debian-12-r0
-
-    auth:
-      enabled: false
-
-    commonConfiguration: |-
-      appendonly yes
-      save ""
-
-    master:
-      disableCommands: []
-      resources:
-        requests:
-          memory: 64Mi
-          cpu: 25m
-        limits:
-          memory: 256Mi
-          cpu: 200m
-      persistence:
-        enabled: true
-        existingClaim: redis-storage
-        path: /data
-      service:
-        type: ClusterIP
-        ports:
-          redis: 6379
-
-    # Existing redis-storage PVC was written by the raw Deployment; fix ownership for bitnami UID 1001.
-    volumePermissions:
-      enabled: true
-      image:
-        registry: docker.io
-        repository: bitnamilegacy/os-shell
-        tag: 12-debian-12-r51
-
-    metrics:
-      enabled: true
-      image:
-        registry: docker.io
-        repository: bitnamilegacy/redis-exporter
-        tag: 1.67.0-debian-12-r0
-      resources:
-        requests:
-          memory: 32Mi
-          cpu: 25m
-        limits:
-          memory: 128Mi
-          cpu: 100m
-      service:
-        type: ClusterIP
-        ports:
-          http: 9121

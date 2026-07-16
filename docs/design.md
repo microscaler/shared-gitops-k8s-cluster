@@ -115,10 +115,10 @@ git commit && git push
 
 | Item | Choice |
 |------|--------|
-| Format | `application.properties` (config) + `application.secrets.env` (SOPS) |
+| Format | `application.properties` (app env) + `helm-values*.yaml` (Helm overlays) + `application.secrets.env` (SOPS) |
 | Canonical path | `deployment-configuration/profiles/<env>/<component>/` |
 | Flux apply | GitOpsSet `profile-config` → `./deployment-configuration/profiles/dev/<component>` |
-| Apply | kustomize `configMapGenerator` + `secretGenerator` (metro prior art) |
+| Apply | kustomize `configMapGenerator` + `secretGenerator`; HelmRelease `valuesFrom` for chart knobs |
 | Decrypt in-cluster | Flux `decryption.provider: sops` → `flux-system/sops-age` |
 | Encrypt workstation | ms02 only; `just secrets-*` recipes |
 

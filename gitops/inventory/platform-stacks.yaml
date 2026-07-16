@@ -46,6 +46,7 @@ stacks:
     path: ./gitops/root/components/redis
     description: Bitnami Redis Helm (standalone, AOF, existingClaim Retain); MetalLB .225
     depends_on: [namespaces]
+    profile: redis
 
   - name: messaging
     path: ./gitops/root/components/messaging

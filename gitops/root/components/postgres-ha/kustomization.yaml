@@ -3,6 +3,6 @@ kind: Kustomization
 resources:
   - storageclass-local-path-retain.yaml
   - helmrepository.yaml
-  # Secrets: deployment-configuration/profiles/dev/postgres-ha (Flux profile-secrets)
+  # Config + secrets: deployment-configuration/profiles/dev/postgres-ha (Flux profile-config)
   - helm-release.yaml
   - postgres-lb-service.yaml

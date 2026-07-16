@@ -5,24 +5,23 @@
 
 ## Inventory
 
-| Component | `application.properties` | Secrets | Status |
-|-----------|--------------------------|---------|--------|
-| pact | yes → `pact-config` | `pact-credentials` | OK |
-| messaging | yes → `messaging-config` | — | OK |
-| imgproxy | yes → `imgproxy-config` | — | OK |
-| postgres-backup | yes → `postgres-backup-config` | uses postgres/minio | OK |
-| democratic-csi | yes → `democratic-csi-config` | driver + ssh YAML | OK |
-| cylon-infra | yes → `routellm-config` | — | OK |
-| observability | — | `opensearch-credentials` | secrets OK; Helm flags still in chart |
-| postgres-ha | — | `postgres-credentials` | secrets OK; Helm values still in chart |
-| minio | — | `minio-credentials` | secrets OK; Helm values still in chart |
-| cylon freeradius/squid | — | passwords in ConfigMaps | **open** |
-| ai / llmrouter | — | not in git | **open** |
+| Component | App properties | Helm valuesFrom | Secrets | Status |
+|-----------|----------------|-----------------|---------|--------|
+| pact | `pact-config` | — | `pact-credentials` | OK |
+| messaging | `messaging-config` | — | — | OK |
+| imgproxy | `imgproxy-config` | — | — | OK |
+| postgres-backup | `postgres-backup-config` | — | uses postgres/minio | OK |
+| democratic-csi | `democratic-csi-config` | — | driver + ssh YAML | OK |
+| cylon-infra | `routellm-config` | — | — | OK |
+| observability | — | `observability-helm-values` | `opensearch-credentials` | OK |
+| postgres-ha | — | `postgres-ha-helm-values` | `postgres-credentials` | OK |
+| minio | — | `minio-helm-values` | `minio-credentials` | OK |
+| redis | — | `redis-helm-values` | — | OK |
 
 Flux: GitOpsSet `profile-config` (replaces `profile-secrets`).
 
 ## Remaining
 
-1. Extract Helm env knobs (replicas, tags, storage, security flags) for observability / postgres-ha / minio / redis via `valuesFrom` ConfigMap from properties.
-2. MetalLB IPs → inventory dryness (not properties).
-3. FreeRADIUS / Squid passwords → SOPS secrets.
+1. FreeRADIUS / Squid passwords → SOPS secrets (still in ConfigMaps).
+2. MetalLB annotation patches / LAN proxy sync (inventory check OK).
+3. ai / llmrouter secrets not in git (**open**).

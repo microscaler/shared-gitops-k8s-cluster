@@ -1,3 +1,4 @@
+# OpenSearch Dashboards. Env knobs: profile helm-values-dashboards.yaml.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -26,25 +27,7 @@ spec:
         name: opensearch
         namespace: observability
       interval: 24h
-  values:
-    opensearchHosts: "http://opensearch-nodes:9200"
-
-    # Chart service stays ClusterIP; MetalLB alias is dashboards-lb-service.yaml
-    service:
-      type: ClusterIP
-      port: 5601
-
-    resources:
-      requests:
-        cpu: 50m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 768Mi
-
-    # Security plugin off on the cluster → no TLS/auth to OS
-    opensearchAccount:
-      secret: ""
-    extraEnvs:
-      - name: DISABLE_SECURITY_DASHBOARDS_PLUGIN
-        value: "true"
+  valuesFrom:
+    - kind: ConfigMap
+      name: observability-helm-values
+      valuesKey: dashboards.yaml

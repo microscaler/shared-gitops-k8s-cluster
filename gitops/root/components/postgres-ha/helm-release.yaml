@@ -1,4 +1,4 @@
-# Bitnami PostgreSQL HA (repmgr + Pgpool). Images from bitnamilegacy (Bitnami catalog move).
+# Bitnami PostgreSQL HA (repmgr + Pgpool). Env knobs: profile helm-values.yaml.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -27,32 +27,16 @@ spec:
         name: bitnami
         namespace: data
       interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: postgres-ha-helm-values
+      valuesKey: values.yaml
   values:
-    global:
-      # zfs-iscsi (democratic-csi) — see docs/storage-csi-zfs.md
-      # STS volumeClaimTemplates are immutable: storage-class cutovers delete STS+PVCs.
-      defaultStorageClass: zfs-iscsi
-      security:
-        # Required when pulling bitnamilegacy/* instead of bitnami/*
-        allowInsecureImages: true
-
+    # Identity / secret wiring (env overlays must not redefine these).
     fullnameOverride: postgres-ha
-
     postgresql:
-      image:
-        registry: docker.io
-        repository: bitnamilegacy/postgresql-repmgr
-        tag: 17.6.0-debian-12-r2
-      replicaCount: 3
-      username: postgres
-      database: postgres
-      # Passwords from SOPS Secret data/postgres-credentials (deployment-profiles/dev/postgres-ha)
       existingSecret: postgres-credentials
-      repmgrUsername: repmgr
-      repmgrDatabase: repmgr
-      # Hard anti-affinity: primary + 2 standbys must land on different nodes.
-      # Soft was already spreading them; hard makes it a scheduling guarantee.
-      podAntiAffinityPreset: hard
+      # Hard anti-affinity topology is instance-bound; keep with the release.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -62,75 +46,11 @@ spec:
               app.kubernetes.io/component: postgresql
               app.kubernetes.io/instance: postgres-ha
               app.kubernetes.io/name: postgresql-ha
-      # Give the scheduler explicit budget (workers are ~90% CPU-request packed).
-      resources:
-        requests:
-          cpu: 250m
-          memory: 512Mi
-        limits:
-          cpu: "2"
-          memory: 2Gi
-      # Standbys need longer than default while repmgr clones from primary
-      livenessProbe:
-        enabled: true
-        initialDelaySeconds: 120
-        periodSeconds: 20
-        timeoutSeconds: 10
-        failureThreshold: 30
-      readinessProbe:
-        enabled: true
-        initialDelaySeconds: 30
-        periodSeconds: 10
-        timeoutSeconds: 5
-        failureThreshold: 60
-      # Reverse DNS of pod IPs times out (~5s/conn) and breaks repmgr clone + local ping.
-      # Use chart knobs — do NOT set these via extraEnvVars (duplicates chart env keys → SSA fail).
-      # Do NOT set postgresql.configuration to a snippet — it replaces the entire conf and
-      # Postgres fatal: "syntax error near token =" (seen 2026-07-16 on zfs-iscsi cutover).
-      audit:
-        logHostname: false
-      repmgrConnectTimeout: 30
-
+      # Do NOT set postgresql.configuration to a snippet — it replaces the entire conf.
+      # Do NOT set reverse-DNS knobs via extraEnvVars (duplicates chart env keys → SSA fail).
     pgpool:
-      image:
-        registry: docker.io
-        repository: bitnamilegacy/pgpool
-        tag: 4.6.3-debian-12-r0
-      replicaCount: 2
-      podAntiAffinityPreset: hard
-      adminUsername: admin
-      # admin-password + sr-check-password from same SOPS Secret
       existingSecret: postgres-credentials
-      logHostname: false
-      # Must be stable — random chart default drifts from DB after upgrades
-      srCheckUsername: sr_check_user
-      srCheckDatabase: postgres
-      # Custom users that apps may use via Pgpool (dev parity)
-      # usernames/passwords are SOPS-managed in data/postgres-credentials.
-      # Product DB initializers still create the PostgreSQL roles/databases;
-      # this entry keeps Pgpool's separate pool_passwd in sync.
       customUsersSecret: postgres-credentials
-
-    metrics:
-      enabled: true
-      image:
-        registry: docker.io
-        repository: bitnamilegacy/postgres-exporter
-        tag: 0.17.1-debian-12-r16
-
-    volumePermissions:
-      enabled: true
-      image:
-        registry: docker.io
-        repository: bitnamilegacy/os-shell
-        tag: 12-debian-12-r51
-
-    persistence:
-      enabled: true
-      storageClass: zfs-iscsi
-      size: 10Gi
-
-    # Chart services stay ClusterIP; LoadBalancer alias is postgres-lb-service.yaml
     service:
       type: ClusterIP
       ports:
