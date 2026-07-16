@@ -1,30 +1,22 @@
 # Active Context
 
-**Last updated:** 2026-07-16 — Helm valuesFrom overlays live on dev.
+**Last updated:** 2026-07-16 — imgproxy + otel-collector on official Helm.
 
-## Config layout
+## Done this session
 
-```
-deployment-configuration/profiles/<env>/<component>/
-  application.properties     # app KEY=value → ConfigMap (envFrom)
-  helm-values.yaml           # Helm overlay → ConfigMap → HR valuesFrom
-  application.secrets.env    # SOPS secrets
-```
+- Helm `valuesFrom` for postgres-ha / minio / redis / observability
+- GitOpsSets catalog migration
+- **imgproxy** → official chart `imgproxy/imgproxy` 1.1.0 (`fullnameOverride: imgproxy`)
+  - Service :5001 → pod :8080 (chart probe requirement)
+- **otel-collector** → official `open-telemetry/opentelemetry-collector` 0.110.7
+  - MetalLB `.231` retained; config in `helm-values-otel.yaml`
 
-HelmRelease `spec.values` = structural only (existingSecret, MetalLB, affinity).
-Env knobs live in `helm-values*.yaml`.
+## Next Helm migrations (from audit)
 
-## valuesFrom (Ready)
+1. LiteLLM (routellm) — `oci://ghcr.io/berriai/litellm-helm` (BETA)
+2. Pact Broker — pact-foundation chart (no Bitnami Postgres subchart)
+3. Fluvio — upstream Helm (larger)
 
-| Chart | ConfigMap |
-|-------|-----------|
-| postgres-ha | `postgres-ha-helm-values` |
-| minio | `minio-helm-values` |
-| redis | `redis-helm-values` (+ new `profile-config-redis`) |
-| opensearch / dashboards / data-prepper | `observability-helm-values` (keys) |
+## Keep raw
 
-## Next (backlog)
-
-1. FreeRADIUS / Squid passwords → SOPS.
-2. MetalLB annotation patches / LAN proxy sync.
-3. Staging/prod Matrix enablement when clusters exist.
+NanoMQ, FreeRADIUS, Squid, llmrouter, postgres-backup CronJob, namespaces, MetalLB pool CRs, cert-manager Certificates.
