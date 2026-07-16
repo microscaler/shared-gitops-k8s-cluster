@@ -171,6 +171,29 @@ def attach_existing_index(
         raise ApiError(f"{index} does not expose required time field {time_field}")
 
 
+def matching_indices(client: JsonClient, pattern: str) -> list[str]:
+    status, response = client.request(
+        f"_cat/indices/{quote(pattern, safe='*')}?"
+        + urlencode({"format": "json", "h": "index", "expand_wildcards": "open"}),
+        allowed=(404,),
+    )
+    if status == 404:
+        return []
+    return sorted(
+        row["index"]
+        for row in response or []
+        if isinstance(row, dict) and row.get("index")
+    )
+
+
+def reconcile_matching_indices(
+    client: JsonClient, pattern: str, policy_id: str, time_field: str
+) -> None:
+    """Apply the contract to indices created before their template existed."""
+    for index in matching_indices(client, pattern):
+        attach_existing_index(client, index, policy_id, time_field)
+
+
 def monitor_payload(
     *,
     name: str,
@@ -626,15 +649,15 @@ def main() -> int:
         method="PUT",
         payload=index_template("otel-v1-apm-logs-*", "observedTime"),
     )
-    attach_existing_index(
+    reconcile_matching_indices(
         opensearch,
-        "otel-v1-apm-metrics",
+        METRICS_PATTERN,
         "observability-metrics-retention",
         "time",
     )
-    attach_existing_index(
+    reconcile_matching_indices(
         opensearch,
-        "otel-v1-apm-logs",
+        LOGS_PATTERN,
         "observability-logs-retention",
         "observedTime",
     )

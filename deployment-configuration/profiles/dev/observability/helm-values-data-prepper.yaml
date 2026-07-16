@@ -2,6 +2,12 @@
 fullnameOverride: data-prepper
 replicaCount: 1
 
+# 2.11 updates the OpenTelemetry protobuf decoder used by the metrics source.
+image:
+  repository: opensearchproject/data-prepper
+  tag: "2.11.0"
+  pullPolicy: IfNotPresent
+
 config:
   data-prepper-config.yaml: |
     ssl: false

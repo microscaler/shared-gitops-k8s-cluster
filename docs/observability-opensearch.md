@@ -27,7 +27,7 @@ durable metric store.
 |-----------|--------------|
 | OpenSearch | HelmRelease `opensearch`, single node, `zfs-iscsi` 30 GiB PVC |
 | Dashboards | HelmRelease `opensearch-dashboards`, MetalLB `.227:5601` |
-| Data Prepper | HelmRelease `data-prepper`, OTLP pipelines and server metrics on `:4900` |
+| Data Prepper | HelmRelease `data-prepper`, image 2.11, OTLP pipelines and pod-local server metrics on `:4900` |
 | OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231` |
 | Provisioner | Ten-minute CronJob reconciling lifecycle, saved objects, and monitors |
 
@@ -50,6 +50,9 @@ sets `OBSERVABILITY_RETENTION_DAYS=7`.
 - Dev telemetry indices use one primary and zero replicas because OpenSearch is
   deliberately single-node. This avoids permanently yellow indices and wasted
   capacity.
+- The provisioner reconciles both legacy and daily indices, including indices
+  created before their template existed, so all matching indices receive the
+  lifecycle policy and single-node settings.
 
 Seven days is a dev troubleshooting window, not an audit or financial-record
 retention policy. Production retention and topology must be sized separately.

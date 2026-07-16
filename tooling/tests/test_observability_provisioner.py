@@ -80,10 +80,30 @@ def test_existing_monitors_accepts_alerting_api_root_source_shape() -> None:
     assert monitors["Telemetry metrics stale"][0]["_id"] == "monitor-id"
 
 
+def test_matching_indices_includes_legacy_and_daily_indices() -> None:
+    class Client:
+        requested_path = ""
+
+        def request(self, path: str, **_kwargs: object) -> tuple[int, object]:
+            self.requested_path = path
+            return 200, [
+                {"index": "otel-v1-apm-logs-2026.07.16"},
+                {"index": "otel-v1-apm-logs"},
+            ]
+
+    client = Client()
+    indices = provisioner.matching_indices(client, "otel-v1-apm-logs*")
+
+    assert indices == ["otel-v1-apm-logs", "otel-v1-apm-logs-2026.07.16"]
+    assert client.requested_path.startswith("_cat/indices/otel-v1-apm-logs*")
+
+
 def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     profile = ROOT / "deployment-configuration/profiles/dev/observability"
     otel = yaml.safe_load((profile / "helm-values-otel.yaml").read_text())
     prepper = yaml.safe_load((profile / "helm-values-data-prepper.yaml").read_text())
+
+    assert prepper["image"]["tag"] == "2.11.0"
 
     processors = otel["config"]["processors"]
     assert processors["memory_limiter"]["limit_mib"] == 192
