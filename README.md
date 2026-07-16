@@ -67,8 +67,8 @@ explicitly suspended scaffold releases. To add a component:
 
 Tilt is the image-build inner loop. It must not decrypt/apply configuration or
 render/apply Helm workloads. Flux owns the product rollout. Image discovery is
-active; Git-writing automation remains off until the scoped credential gate in
-[`docs/product-image-automation.md`](docs/product-image-automation.md) is met.
+active and scoped Git-writing automation is proven; see
+[`docs/product-image-automation.md`](docs/product-image-automation.md).
 
 ## Layout
 
@@ -100,6 +100,7 @@ Secrets SOP: [`deployment-configuration/README.md`](deployment-configuration/REA
 |--------|---------|
 | `just validate-inventory` | Schema-check inventory YAML |
 | `just validate-product-components` | Validate product inventory and server-dry-run its GitOpsSet |
+| `just observability-provision-now` | Reconcile OpenSearch retention, dashboards, and alert monitors immediately |
 | `just build-dev` | `kustomize build gitops/clusters/dev` |
 | `just bootstrap-dev` | Apply cluster entrypoint (Flux + sync) |
 | `just flux-export` | Re-export Flux install into `root/flux/vX_Y_Z` |

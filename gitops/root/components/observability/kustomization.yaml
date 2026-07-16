@@ -14,3 +14,9 @@ resources:
   - helm-release-data-prepper.yaml
   - helm-release-otel.yaml
   - dashboards-lb-service.yaml
+  - observability-provisioner-cronjob.yaml
+
+configMapGenerator:
+  - name: observability-provisioner
+    files:
+      - provision-observability.py

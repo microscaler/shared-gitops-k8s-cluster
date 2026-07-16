@@ -2,6 +2,18 @@
 fullnameOverride: data-prepper
 replicaCount: 1
 
+ports:
+  - name: http-source
+    port: 2021
+  - name: otel-traces
+    port: 21890
+  - name: otel-metrics
+    port: 21891
+  - name: otel-logs
+    port: 21892
+  - name: server-api
+    port: 4900
+
 config:
   data-prepper-config.yaml: |
     ssl: false
@@ -42,7 +54,7 @@ pipelineConfig:
         - opensearch:
             hosts: ["http://opensearch-nodes:9200"]
             insecure: true
-            index: otel-v1-apm-metrics
+            index: otel-v1-apm-metrics-%{yyyy.MM.dd}
     otel-logs-pipeline:
       workers: 2
       delay: 100
@@ -54,7 +66,7 @@ pipelineConfig:
         - opensearch:
             hosts: ["http://opensearch-nodes:9200"]
             insecure: true
-            index: otel-v1-apm-logs
+            index: otel-v1-apm-logs-%{yyyy.MM.dd}
 
 resources:
   requests:

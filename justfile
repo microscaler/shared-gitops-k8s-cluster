@@ -177,6 +177,16 @@ postgres-backup-restore-drill database="rerp":
 	  {{repo_root}}/tooling/src/shared_gitops/postgres_restore_drill.py \
 	  --kubeconfig "$KUBECONFIG" --database "{{database}}"
 
+# Reconcile OpenSearch retention, dashboard assets, and alert monitors now.
+observability-provision-now:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	NAME="observability-provisioner-manual-$(date -u +%Y%m%d%H%M%S)"
+	kubectl -n observability create job "$NAME" --from=cronjob/observability-provisioner
+	kubectl -n observability wait --for=condition=complete "job/$NAME" --timeout=300s
+	kubectl -n observability logs "job/$NAME"
+
 # Heal stuck Terminating MinIO PVC/PV (Retain hostPath kept on disk), then apply Flux component
 heal-minio-pvc:
 	#!/usr/bin/env bash

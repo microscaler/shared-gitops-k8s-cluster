@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: observability-provisioner
+  labels:
+    app.kubernetes.io/name: observability-provisioner
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: observability-provisioner
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: provisioner
+              image: python:3.13.7-alpine3.22
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - /opt/observability/provision-observability.py
+              env:
+                - name: OPENSEARCH_URL
+                  value: http://opensearch-nodes.observability.svc.cluster.local:9200
+                - name: DASHBOARDS_URL
+                  value: http://opensearch-dashboards.observability.svc.cluster.local:5601
+              envFrom:
+                - configMapRef:
+                    name: observability-runtime
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+              volumeMounts:
+                - name: provisioner
+                  mountPath: /opt/observability
+                  readOnly: true
+          volumes:
+            - name: provisioner
+              configMap:
+                name: observability-provisioner
