@@ -8,11 +8,13 @@ sources:
     branch: main
     secret_ref: gitops-auth
   - name: sesame-idam
-    url: ssh://git@github.com/microscaler/seasame-idam.git
+    # GitHub repo is sesame-idam; local checkout path remains seasame-idam.
+    url: ssh://git@github.com/microscaler/sesame-idam.git
     branch: main
     secret_ref: gitops-auth
   - name: hauliage
-    url: ssh://git@github.com/microscaler/hauliage.git
+    # GitHub repo is haulage; local checkout / product name remains hauliage.
+    url: ssh://git@github.com/microscaler/haulage.git
     branch: main
     secret_ref: gitops-auth
 
