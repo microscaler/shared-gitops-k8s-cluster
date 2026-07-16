@@ -6,7 +6,9 @@ creation_rules:
     key_groups:
       - age:
           - age1lh3s2uyxrqu0u7hqgulnd43q3v0xvktukq3fcxuu6gw97uye59rqgjsd07
-  - path_regex: deployment-configuration/profiles/.*\.(yaml|yml)$
+  # Flux requires metadata (apiVersion/kind/name) plaintext; encrypt only Secret payload.
+  - path_regex: deployment-configuration/profiles/.*/.*\.secret\.yaml$
+    encrypted_regex: ^(data|stringData)$
     key_groups:
       - age:
           - age1lh3s2uyxrqu0u7hqgulnd43q3v0xvktukq3fcxuu6gw97uye59rqgjsd07
