@@ -38,26 +38,59 @@ postgresql:
   audit:
     logHostname: false
   repmgrConnectTimeout: 30
+  # Dev runs many microservice pools through 2× pgpool; raise backend headroom.
+  extendedConf: |
+    max_connections = 300
 
 pgpool:
   image:
     registry: docker.io
     repository: bitnamilegacy/pgpool
     tag: 4.6.3-debian-12-r0
-  replicaCount: 2
+  # Dev needs no pgpool HA (postgresql statefulset still runs 3 replicas for
+  # DB HA); one pgpool replica halves memory + connection pressure.
+  replicaCount: 1
   podAntiAffinityPreset: hard
   adminUsername: admin
   logHostname: false
   srCheckUsername: sr_check_user
   srCheckDatabase: postgres
-  # Init was OOM-killed at 384Mi (containerd); leave headroom for 2 replicas.
+  # Connection budget vs postgresql max_connections=300 (extendedConf above):
+  #   numInitChildren × maxPool × replicaCount = 32 × 4 × 1 = 128  (< 300, ok).
+  # 32 children keeps ample front-end headroom for hauliage + sesame-idam + rerp
+  # + opengroupware pools; the memory bump below is what actually prevents the
+  # pgpool OOM that previously masqueraded as "too many clients" during crashes.
+  numInitChildren: "32"
+  maxPool: "4"
+  reservedConnections: "2"
+  childLifeTime: "300"
+  childMaxConnections: "0"
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 12
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+  # Init was OOM-killed at 384Mi, then again at 768Mi (container init OOM,
+  # containerd) — 32 forked children + parent + PCP need real headroom.
+  # Raised to 1.5Gi limit / 768Mi request per replica.
   resources:
     requests:
       cpu: 250m
-      memory: 512Mi
+      memory: 768Mi
     limits:
       cpu: 500m
-      memory: 768Mi
+      memory: 1536Mi
 
 metrics:
   enabled: true
