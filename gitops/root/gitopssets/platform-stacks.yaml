@@ -1,8 +1,11 @@
-# Renders one Flux Kustomization per stack directory under the cluster inventory.
-# Convention: directory name == component folder under gitops/root/components/
-# (e.g. stacks/namespaces → ./gitops/root/components/namespaces).
-# Nested components (platform/dev-tls): use a stacks/platform-dev-tls dir and
-# add a List/Matrix override GitOpsSet later, or symlink naming.
+# Renders one Flux Kustomization per enabled stack from the per-cluster inventory.
+#
+# Catalog (path / depends_on / profile): gitops/inventory/platform-stacks.yaml
+# Enablement: gitops/clusters/<id>/inventory/stacks/<name>/
+# Generated input: gitops/clusters/<id>/inventory/stacks.yaml
+#   → just sync-stack-inventory <id>
+#
+# dependsOn includes stack-* and profile-config-* (when a profile exists).
 apiVersion: sets.gitops.pro/v1alpha1
 kind: GitOpsSet
 metadata:
@@ -15,27 +18,39 @@ metadata:
 spec:
   serviceAccountName: gitopssets-platform
   generators:
-    - gitRepository:
-        repositoryRef: shared-gitops
-        directories:
-          - path: gitops/clusters/dev/inventory/stacks/*
+    # Matrix keeps cluster/env on Element; stacks.yaml supplies the stack list.
+    # Add another list element (+ stacks.yaml path) when staging/prod go live.
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - cluster_id: dev
+                  profile_env: dev
+                  stacks_file: gitops/clusters/dev/inventory/stacks.yaml
+          - gitRepository:
+              repositoryRef: shared-gitops
+              files:
+                - path: gitops/clusters/dev/inventory/stacks.yaml
   templates:
-    - content:
+    - repeat: "{ .stacks }"
+      content:
         apiVersion: kustomize.toolkit.fluxcd.io/v1
         kind: Kustomization
         metadata:
-          name: "stack-${{ .Element.Base }}"
+          name: "stack-${{ .Repeat.name }}"
           namespace: flux-system
           labels:
-            gitops.microscaler.io/stack: "${{ .Element.Base }}"
+            gitops.microscaler.io/stack: "${{ .Repeat.name }}"
+            gitops.microscaler.io/cluster: "${{ .Element.cluster_id }}"
             app.kubernetes.io/part-of: shared-gitops-k8s-cluster
         spec:
           interval: 5m
           retryInterval: 1m
           timeout: 10m
-          path: "./gitops/root/components/${{ .Element.Base }}"
+          path: "${{ .Repeat.path }}"
           prune: true
           wait: true
+          dependsOn: ${{ .Repeat.depends | toYaml | nindent 12 }}
           decryption:
             provider: sops
             secretRef:

@@ -1,0 +1,10 @@
+# GENERATED — do not edit by hand.
+# Source: gitops/inventory/platform-stacks.yaml + clusters/staging/inventory/stacks/<name>/
+# Regenerate: just sync-stack-inventory staging
+cluster_id: staging
+profile_env: staging
+stacks:
+- name: namespaces
+  path: ./gitops/root/components/namespaces
+  description: Platform and app namespaces
+  depends: []

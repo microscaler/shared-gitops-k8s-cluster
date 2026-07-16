@@ -1,5 +1,7 @@
-# Flux Kustomizations for deployment-configuration/profiles/dev/<component>
+# Flux Kustomizations for deployment-configuration/profiles/<env>/<component>
 # (application.properties → ConfigMap, application.secrets.env / *.secret.yaml → Secret).
+#
+# Matrix: cluster list × profile directories (named generators → .Element.cluster / .Element.profile).
 apiVersion: sets.gitops.pro/v1alpha1
 kind: GitOpsSet
 metadata:
@@ -12,25 +14,35 @@ metadata:
 spec:
   serviceAccountName: gitopssets-platform
   generators:
-    - gitRepository:
-        repositoryRef: shared-gitops
-        directories:
-          - path: deployment-configuration/profiles/dev/*
+    - matrix:
+        generators:
+          - name: cluster
+            list:
+              elements:
+                - cluster_id: dev
+                  profile_env: dev
+          - name: profile
+            gitRepository:
+              repositoryRef: shared-gitops
+              directories:
+                - path: deployment-configuration/profiles/dev/*
   templates:
     - content:
         apiVersion: kustomize.toolkit.fluxcd.io/v1
         kind: Kustomization
         metadata:
-          name: "profile-config-${{ .Element.Base }}"
+          name: "profile-config-${{ .Element.profile.Base }}"
           namespace: flux-system
           labels:
-            gitops.microscaler.io/profile-config: "${{ .Element.Base }}"
+            gitops.microscaler.io/profile-config: "${{ .Element.profile.Base }}"
+            gitops.microscaler.io/cluster: "${{ .Element.cluster.cluster_id }}"
+            gitops.microscaler.io/profile-env: "${{ .Element.cluster.profile_env }}"
             app.kubernetes.io/part-of: shared-gitops-k8s-cluster
         spec:
           interval: 5m
           retryInterval: 1m
           timeout: 5m
-          path: "./deployment-configuration/profiles/dev/${{ .Element.Base }}"
+          path: "./deployment-configuration/profiles/${{ .Element.cluster.profile_env }}/${{ .Element.profile.Base }}"
           prune: true
           wait: true
           decryption:

@@ -1,8 +1,11 @@
-# Platform stack catalog — GitOpsSets template Flux Kustomizations from these rows.
-# Per-cluster enablement: gitops/clusters/<id>/inventory/stacks.yaml (subset + overrides).
+# Platform stack catalog — source of truth for path + depends_on + profile.
+# Enablement: mkdir gitops/clusters/<id>/inventory/stacks/<name>/
+# Render for GitOpsSet: just sync-stack-inventory <id>
 #
 # path: repo-relative path for Flux Kustomization.spec.path
-# depends_on: other stack names (same catalog) for Flux dependsOn
+# depends_on: other catalog stack names → Flux dependsOn stack-<name>
+# profile: optional profile-config-<name> dependency (default: auto if
+#          deployment-configuration/profiles/<env>/<stack>/ exists)
 
 stacks:
   - name: namespaces
@@ -14,6 +17,7 @@ stacks:
     path: ./gitops/root/components/democratic-csi
     description: Host ZFS ZVOL + LIO iSCSI (democratic-csi); StorageClass zfs-iscsi
     depends_on: [namespaces]
+    profile: democratic-csi
 
   - name: cluster
     path: ./gitops/root/components/cluster
@@ -24,16 +28,19 @@ stacks:
     path: ./gitops/root/components/postgres-ha
     description: Bitnami postgresql-ha (repmgr + Pgpool) with bitnamilegacy images
     depends_on: [namespaces]
+    profile: postgres-ha
 
   - name: minio
     path: ./gitops/root/components/minio
     description: MinIO Helm (charts.min.io standalone, existingClaim Retain); MetalLB .226
     depends_on: [namespaces]
+    profile: minio
 
   - name: postgres-backup
     path: ./gitops/root/components/postgres-backup
     description: pg_dumpall CronJob → MinIO bucket postgres-backups
     depends_on: [postgres-ha, minio]
+    profile: postgres-backup
 
   - name: redis
     path: ./gitops/root/components/redis
@@ -44,36 +51,40 @@ stacks:
     path: ./gitops/root/components/messaging
     description: Mailpit (Retain), Mailhog, Inbucket
     depends_on: [namespaces]
+    profile: messaging
 
   - name: pact
     path: ./gitops/root/components/pact
-    description: Pact Broker + dedicated Postgres (Retain hostPath)
+    description: Pact Broker + dedicated Postgres
     depends_on: [namespaces]
+    profile: pact
 
   - name: imgproxy
     path: ./gitops/root/components/imgproxy
     description: Imgproxy over MinIO PVC
     depends_on: [minio]
+    profile: imgproxy
 
   - name: mosquitto
     path: ./gitops/root/components/mosquitto
-    description: NanoMQ MQTT broker (Service name mosquitto); enable/disable via inventory stack dir
+    description: NanoMQ MQTT broker (Service name mosquitto)
     depends_on: [namespaces]
 
   - name: scheduling
     path: ./gitops/root/components/scheduling
-    description: Faktory job server (Retain hostPath)
+    description: Faktory job server
     depends_on: [namespaces]
 
   - name: pipeline
     path: ./gitops/root/components/pipeline
-    description: Fluvio streaming (SC + SpuGroup; Retain SPU PVs)
+    description: Fluvio streaming (SC + SpuGroup)
     depends_on: [namespaces]
 
   - name: observability
     path: ./gitops/root/components/observability
-    description: OpenSearch + Dashboards + Data Prepper (Helm) + OTel collector; MetalLB Dashboards .227, OTel .231
+    description: OpenSearch + Dashboards + Data Prepper + OTel; MetalLB .227/.231
     depends_on: [namespaces]
+    profile: observability
 
   - name: ai
     path: ./gitops/root/components/ai
@@ -82,15 +93,16 @@ stacks:
 
   - name: platform-openbao
     path: ./gitops/root/components/platform-openbao
-    description: OpenBao via Flux HelmRelease (openbao/openbao chart); Retain hostPath PV
+    description: OpenBao via Flux HelmRelease
     depends_on: [namespaces]
 
   - name: cylon-infra
     path: ./gitops/root/components/cylon-infra
     description: routellm, squid, freeradius, resurrection-hub
     depends_on: [namespaces]
+    profile: cylon-infra
 
   - name: platform-dev-tls
     path: ./gitops/root/components/platform-dev-tls
-    description: cert-manager bootstrapped dev CA + wildcard (wrapper → platform/dev-tls)
+    description: cert-manager bootstrapped dev CA + wildcard
     depends_on: [namespaces]

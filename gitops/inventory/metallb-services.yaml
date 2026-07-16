@@ -1,6 +1,9 @@
 # MetalLB LoadBalancer inventory (dev / Multipass bridge 10.177.76.0/24).
 # Host LAN proxy (shared-k8s-cluster) should consume this file — do not fork a second table.
+# Check drift: just check-metallb-inventory
 # Future clusters override via clusters/<id>/inventory/metallb-services.yaml.
+#
+# status: unused → reserved IP, no component annotation expected yet
 
 services:
   - name: registry
@@ -72,18 +75,20 @@ services:
         protocol: TCP
     lan_port: 9000
 
-  - name: grafana
+  # Historical Grafana IP — now OpenSearch Dashboards LB (port 5601)
+  - name: opensearch-dashboards-lb
     namespace: observability
     lb_ip: 10.177.76.227
     ports:
       - name: http
-        port: 3000
+        port: 5601
         protocol: TCP
-    lan_port: 3000
+    lan_port: 5601
 
   - name: prometheus
     namespace: observability
     lb_ip: 10.177.76.228
+    status: unused
     ports:
       - name: http
         port: 9090
@@ -93,6 +98,7 @@ services:
   - name: loki
     namespace: observability
     lb_ip: 10.177.76.229
+    status: unused
     ports:
       - name: http
         port: 3100
@@ -102,6 +108,7 @@ services:
   - name: jaeger
     namespace: observability
     lb_ip: 10.177.76.230
+    status: unused
     ports:
       - name: ui
         port: 16686
@@ -174,6 +181,7 @@ services:
   - name: resurrection-hub
     namespace: cylon
     lb_ip: 10.177.76.236
+    status: unused
     ports:
       - name: http
         port: 14000

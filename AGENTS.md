@@ -20,6 +20,12 @@ Bootstrap target context is **`shared-k8s`** (`shared-k8s-cluster/kubeconfig/sha
 
 Change stacks / MetalLB / apps in `gitops/inventory/` (+ per-cluster overlays). Do not hand-duplicate Flux `Kustomization` CRs when a GitOpsSet template already covers them.
 
+Platform stacks:
+- Catalog: `gitops/inventory/platform-stacks.yaml` (`path`, `depends_on`, `profile`)
+- Enable: `mkdir gitops/clusters/<id>/inventory/stacks/<name>/`
+- Render: `just sync-stack-inventory <id>` → `stacks.yaml` (committed; consumed by `platform-stacks` GitOpsSet)
+- MetalLB check: `just check-metallb-inventory`
+
 ### 3. Env config + secrets under `deployment-configuration/profiles/`
 
 **Canonical process** (SMC / metro-aligned; do not invent alternatives):

@@ -1,0 +1,107 @@
+# GENERATED — do not edit by hand.
+# Source: gitops/inventory/platform-stacks.yaml + clusters/dev/inventory/stacks/<name>/
+# Regenerate: just sync-stack-inventory dev
+cluster_id: dev
+profile_env: dev
+stacks:
+- name: ai
+  path: ./gitops/root/components/ai
+  description: Shared LLMRouter
+  depends:
+  - name: stack-namespaces
+- name: cluster
+  path: ./gitops/root/components/cluster
+  description: In-cluster OCI registry + housekeeping (MetalLB Services)
+  depends:
+  - name: stack-namespaces
+- name: cylon-infra
+  path: ./gitops/root/components/cylon-infra
+  description: routellm, squid, freeradius, resurrection-hub
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-cylon-infra
+- name: democratic-csi
+  path: ./gitops/root/components/democratic-csi
+  description: Host ZFS ZVOL + LIO iSCSI (democratic-csi); StorageClass zfs-iscsi
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-democratic-csi
+- name: imgproxy
+  path: ./gitops/root/components/imgproxy
+  description: Imgproxy over MinIO PVC
+  depends:
+  - name: stack-minio
+  - name: profile-config-imgproxy
+- name: messaging
+  path: ./gitops/root/components/messaging
+  description: Mailpit (Retain), Mailhog, Inbucket
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-messaging
+- name: minio
+  path: ./gitops/root/components/minio
+  description: MinIO Helm (charts.min.io standalone, existingClaim Retain); MetalLB
+    .226
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-minio
+- name: mosquitto
+  path: ./gitops/root/components/mosquitto
+  description: NanoMQ MQTT broker (Service name mosquitto)
+  depends:
+  - name: stack-namespaces
+- name: namespaces
+  path: ./gitops/root/components/namespaces
+  description: Platform and app namespaces
+  depends: []
+- name: observability
+  path: ./gitops/root/components/observability
+  description: OpenSearch + Dashboards + Data Prepper + OTel; MetalLB .227/.231
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-observability
+- name: pact
+  path: ./gitops/root/components/pact
+  description: Pact Broker + dedicated Postgres
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-pact
+- name: pipeline
+  path: ./gitops/root/components/pipeline
+  description: Fluvio streaming (SC + SpuGroup)
+  depends:
+  - name: stack-namespaces
+- name: platform-dev-tls
+  path: ./gitops/root/components/platform-dev-tls
+  description: cert-manager bootstrapped dev CA + wildcard
+  depends:
+  - name: stack-namespaces
+- name: platform-openbao
+  path: ./gitops/root/components/platform-openbao
+  description: OpenBao via Flux HelmRelease
+  depends:
+  - name: stack-namespaces
+- name: postgres-backup
+  path: ./gitops/root/components/postgres-backup
+  description: "pg_dumpall CronJob \u2192 MinIO bucket postgres-backups"
+  depends:
+  - name: stack-postgres-ha
+  - name: stack-minio
+  - name: profile-config-postgres-backup
+- name: postgres-ha
+  path: ./gitops/root/components/postgres-ha
+  description: Bitnami postgresql-ha (repmgr + Pgpool) with bitnamilegacy images
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-postgres-ha
+- name: redis
+  path: ./gitops/root/components/redis
+  description: Bitnami Redis Helm (standalone, AOF, existingClaim Retain); MetalLB
+    .225
+  depends:
+  - name: stack-namespaces
+- name: scheduling
+  path: ./gitops/root/components/scheduling
+  description: Faktory job server
+  depends:
+  - name: stack-namespaces
