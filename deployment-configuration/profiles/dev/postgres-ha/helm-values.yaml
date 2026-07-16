@@ -67,7 +67,7 @@ pgpool:
   childMaxConnections: "0"
   startupProbe:
     enabled: true
-    initialDelaySeconds: 15
+    initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 30
@@ -90,7 +90,7 @@ pgpool:
       memory: 768Mi
     limits:
       cpu: 500m
-      memory: 1536Mi
+      memory: 2000Mi
 
 metrics:
   enabled: true
