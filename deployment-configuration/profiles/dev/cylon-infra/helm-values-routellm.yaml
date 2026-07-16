@@ -48,8 +48,16 @@ proxy_config:
 
 resources:
   requests:
-    cpu: 50m
-    memory: 128Mi
-  limits:
-    cpu: 500m
+    cpu: 100m
     memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1536Mi
+# LiteLLM needs longer than chart defaults to bind before probes.
+startupProbe:
+  path: /health/readiness
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 60
