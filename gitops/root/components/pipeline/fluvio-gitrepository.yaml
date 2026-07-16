@@ -1,4 +1,8 @@
-# Public upstream charts: https://github.com/infinyon/fluvio/tree/master/k8-util/helm
+# Public upstream charts — no vendor copy.
+# https://github.com/infinyon/fluvio/tree/master/k8-util/helm
+#
+# Pin past v0.18.1: that tag's topics CRD has an invalid OpenAPI field and
+# fails Helm server-side apply. This commit includes the fix on master.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -12,7 +16,7 @@ spec:
   timeout: 3m
   url: https://github.com/infinyon/fluvio.git
   ref:
-    tag: v0.18.1
+    commit: 52673942c1c7364f36f2e05da972436f761243cd
   ignore: |
     /*
     !/k8-util/
