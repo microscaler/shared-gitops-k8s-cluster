@@ -1,16 +1,14 @@
 # Progress
 
-## Done (2026-07-16) — secrets → SOPS
+## 2026-07-16 — profiles on main
 
-- Audited gitops components for plaintext Secrets
-- Migrated postgres-ha, minio, pact to `deployment-profiles/dev/*` + Flux `secrets/` mirrors
-- postgres-ha HelmRelease: `existingSecret: postgres-credentials` (no inline passwords)
-- Applied to cluster via `just secrets-apply`
-- Fixed `just secrets-encrypt` in-place encrypt for `.sops.yaml` path_regex
-- Docs: `docs/secrets-audit.md`, updated `deployment-profiles/README.md`, `AGENTS.md`
+Pushed:
+- `d54a6da` feat(profiles): deployment-configuration + SOPS + application.properties + ansible
+- `8ee45b3` fix(csi): encrypt only Secret data/stringData for Flux SOPS
 
-## Open
+Observed:
+- All `profile-config-*` Ready
+- Platform stacks Ready after recreating pact Deployments (SSA value→valueFrom conflict)
+- HelmReleases Ready; data/observability/democratic-csi/cylon pods Running
 
-- cylon-infra FreeRADIUS/Squid passwords still in ConfigMaps
-- ai/llmrouter optional API keys profile when needed
-- Rotate preserved dev passwords before non-dev
+Next: extract remaining Helm chart env knobs (observability, postgres-ha, minio, redis).
