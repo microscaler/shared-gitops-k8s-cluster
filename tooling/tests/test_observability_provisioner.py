@@ -120,3 +120,15 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     log_sink = pipelines["otel-logs-pipeline"]["sink"][0]["opensearch"]
     assert metric_sink["index"] == "otel-v1-apm-metrics-%{yyyy.MM.dd}"
     assert log_sink["index"] == "otel-v1-apm-logs-%{yyyy.MM.dd}"
+
+
+def test_helm_values_changes_trigger_release_reconciliation() -> None:
+    profile = ROOT / "deployment-configuration/profiles/dev/observability"
+    kustomization = yaml.safe_load((profile / "kustomization.yaml").read_text())
+    helm_values = next(
+        generator
+        for generator in kustomization["configMapGenerator"]
+        if generator["name"] == "observability-helm-values"
+    )
+
+    assert helm_values["options"]["labels"]["reconcile.fluxcd.io/watch"] == "Enabled"

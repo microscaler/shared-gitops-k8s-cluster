@@ -14,6 +14,9 @@ configMapGenerator:
       - dashboards.yaml=helm-values-dashboards.yaml
       - data-prepper.yaml=helm-values-data-prepper.yaml
       - otel.yaml=helm-values-otel.yaml
+    options:
+      labels:
+        reconcile.fluxcd.io/watch: Enabled
 
 secretGenerator:
   - name: opensearch-credentials
