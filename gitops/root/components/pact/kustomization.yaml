@@ -4,4 +4,5 @@ resources:
   # Config + secrets: deployment-configuration/profiles/dev/pact (Flux profile-config)
   - storage.yaml
   - pact-postgres.yaml
-  - pact-broker.yaml
+  - helmrepository.yaml
+  - helm-release.yaml

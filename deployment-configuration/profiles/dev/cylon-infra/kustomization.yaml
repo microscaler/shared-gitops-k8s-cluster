@@ -1,12 +1,16 @@
+# Env for LiteLLM (VLLM_*). Helm overlay: helm-values-routellm.yaml.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: cylon
 
 configMapGenerator:
-  - name: routellm-config
+  - name: routellm-env
     envs:
       - application.properties
+  - name: cylon-infra-helm-values
+    files:
+      - routellm.yaml=helm-values-routellm.yaml
 
 generatorOptions:
   disableNameSuffixHash: true

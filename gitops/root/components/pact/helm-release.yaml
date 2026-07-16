@@ -1,0 +1,38 @@
+# Pact Foundation chart. Env knobs: profile helm-values.yaml. DB: pact-postgres (raw).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: pact-broker
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: pact
+spec:
+  interval: 30m
+  timeout: 10m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: true
+      retries: 3
+  chart:
+    spec:
+      chart: pact-broker
+      version: "6.2.2"
+      sourceRef:
+        kind: HelmRepository
+        name: pact-broker
+        namespace: data
+      interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: pact-helm-values
+      valuesKey: values.yaml
+  values:
+    # MetalLB IPs: gitops/inventory/metallb-services.yaml
+    service:
+      type: LoadBalancer
+      annotations:
+        metallb.universe.tf/loadBalancerIPs: "10.177.76.232"

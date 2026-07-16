@@ -7,12 +7,12 @@
 
 | Component | App properties | Helm valuesFrom | Secrets | Status |
 |-----------|----------------|-----------------|---------|--------|
-| pact | `pact-config` | — | `pact-credentials` | OK |
+| pact | `pact-config` | `pact-helm-values` | `pact-credentials` | OK |
 | messaging | `messaging-config` | — | — | OK |
 | imgproxy | — | `imgproxy-helm-values` | — | OK |
 | postgres-backup | `postgres-backup-config` | — | uses postgres/minio | OK |
 | democratic-csi | `democratic-csi-config` | — | driver + ssh YAML | OK |
-| cylon-infra | `routellm-config` | — | — | OK |
+| cylon-infra | `routellm-env` | `cylon-infra-helm-values` | — | OK |
 | observability | — | `observability-helm-values` (OS/dashboards/prepper/otel) | `opensearch-credentials` | OK |
 | postgres-ha | — | `postgres-ha-helm-values` | `postgres-credentials` | OK |
 | minio | — | `minio-helm-values` | `minio-credentials` | OK |

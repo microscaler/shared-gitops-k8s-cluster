@@ -3,5 +3,5 @@ kind: Kustomization
 namespace: cylon
 resources:
   # Config: deployment-configuration/profiles/dev/cylon-infra (Flux profile-config)
-  - deployment.yaml
-  - service.yaml
+  - helmrepository.yaml
+  - helm-release.yaml

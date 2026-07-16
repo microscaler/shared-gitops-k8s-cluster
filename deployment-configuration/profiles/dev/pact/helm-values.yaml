@@ -1,0 +1,48 @@
+# Dev overlay for Pact Foundation pact-broker chart (Flux valuesFrom).
+# Postgres stays the dedicated raw Deployment `pact-postgres` (no Bitnami subchart).
+fullnameOverride: pact-broker
+nameOverride: pact-broker
+
+broker:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/pact-foundation/pact-broker
+    tag: 2.139.0-pactbroker2.119.0
+  config:
+    logLevel: info
+    databaseSslmode: disable
+    basicAuth:
+      enabled: true
+      allowPublicRead: true
+      publicHeartbeat: true
+      writeUser:
+        existingSecret: pact-credentials
+        existingSecretUsernameKey: PACT_BROKER_BASIC_AUTH_USERNAME
+        existingSecretPasswordKey: PACT_BROKER_BASIC_AUTH_PASSWORD
+    disable_ssl: true
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
+    limits:
+      memory: 256Mi
+      cpu: 300m
+
+service:
+  type: LoadBalancer
+  ports:
+    http: 9292
+    https: 8443
+
+ingress:
+  enabled: false
+
+database:
+  host: pact-postgres
+  port: "5432"
+  adapter: postgres
+  databaseName: pact
+  auth:
+    username: pact
+    existingSecret: pact-credentials
+    existingSecretPasswordKey: PACT_POSTGRES_PASSWORD
