@@ -90,6 +90,7 @@ Flux reconcile, or `just secrets-apply` for an immediate ConfigMap refresh.
 | postgres-ha | `postgres-ha-helm-values` | `postgres-credentials` |
 | minio | `minio-helm-values` | `minio-credentials` |
 | redis | `redis-helm-values` | — |
+| pipeline | `pipeline-helm-values` | — |
 
 ### Helm `valuesFrom` example
 

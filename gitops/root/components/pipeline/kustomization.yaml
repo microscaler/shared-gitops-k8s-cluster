@@ -1,14 +1,11 @@
+# Fluvio via Flux: GitRepository (public) → fluvio-sys (CRDs) + fluvio-app (SC).
+# SpuGroup remains a CR (same as `fluvio cluster create spg`).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - fluvio-rbac.yaml
-  - crds/mirrors.yaml
-  - crds/partitions.yaml
-  - crds/smartmodules.yaml
-  - crds/spugroups.yaml
-  - crds/spus.yaml
-  - crds/tableformats.yaml
-  - crds/topics.yaml
-  - fluvio-sc.yaml
+  - fluvio-gitrepository.yaml
+  - helm-release-fluvio-sys.yaml
+  - helm-release-fluvio-app.yaml
+  - service-fluvio-sc.yaml
   - fluvio-spugroup.yaml

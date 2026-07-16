@@ -68,9 +68,10 @@ stacks:
   - name: profile-config-pact
 - name: pipeline
   path: ./gitops/root/components/pipeline
-  description: Fluvio streaming (SC + SpuGroup)
+  description: Fluvio streaming (SC + SpuGroup) via official helm from public git
   depends:
   - name: stack-namespaces
+  - name: profile-config-pipeline
 - name: platform-dev-tls
   path: ./gitops/root/components/platform-dev-tls
   description: cert-manager bootstrapped dev CA + wildcard

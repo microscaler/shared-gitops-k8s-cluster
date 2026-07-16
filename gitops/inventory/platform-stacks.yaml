@@ -78,8 +78,9 @@ stacks:
 
   - name: pipeline
     path: ./gitops/root/components/pipeline
-    description: Fluvio streaming (SC + SpuGroup)
+    description: Fluvio streaming (SC + SpuGroup) via official helm from public git
     depends_on: [namespaces]
+    profile: pipeline
 
   - name: observability
     path: ./gitops/root/components/observability
