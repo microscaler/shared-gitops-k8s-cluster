@@ -1,22 +1,23 @@
 # Active Context
 
-**Last updated:** 2026-07-16 — imgproxy + otel-collector on official Helm.
+**Last updated:** 2026-07-16 — LiteLLM + Pact Broker on official Helm.
 
-## Done this session
+## Helm migrations done
 
-- Helm `valuesFrom` for postgres-ha / minio / redis / observability
-- GitOpsSets catalog migration
-- **imgproxy** → official chart `imgproxy/imgproxy` 1.1.0 (`fullnameOverride: imgproxy`)
-  - Service :5001 → pod :8080 (chart probe requirement)
-- **otel-collector** → official `open-telemetry/opentelemetry-collector` 0.110.7
-  - MetalLB `.231` retained; config in `helm-values-otel.yaml`
+| Workload | Chart | Notes |
+|----------|-------|-------|
+| imgproxy | imgproxy/imgproxy 1.1.0 | Service :5001→8080 |
+| otel-collector | open-telemetry 0.110.7 | MetalLB .231 |
+| routellm (LiteLLM) | oci litellm-helm 1.92.0 | Bitnami DB/Redis **off**; memory 1.5Gi; MetalLB .221 |
+| pact-broker | pact-broker 6.2.2 | External `pact-postgres` (raw); MetalLB .232 |
 
-## Next Helm migrations (from audit)
+## Deferred
 
-1. LiteLLM (routellm) — `oci://ghcr.io/berriai/litellm-helm` (BETA)
-2. Pact Broker — pact-foundation chart (no Bitnami Postgres subchart)
-3. Fluvio — upstream Helm (larger)
+- **Fluvio** — still raw CRDs/SC/SPU; upstream Helm exists but is a large cutover (separate story).
+- FreeRADIUS / Squid / NanoMQ / llmrouter / postgres-backup CronJob — keep raw (audit).
 
-## Keep raw
+## Next optional
 
-NanoMQ, FreeRADIUS, Squid, llmrouter, postgres-backup CronJob, namespaces, MetalLB pool CRs, cert-manager Certificates.
+1. Fluvio Helm cutover (dedicated)
+2. Messaging charts (mailpit) or retire MailHog
+3. twuni docker-registry for cluster registry
