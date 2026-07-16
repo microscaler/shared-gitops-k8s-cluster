@@ -1,5 +1,6 @@
-# Product Tilt apps on ms02 (host systemd). Shared with shared-k8s-cluster tooling.
-# GitOpsSets may later emit Ingress/DNS ConfigMaps from this inventory.
+# Product inner loops on ms02. Tilt currently builds and may still deploy some
+# workloads while Flux takeover proceeds; the target is Tilt image builds with
+# Flux reconciling product-owned deployment profiles and workloads.
 
 defaults:
   lan_host: "192.168.1.189"

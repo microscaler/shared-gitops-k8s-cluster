@@ -41,9 +41,14 @@ Never commit plaintext, age private keys, git credentials, or kubeconfigs.
 
 `gitops/root/flux/v2_9_2/flux-install.yaml` is exported from `flux install --export`. Prefer a new version directory over surgical edits. Namespace `flux-system` is managed in `gitops/clusters/base/`, not inside the export.
 
-### 5. Product Tilts stay in app repos
+### 5. Product source stays in app repos; Flux owns reconciliation
 
-This repo does not replace hauliage/sesame Tilt inner loops. Platform reconcile only.
+Follow the SAM Flux pattern: product repositories own
+`deployment-configuration/profiles/<env>/...`; this repository owns the Flux
+`GitRepository`/`Kustomization` composition which reconciles those paths.
+During migration, product Tilts remain responsible for fast image builds and
+may wait on Flux-owned resources, but must not become a second configuration or
+workload owner. The target is Tilt builds images and Flux deploys them.
 
 ### 6. Multi-cluster readiness
 

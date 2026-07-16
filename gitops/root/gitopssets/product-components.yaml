@@ -1,0 +1,102 @@
+# SAM-style product reconciliation. Product repositories own profiles; this
+# GitOpsSet generates the Flux sources and Kustomizations that consume them.
+apiVersion: sets.gitops.pro/v1alpha1
+kind: GitOpsSet
+metadata:
+  name: product-components
+  namespace: flux-system
+  annotations:
+    sets.gitops.pro/delimiters: "${{,}}"
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+spec:
+  serviceAccountName: gitopssets-platform
+  generators:
+    - gitRepository:
+        repositoryRef: shared-gitops
+        files:
+          - path: gitops/inventory/product-components.yaml
+  templates:
+    - repeat: "{ .sources }"
+      content:
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: GitRepository
+        metadata:
+          name: "product-${{ .Repeat.name }}"
+          namespace: flux-system
+          labels:
+            app.kubernetes.io/part-of: "${{ .Repeat.name }}"
+            gitops.microscaler.io/product-source: "${{ .Repeat.name }}"
+        spec:
+          interval: 1m
+          timeout: 90s
+          url: "${{ .Repeat.url }}"
+          ref:
+            branch: "${{ .Repeat.branch }}"
+          ignore: |
+            /*
+            !/.sops.yaml
+            !/deployment-configuration
+            !/helm
+    - repeat: "{ .components }"
+      content:
+        apiVersion: kustomize.toolkit.fluxcd.io/v1
+        kind: Kustomization
+        metadata:
+          name: "${{ .Repeat.name }}"
+          namespace: flux-system
+          labels:
+            app.kubernetes.io/part-of: "${{ .Repeat.product }}"
+            gitops.microscaler.io/product: "${{ .Repeat.product }}"
+            gitops.microscaler.io/suite: "${{ .Repeat.suite }}"
+        spec:
+          interval: 1m
+          retryInterval: 30s
+          timeout: 5m
+          path: "${{ .Repeat.path }}"
+          prune: true
+          wait: true
+          force: ${{ .Repeat.force }}
+          dependsOn:
+            - name: "${{ .Repeat.depends_on }}"
+          decryption:
+            provider: sops
+            secretRef:
+              name: sops-age
+          sourceRef:
+            kind: GitRepository
+            name: "product-${{ .Repeat.source }}"
+            namespace: flux-system
+    - repeat: "{ .images }"
+      content:
+        apiVersion: image.toolkit.fluxcd.io/v1
+        kind: ImageRepository
+        metadata:
+          name: "${{ .Repeat.name }}"
+          namespace: flux-system
+          labels:
+            app.kubernetes.io/part-of: rerp
+            gitops.microscaler.io/environment: dev
+        spec:
+          image: "${{ .Repeat.image }}"
+          interval: 1m
+          insecure: true
+    - repeat: "{ .images }"
+      content:
+        apiVersion: image.toolkit.fluxcd.io/v1
+        kind: ImagePolicy
+        metadata:
+          name: "${{ .Repeat.name }}"
+          namespace: flux-system
+          labels:
+            app.kubernetes.io/part-of: rerp
+            gitops.microscaler.io/environment: dev
+        spec:
+          imageRepositoryRef:
+            name: "${{ .Repeat.name }}"
+          filterTags:
+            pattern: '^dev-(?P<timestamp>[0-9]+)$'
+            extract: '$timestamp'
+          policy:
+            numerical:
+              order: asc

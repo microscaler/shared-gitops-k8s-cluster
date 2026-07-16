@@ -106,9 +106,10 @@ spec:
       srCheckUsername: sr_check_user
       srCheckDatabase: postgres
       # Custom users that apps may use via Pgpool (dev parity)
-      customUsers:
-        usernames: ""
-        passwords: ""
+      # usernames/passwords are SOPS-managed in data/postgres-credentials.
+      # Product DB initializers still create the PostgreSQL roles/databases;
+      # this entry keeps Pgpool's separate pool_passwd in sync.
+      customUsersSecret: postgres-credentials
 
     metrics:
       enabled: true

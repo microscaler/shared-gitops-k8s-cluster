@@ -14,7 +14,7 @@ secret-manager-controller `deployment-configuration/profiles/dev`.
 | File | Purpose | Cluster object |
 |------|---------|----------------|
 | `application.properties` | Non-secret env config (`KEY=value`) | ConfigMap via `configMapGenerator` |
-| `application.secrets.env` | SOPS-encrypted secrets (dotenv) | Secret via `secretGenerator` |
+| `application.secrets.env`, `*.secrets.env` | SOPS-encrypted secrets (dotenv); use separate files for least-privilege Secrets | Secret via `secretGenerator` |
 | `*.secret.yaml` | SOPS-encrypted Secret YAML (when dotenv unfit) | Secret resources |
 | `kustomization.yaml` | Generators + resources for this profile | applied by Flux |
 
@@ -85,5 +85,15 @@ Flux reconcile, or `just secrets-apply` for an immediate ConfigMap refresh.
 
 Still to extract from Helm values (replicas, tags, storage): observability,
 postgres-ha, minio, redis — use Helm `valuesFrom` ConfigMap when ready.
+
+Product and suite profiles are owned by their product repositories and
+reconciled by Flux `GitRepository`/`Kustomization` components from this
+platform repository, following the SAM Flux pattern. For example, RERP
+Accounting lives at
+`rerp/deployment-configuration/profiles/dev/rerp/accounting/` and is reconciled
+from `gitops/inventory/product-components.yaml` by the `product-components`
+GitOpsSet. This repository retains the composition and platform-side
+configuration such as Pgpool's matching custom-user source; Tilt must not
+independently apply the profile.
 
 Audit: [`docs/secrets-audit.md`](../docs/secrets-audit.md).

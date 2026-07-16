@@ -4,3 +4,4 @@ resources:
   - rbac
   - platform-stacks.yaml
   - profile-config.yaml
+  - product-components.yaml

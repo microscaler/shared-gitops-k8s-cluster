@@ -41,11 +41,35 @@ cluster-edge-check *tags:
 tilt-units-apply:
 	just cluster-edge-apply tilt_units
 
-# Schema-check inventory YAML
+# Schema-check inventory YAML (+ generated stacks.yaml drift)
 validate-inventory:
 	cd {{repo_root}} && (test -x .venv/bin/python || python3 -m venv .venv)
 	{{repo_root}}/.venv/bin/pip -q install pyyaml
-	{{repo_root}}/.venv/bin/python {{repo_root}}/tooling/src/shared_gitops/validate_inventory.py
+	PYTHONPATH={{repo_root}}/tooling/src {{repo_root}}/.venv/bin/python {{repo_root}}/tooling/src/shared_gitops/validate_inventory.py
+
+# Render gitops/clusters/<id>/inventory/stacks.yaml from catalog + enablement dirs
+sync-stack-inventory cluster="dev":
+	cd {{repo_root}} && (test -x .venv/bin/python || python3 -m venv .venv)
+	{{repo_root}}/.venv/bin/pip -q install pyyaml
+	PYTHONPATH={{repo_root}}/tooling/src {{repo_root}}/.venv/bin/python \
+	  {{repo_root}}/tooling/src/shared_gitops/render_cluster_stacks.py {{cluster}}
+
+# MetalLB inventory vs component annotation drift
+check-metallb-inventory:
+	cd {{repo_root}} && (test -x .venv/bin/python || python3 -m venv .venv)
+	{{repo_root}}/.venv/bin/pip -q install pyyaml
+	PYTHONPATH={{repo_root}}/tooling/src {{repo_root}}/.venv/bin/python \
+	  {{repo_root}}/tooling/src/shared_gitops/check_metallb_inventory.py
+
+# Validate product inventory and the GitOpsSet against the installed CRD.
+validate-product-components:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	just validate-inventory
+	kubectl config current-context | grep -q shared-k8s
+	kubectl apply --dry-run=server \
+	  -f {{repo_root}}/gitops/root/gitopssets/product-components.yaml
 
 # Build cluster entrypoint (no cluster required)
 build-dev:
@@ -226,10 +250,10 @@ secrets-apply env component:
 	if [ -f "$PROFILE/application.properties" ]; then
 	  cp "$PROFILE/application.properties" "$TMP/"
 	fi
-	if [ -f "$PROFILE/application.secrets.env" ]; then
-	  sops -d "$PROFILE/application.secrets.env" > "$TMP/application.secrets.env"
-	fi
 	shopt -s nullglob
+	for f in "$PROFILE"/*.secrets.env; do
+	  sops -d "$f" > "$TMP/$(basename "$f")"
+	done
 	for f in "$PROFILE"/*.secret.yaml; do
 	  sops -d "$f" > "$TMP/$(basename "$f")"
 	done

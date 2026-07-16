@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 
@@ -58,15 +59,29 @@ def validate_stacks() -> list[str]:
         rel = ROOT / path.lstrip("./")
         if not (rel / "kustomization.yaml").exists() and not (rel / "kustomization.yml").exists():
             errors.append(f"stack {name}: no kustomization.yaml under {path}")
-        for dep in s.get("depends_on") or []:
-            if dep not in names and dep not in {x.get("name") for x in stacks}:
-                # allow forward refs; check after loop
-                pass
+        profile = s.get("profile")
+        if profile is not None and not isinstance(profile, str):
+            errors.append(f"stack {name}: profile must be a string")
     all_names = {s.get("name") for s in stacks}
     for s in stacks:
         for dep in s.get("depends_on") or []:
             if dep not in all_names:
                 errors.append(f"stack {s.get('name')}: unknown depends_on {dep}")
+
+    # Generated per-cluster stacks.yaml must match catalog ∩ enablement dirs
+    sys.path.insert(0, str(ROOT / "tooling" / "src"))
+    from shared_gitops.render_cluster_stacks import write_stacks
+
+    for cluster_dir in (ROOT / "gitops" / "clusters").iterdir():
+        if not cluster_dir.is_dir():
+            continue
+        if not (cluster_dir / "inventory" / "stacks").is_dir():
+            continue
+        cid = cluster_dir.name
+        try:
+            write_stacks(cid, cid, check=True)
+        except SystemExit as exc:
+            errors.append(str(exc))
     return errors
 
 
@@ -125,12 +140,122 @@ def validate_apps() -> list[str]:
     return errors
 
 
+def validate_product_components() -> list[str]:
+    errors: list[str] = []
+    data = _load("product-components.yaml")
+    environment = data.get("environment")
+    sources = data.get("sources") or []
+    components = data.get("components") or []
+    images = data.get("images") or []
+    app_ids = {app.get("id") for app in (_load("apps.yaml").get("apps") or [])}
+    dns_label = re.compile(r"^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$")
+
+    if not environment or not dns_label.fullmatch(str(environment)):
+        errors.append(f"product components: invalid environment {environment!r}")
+
+    source_names: set[str] = set()
+    source_urls: set[str] = set()
+    for source in sources:
+        name = source.get("name")
+        url = source.get("url")
+        branch = source.get("branch")
+        if not name or not url or not branch:
+            errors.append(f"product source missing name/url/branch: {source!r}")
+            continue
+        if not dns_label.fullmatch(name):
+            errors.append(f"product source has invalid DNS label: {name!r}")
+        if name in source_names:
+            errors.append(f"duplicate product source name: {name}")
+        source_names.add(name)
+        if url in source_urls:
+            errors.append(f"duplicate product source URL: {url}")
+        source_urls.add(url)
+        if not (url.startswith("https://") or url.startswith("ssh://")):
+            errors.append(f"product source {name}: unsupported URL {url!r}")
+
+    component_names: set[str] = set()
+    component_paths: set[tuple[str, str]] = set()
+    for component in components:
+        name = component.get("name")
+        source = component.get("source")
+        product = component.get("product")
+        suite = component.get("suite")
+        path = component.get("path")
+        dependency = component.get("depends_on")
+        force = component.get("force")
+        if not all((name, source, product, suite, path, dependency)):
+            errors.append(
+                "product component missing "
+                f"name/source/product/suite/path/depends_on: {component!r}"
+            )
+            continue
+        if not dns_label.fullmatch(name):
+            errors.append(f"product component has invalid DNS label: {name!r}")
+        if name in component_names:
+            errors.append(f"duplicate product component name: {name}")
+        component_names.add(name)
+        if source not in source_names:
+            errors.append(f"product component {name}: unknown source {source}")
+        if product not in app_ids:
+            errors.append(f"product component {name}: unknown product app {product}")
+
+        normalized = PurePosixPath(path.removeprefix("./"))
+        expected_prefix = PurePosixPath(
+            "deployment-configuration", "profiles", str(environment), product, suite
+        )
+        if ".." in normalized.parts or not (
+            normalized == expected_prefix or expected_prefix in normalized.parents
+        ):
+            errors.append(
+                f"product component {name}: path must be ./{expected_prefix} "
+                f"or a child, got {path!r}"
+            )
+        if not isinstance(force, bool):
+            errors.append(f"product component {name}: force must be a boolean")
+        source_path = (source, str(normalized))
+        if source_path in component_paths:
+            errors.append(f"duplicate product component source/path: {source_path}")
+        component_paths.add(source_path)
+
+    known_dependencies = component_names | {"stack-namespaces"}
+    for component in components:
+        dependency = component.get("depends_on")
+        if dependency and dependency not in known_dependencies:
+            errors.append(
+                f"product component {component.get('name')}: unknown depends_on {dependency}"
+            )
+
+    image_names: set[str] = set()
+    image_repositories: set[str] = set()
+    for image in images:
+        name = image.get("name")
+        repository = image.get("image")
+        if not name or not repository:
+            errors.append(f"product image missing name/image: {image!r}")
+            continue
+        if not dns_label.fullmatch(name):
+            errors.append(f"product image has invalid DNS label: {name!r}")
+        if name in image_names:
+            errors.append(f"duplicate product image name: {name}")
+        image_names.add(name)
+        if repository in image_repositories:
+            errors.append(f"duplicate product image repository: {repository}")
+        image_repositories.add(repository)
+        if ":" not in repository.split("/")[0]:
+            errors.append(
+                f"product image {name}: expected an explicit registry port in {repository!r}"
+            )
+
+    return errors
+
+
 def main() -> int:
     errors = (
         validate_clusters()
         + validate_stacks()
         + validate_metallb()
         + validate_apps()
+        + validate_product_components()
     )
     if errors:
         print("inventory validation FAILED:", file=sys.stderr)

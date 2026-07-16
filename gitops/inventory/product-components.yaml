@@ -1,0 +1,35 @@
+# Product repositories own their deployment profiles. Flux source and
+# reconciliation objects are generated from this inventory.
+environment: dev
+
+sources:
+  - name: rerp
+    url: https://github.com/microscaler/rerp.git
+    branch: main
+
+components:
+  - name: rerp-accounting
+    source: rerp
+    product: rerp
+    suite: accounting
+    path: ./deployment-configuration/profiles/dev/rerp/accounting
+    depends_on: stack-namespaces
+    force: true
+  - name: rerp-accounting-services
+    source: rerp
+    product: rerp
+    suite: accounting
+    path: ./deployment-configuration/profiles/dev/rerp/accounting/services
+    depends_on: rerp-accounting
+    force: false
+
+# Image discovery is cluster integration, while update markers stay beside the
+# Helm releases in the product repository. dev-N tags are monotonically
+# increasing and intentionally scoped to this non-production environment.
+images:
+  - name: rerp-accounting-db-init
+    image: 10.177.76.220:5000/rerp-accounting-db-init
+  - name: rerp-accounting-general-ledger
+    image: 10.177.76.220:5000/rerp-accounting-general-ledger
+  - name: rerp-accounting-invoice
+    image: 10.177.76.220:5000/rerp-accounting-invoice

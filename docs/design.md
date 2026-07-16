@@ -16,7 +16,7 @@
 | Multi-cluster | **Yes** — `dev` / `staging` / `prod` |
 | Local Multipass | Cluster id **`dev`** (context `shared-k8s`) |
 | Dryness | **gitopssets-controller** (images mirrored to ms02 registry `10.177.76.220:5000`) |
-| Product apps | Remain on Tilt (v1) |
+| Product apps | Product repos own profiles; Flux reconciles them; Tilt converges to image builds only |
 
 ### GitOpsSets images (ms02 registry)
 
@@ -70,6 +70,21 @@ gitops/clusters/{dev,staging,prod}/
 ```
 
 Shared catalogs live in `gitops/inventory/` (`clusters.yaml`, `platform-stacks.yaml`, `metallb-services.yaml`, `apps.yaml`).
+`product-components.yaml` is the source of truth for product repository
+sources and suite-qualified profile paths; the `product-components` GitOpsSet
+generates Flux sources and reconcilers from it.
+
+RERP Accounting is the first product component. Repository sources and profile
+components are separate inventory lists because RERP is a multi-suite monorepo:
+future Documents or HR profiles reuse `product-rerp` instead of creating
+duplicate GitRepository fetches.
+
+Accounting is reconciled as an ordered pair. `rerp-accounting` owns SOPS
+runtime configuration and completion-gated database/object-store Jobs;
+`rerp-accounting-services` depends on it and owns only delivered Helm releases.
+The image inventory generates registry scanners and numeric policies for
+monotonic `dev-<nanoseconds>` tags. Git-writing image automation is omitted
+until the product-specific credential gate is satisfied.
 
 Enabling a stack on `dev`:
 
@@ -90,10 +105,11 @@ git commit && git push
 |-------|--------|------|
 | 1 Scaffold | **done** | Repo layout, Flux v2.9.2 export, GitOpsSets HR, namespaces component, inventories, just recipes |
 | 2 Bootstrap | **done** | Flux + deploy key + gitopssets (images from local weaveworks build → ms02 registry) |
-| 3 Migrate stacks | **done (shared platform)** | Flux owns data + observability + scheduling + pipeline + ai + openbao + cylon/tls/cluster. Product apps (hauliage/sesame/rerp) stay on their Tiltfiles. postgres-ha replicas still degraded (deferred). |
-| 4 MetalLB dryness | pending | GitOpsSet or tooling from `metallb-services.yaml` → Services + LAN proxy |
+| 3 Migrate stacks | **done (shared platform)** | Flux owns data + observability + scheduling + pipeline + ai + openbao + cylon/tls/cluster. Product takeover is incremental; RERP Accounting is the first product-repository profile sourced by Flux. postgres-ha replicas still degraded (deferred). |
+| 7 Product takeover | **active** | SAM-style GitRepository/Kustomization composition: product repos own profiles and Helm inputs, Flux reconciles configuration/workloads, and Tilt narrows to image builds. |
+| 4 MetalLB dryness | **partial** | Inventory aligned + `just check-metallb-inventory`; annotation patches / LAN proxy sync still open |
 | 5 Secrets + env config | **active** | `deployment-configuration/profiles/<env>/<component>/` (`application.properties` + SOPS secrets) + Flux `profile-config`; OpenBao/SMC next |
-| 6 staging/prod | pending | Real clusters; optional Matrix generator |
+| 6 staging/prod | pending | Real clusters; Matrix list rows ready in `platform-stacks` / `profile-config` |
 
 ### Secrets process (locked)
 
