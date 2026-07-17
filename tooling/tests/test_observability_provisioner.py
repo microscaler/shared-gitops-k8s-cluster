@@ -50,14 +50,16 @@ def test_dashboard_references_are_complete_and_stable() -> None:
     identities = {(object_type, object_id) for object_type, object_id, _ in objects}
     assert len(identities) == len(objects)
     assert ("dashboard", "shared-observability-overview") in identities
+    assert ("dashboard", "shared-postgres-connections") in identities
 
-    dashboard = next(
-        payload
-        for object_type, object_id, payload in objects
-        if object_type == "dashboard" and object_id == "shared-observability-overview"
-    )
-    for reference in dashboard["references"]:
-        assert (reference["type"], reference["id"]) in identities
+    for dashboard_id in ("shared-observability-overview", "shared-postgres-connections"):
+        dashboard = next(
+            payload
+            for object_type, object_id, payload in objects
+            if object_type == "dashboard" and object_id == dashboard_id
+        )
+        for reference in dashboard["references"]:
+            assert (reference["type"], reference["id"]) in identities
 
 
 def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
@@ -67,6 +69,7 @@ def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
         "Telemetry metrics stale",
         "Telemetry error logs detected",
         "RERP API metrics stale",
+        "Postgres metrics stale",
     }
     assert all(monitor["enabled"] for monitor in monitors.values())
     assert all(
@@ -122,7 +125,7 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     assert prepper["image"]["tag"] == "2.11.0"
 
     processors = otel["config"]["processors"]
-    assert processors["memory_limiter"]["limit_mib"] == 192
+    assert processors["memory_limiter"]["limit_mib"] == 384
     assert "filter/drop-low-severity" in processors
     assert processors["filter/drop-no-recorded-value"]["metrics"]["datapoint"] == [
         "flags == 1"
@@ -138,6 +141,14 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
         "filter/drop-no-recorded-value",
         "batch",
     ]
+    metrics_receivers = otel["config"]["service"]["pipelines"]["metrics"]["receivers"]
+    assert "otlp" in metrics_receivers
+    assert "prometheus/postgres" in metrics_receivers
+    postgres_scrape = otel["config"]["receivers"]["prometheus/postgres"]["config"][
+        "scrape_configs"
+    ]
+    job_names = {job["job_name"] for job in postgres_scrape}
+    assert job_names == {"postgres-ha", "pgpool"}
 
     pipelines = prepper["pipelineConfig"]["config"]
     metric_sink = pipelines["otel-metrics-pipeline"]["sink"][0]["opensearch"]

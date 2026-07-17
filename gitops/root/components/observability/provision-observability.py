@@ -17,6 +17,13 @@ LOGS_PATTERN = "otel-v1-apm-logs*"
 TRACES_PATTERN = "otel-v1-apm-span-*"
 MANAGED_BY = "shared-gitops-k8s-cluster"
 
+POSTGRES_ACTIVITY_QUERY = (
+    'name: "pg_stat_activity_count" and '
+    'metric.attributes.backend_type: "client backend" and '
+    '(metric.attributes.state: "idle" or metric.attributes.state: "active")'
+)
+PGPOOL_FRONTEND_QUERY = 'name: "pgpool2_frontend_used" or name: "pgpool2_frontend_total"'
+
 
 class ApiError(RuntimeError):
     """An HTTP API request failed."""
@@ -329,6 +336,18 @@ def desired_monitors() -> list[dict[str, Any]]:
             }
         },
     }
+    postgres_metrics = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"time": {"gte": "now-10m", "lte": "now"}}},
+                    {"prefix": {"name.keyword": "pg_"}},
+                ]
+            }
+        },
+    }
     return [
         monitor_payload(
             name="Telemetry metrics stale",
@@ -348,6 +367,13 @@ def desired_monitors() -> list[dict[str, Any]]:
             name="RERP API metrics stale",
             indices=[METRICS_PATTERN],
             query=rerp_metrics,
+            condition="ctx.results[0].hits.total.value == 0",
+            severity="1",
+        ),
+        monitor_payload(
+            name="Postgres metrics stale",
+            indices=[METRICS_PATTERN],
+            query=postgres_metrics,
             condition="ctx.results[0].hits.total.value == 0",
             severity="1",
         ),
@@ -519,6 +545,176 @@ def line_visualization(
     }
 
 
+def metric_sum_line_visualization(
+    *,
+    title: str,
+    data_view: str,
+    time_field: str,
+    group_field: str,
+    value_field: str = "value",
+    query: str = "",
+) -> dict[str, Any]:
+    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
+    vis_state = {
+        "title": title,
+        "type": "line",
+        "params": {
+            "type": "line",
+            "grid": {"categoryLines": False},
+            "categoryAxes": [
+                {
+                    "id": "CategoryAxis-1",
+                    "type": "category",
+                    "position": "bottom",
+                    "show": True,
+                    "style": {},
+                    "scale": {"type": "linear"},
+                    "labels": {"show": True, "truncate": 100},
+                    "title": {},
+                }
+            ],
+            "valueAxes": [
+                {
+                    "id": "ValueAxis-1",
+                    "name": "LeftAxis-1",
+                    "type": "value",
+                    "position": "left",
+                    "show": True,
+                    "style": {},
+                    "scale": {"type": "linear", "mode": "normal"},
+                    "labels": {"show": True, "rotate": 0, "filter": False},
+                    "title": {"text": "Connections"},
+                }
+            ],
+            "seriesParams": [
+                {
+                    "show": "true",
+                    "type": "line",
+                    "mode": "normal",
+                    "data": {"label": "Sum", "id": "1"},
+                    "valueAxis": "ValueAxis-1",
+                    "drawLinesBetweenPoints": True,
+                    "showCircles": True,
+                }
+            ],
+            "addTooltip": True,
+            "addLegend": True,
+            "legendPosition": "right",
+            "times": [],
+            "addTimeMarker": False,
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "sum",
+                "schema": "metric",
+                "params": {"field": value_field},
+            },
+            {
+                "id": "2",
+                "enabled": True,
+                "type": "date_histogram",
+                "schema": "segment",
+                "params": {
+                    "field": time_field,
+                    "interval": "auto",
+                    "min_doc_count": 1,
+                    "extended_bounds": {},
+                },
+            },
+            {
+                "id": "3",
+                "enabled": True,
+                "type": "terms",
+                "schema": "group",
+                "params": {
+                    "field": group_field,
+                    "size": 12,
+                    "order": "desc",
+                    "orderBy": "1",
+                    "otherBucket": False,
+                    "missingBucket": False,
+                },
+            },
+        ],
+    }
+    return {
+        "attributes": {
+            "title": title,
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(search_source(source_ref, query))
+            },
+        },
+        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
+    }
+
+
+def metric_sum_table_visualization(
+    *,
+    title: str,
+    data_view: str,
+    group_fields: list[str],
+    value_field: str = "value",
+    query: str = "",
+) -> dict[str, Any]:
+    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
+    aggs: list[dict[str, Any]] = [
+        {
+            "id": "1",
+            "enabled": True,
+            "type": "sum",
+            "schema": "metric",
+            "params": {"field": value_field},
+        }
+    ]
+    for index, field in enumerate(group_fields, start=2):
+        aggs.append(
+            {
+                "id": str(index),
+                "enabled": True,
+                "type": "terms",
+                "schema": "bucket",
+                "params": {
+                    "field": field,
+                    "size": 20,
+                    "order": "desc",
+                    "orderBy": "1",
+                    "otherBucket": False,
+                    "missingBucket": False,
+                },
+            }
+        )
+    vis_state = {
+        "title": title,
+        "type": "table",
+        "params": {
+            "perPage": 10,
+            "showPartialRows": False,
+            "showMetricsAtAllLevels": False,
+            "sort": {"columnIndex": None, "direction": None},
+            "showTotal": False,
+            "totalFunc": "sum",
+        },
+        "aggs": aggs,
+    }
+    return {
+        "attributes": {
+            "title": title,
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(search_source(source_ref, query))
+            },
+        },
+        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
+    }
+
+
 def saved_search(
     *, title: str, data_view: str, time_field: str, columns: list[str], query: str
 ) -> dict[str, Any]:
@@ -659,6 +855,124 @@ def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
             },
         )
     )
+    objects.extend(postgres_dashboard_objects(metrics_view))
+    return objects
+
+
+def postgres_dashboard_objects(metrics_view: str) -> list[tuple[str, str, dict[str, Any]]]:
+    """Postgres/Pgpool connection dashboards (consumer_namespace = K8s namespace)."""
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            "postgres-connections-by-namespace",
+            metric_sum_line_visualization(
+                title="Postgres connections by namespace",
+                data_view=metrics_view,
+                time_field="time",
+                group_field="metric.attributes.consumer_namespace.keyword",
+                query=POSTGRES_ACTIVITY_QUERY,
+            ),
+        ),
+        (
+            "visualization",
+            "postgres-connections-by-database",
+            metric_sum_table_visualization(
+                title="Postgres connections by database and user",
+                data_view=metrics_view,
+                group_fields=[
+                    "metric.attributes.consumer_namespace.keyword",
+                    "metric.attributes.datname.keyword",
+                    "metric.attributes.usename.keyword",
+                ],
+                query=POSTGRES_ACTIVITY_QUERY,
+            ),
+        ),
+        (
+            "visualization",
+            "pgpool-frontend-connections",
+            metric_sum_line_visualization(
+                title="Pgpool frontend connections (used vs capacity)",
+                data_view=metrics_view,
+                time_field="time",
+                group_field="name.keyword",
+                query=PGPOOL_FRONTEND_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "postgres-max-connections",
+            saved_search(
+                title="Postgres max_connections setting",
+                data_view=metrics_view,
+                time_field="time",
+                columns=["time", "name", "value", "metric.attributes.server"],
+                query='name: "pg_settings_max_connections"',
+            ),
+        ),
+    ]
+    panels = [
+        ("visualization", "postgres-connections-by-namespace", 0, 0, 36, 14),
+        ("visualization", "pgpool-frontend-connections", 36, 0, 12, 14),
+        ("visualization", "postgres-connections-by-database", 0, 14, 36, 16),
+        ("search", "postgres-max-connections", 36, 14, 12, 16),
+    ]
+    panel_json = []
+    references = []
+    for position, (object_type, object_id, x, y, width, height) in enumerate(panels):
+        panel_ref = f"postgres_panel_{position}"
+        panel_json.append(
+            {
+                "version": "2.19.6",
+                "type": object_type,
+                "gridData": {
+                    "x": x,
+                    "y": y,
+                    "w": width,
+                    "h": height,
+                    "i": str(position + 1),
+                },
+                "panelIndex": str(position + 1),
+                "embeddableConfig": {},
+                "panelRefName": panel_ref,
+            }
+        )
+        references.append({"name": panel_ref, "type": object_type, "id": object_id})
+    objects.append(
+        (
+            "dashboard",
+            "shared-postgres-connections",
+            {
+                "attributes": {
+                    "title": "Postgres & Pgpool connections",
+                    "description": (
+                        "Database consumer pressure by Kubernetes namespace "
+                        f"(datname → consumer_namespace mapping). Managed by {MANAGED_BY}"
+                    ),
+                    "panelsJSON": compact(panel_json),
+                    "optionsJSON": compact(
+                        {
+                            "useMargins": True,
+                            "syncColors": False,
+                            "syncCursor": True,
+                            "syncTooltips": False,
+                            "hidePanelTitles": False,
+                        }
+                    ),
+                    "version": 1,
+                    "timeRestore": True,
+                    "timeFrom": "now-6h",
+                    "timeTo": "now",
+                    "refreshInterval": {"pause": False, "value": 30000},
+                    "kibanaSavedObjectMeta": {
+                        "searchSourceJSON": compact(
+                            {"query": {"query": "", "language": "kuery"}, "filter": []}
+                        )
+                    },
+                },
+                "references": references,
+            },
+        )
+    )
     return objects
 
 
@@ -687,6 +1001,7 @@ def verify(opensearch: JsonClient, dashboards: JsonClient, retention_days: int) 
     if not expected_monitors.issubset(monitor_names):
         raise ApiError(f"missing monitors: {sorted(expected_monitors - monitor_names)}")
     dashboards.request("api/saved_objects/dashboard/shared-observability-overview")
+    dashboards.request("api/saved_objects/dashboard/shared-postgres-connections")
 
 
 def main() -> int:

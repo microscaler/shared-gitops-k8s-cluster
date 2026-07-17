@@ -6,3 +6,4 @@ resources:
   # Config + secrets: deployment-configuration/profiles/dev/postgres-ha (Flux profile-config)
   - helm-release.yaml
   - postgres-lb-service.yaml
+  - pgpool-exporter.yaml

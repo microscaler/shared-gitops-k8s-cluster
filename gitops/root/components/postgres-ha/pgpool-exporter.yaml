@@ -1,0 +1,70 @@
+# Pgpool-II Prometheus metrics for dev connection-pool dashboards.
+# Scraped by otel-collector (prometheus/postgres receiver, job pgpool).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-ha-pgpool-exporter
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgpool-exporter
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    app.kubernetes.io/component: metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pgpool-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pgpool-exporter
+        app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    spec:
+      containers:
+        - name: pgpool2-exporter
+          image: pgpool/pgpool2_exporter:1.2.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_USERNAME
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-password
+            - name: POSTGRES_DATABASE
+              value: postgres
+            - name: PGPOOL_SERVICE
+              value: postgres-ha-pgpool.data.svc.cluster.local
+            - name: PGPOOL_SERVICE_PORT
+              value: "5432"
+            - name: SSLMODE
+              value: disable
+          ports:
+            - name: metrics
+              containerPort: 9719
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-ha-pgpool-metrics
+  namespace: data
+  labels:
+    app.kubernetes.io/name: pgpool-exporter
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+spec:
+  selector:
+    app.kubernetes.io/name: pgpool-exporter
+  ports:
+    - name: metrics
+      port: 9719
+      targetPort: metrics
+      protocol: TCP

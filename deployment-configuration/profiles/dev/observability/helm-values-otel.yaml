@@ -43,7 +43,7 @@ resources:
     memory: 64Mi
   limits:
     cpu: 500m
-    memory: 256Mi
+    memory: 512Mi
 
 config:
   receivers:
@@ -53,13 +53,56 @@ config:
           endpoint: ${env:MY_POD_IP}:4317
         http:
           endpoint: ${env:MY_POD_IP}:4318
+    # Postgres HA + Pgpool pool pressure → OpenSearch via Data Prepper.
+    prometheus/postgres:
+      config:
+        scrape_configs:
+          - job_name: postgres-ha
+            scrape_interval: 15s
+            static_configs:
+              - targets:
+                  - postgres-ha-postgresql-metrics.data.svc.cluster.local:9187
+                labels:
+                  service: postgres-ha
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: pg_stat_activity_count|pg_stat_database_numbackends|pg_settings_max_connections
+                action: keep
+              - source_labels: [datname]
+                regex: hauliage
+                target_label: consumer_namespace
+                replacement: loadlinker
+              - source_labels: [datname]
+                regex: sesame_idam
+                target_label: consumer_namespace
+                replacement: sesame-idam
+              - source_labels: [datname]
+                regex: rerp
+                target_label: consumer_namespace
+                replacement: rerp
+              - source_labels: [datname]
+                regex: postgres|repmgr
+                target_label: consumer_namespace
+                replacement: platform/data
+          - job_name: pgpool
+            scrape_interval: 15s
+            static_configs:
+              - targets:
+                  - postgres-ha-pgpool-metrics.data.svc.cluster.local:9719
+                labels:
+                  service: pgpool
+                  consumer_namespace: platform/data
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: pgpool2_.*
+                action: keep
   processors:
     batch: {}
     memory_limiter:
       check_interval: 1s
       # Stay below the pod's 256 MiB cgroup limit so the limiter acts before OOM.
-      limit_mib: 192
-      spike_limit_mib: 48
+      limit_mib: 384
+      spike_limit_mib: 96
     filter/drop-low-severity:
       error_mode: ignore
       logs:
@@ -102,7 +145,7 @@ config:
         processors: [memory_limiter, batch]
         exporters: [otlp/traces]
       metrics:
-        receivers: [otlp]
+        receivers: [otlp, prometheus/postgres]
         processors: [memory_limiter, filter/drop-no-recorded-value, batch]
         exporters: [otlp/metrics, prometheus]
       logs:
