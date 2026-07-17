@@ -53,8 +53,8 @@ config:
           endpoint: ${env:MY_POD_IP}:4317
         http:
           endpoint: ${env:MY_POD_IP}:4318
-    # Postgres HA + Pgpool pool pressure → OpenSearch via Data Prepper.
-    prometheus/postgres:
+    # Data namespace exporters (Postgres HA, Pgpool, Redis) → OpenSearch via Data Prepper.
+    prometheus/data:
       config:
         scrape_configs:
           - job_name: postgres-ha
@@ -64,6 +64,7 @@ config:
                   - postgres-ha-postgresql-metrics.data.svc.cluster.local:9187
                 labels:
                   service: postgres-ha
+                  platform_component: postgres
             metric_relabel_configs:
               - source_labels: [__name__]
                 regex: pg_stat_activity_count|pg_stat_database_numbackends|pg_settings_max_connections
@@ -91,10 +92,24 @@ config:
                   - postgres-ha-pgpool-metrics.data.svc.cluster.local:9719
                 labels:
                   service: pgpool
+                  platform_component: pgpool
                   consumer_namespace: platform/data
             metric_relabel_configs:
               - source_labels: [__name__]
                 regex: pgpool2_.*
+                action: keep
+          - job_name: redis
+            scrape_interval: 15s
+            static_configs:
+              - targets:
+                  - redis-metrics.data.svc.cluster.local:9121
+                labels:
+                  service: redis
+                  platform_component: redis
+                  consumer_namespace: platform/data
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: redis_connected_clients|redis_memory_used_bytes|redis_commands_processed_total|redis_keyspace_hits_total|redis_keyspace_misses_total|redis_evicted_keys_total
                 action: keep
   processors:
     batch: {}
@@ -145,7 +160,7 @@ config:
         processors: [memory_limiter, batch]
         exporters: [otlp/traces]
       metrics:
-        receivers: [otlp, prometheus/postgres]
+        receivers: [otlp, prometheus/data]
         processors: [memory_limiter, filter/drop-no-recorded-value, batch]
         exporters: [otlp/metrics, prometheus]
       logs:

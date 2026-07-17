@@ -23,6 +23,21 @@ POSTGRES_ACTIVITY_QUERY = (
     '(metric.attributes.state: "idle" or metric.attributes.state: "active")'
 )
 PGPOOL_FRONTEND_QUERY = 'name: "pgpool2_frontend_used" or name: "pgpool2_frontend_total"'
+REDIS_CLIENTS_QUERY = 'name: "redis_connected_clients"'
+REDIS_MEMORY_QUERY = 'name: "redis_memory_used_bytes"'
+DATA_PLATFORM_METRICS_QUERY = (
+    "name: pg_stat_activity_count or name: pgpool2_frontend_used or "
+    "name: pgpool2_frontend_total or name: redis_connected_clients or "
+    'name: "redis_memory_used_bytes"'
+)
+CORRELATED_LOGS_QUERY = 'traceId: * AND NOT traceId: ""'
+ERROR_LOGS_WITH_TRACE_QUERY = (
+    'severityText: ("ERROR" or "FATAL") AND traceId: * AND NOT traceId: ""'
+)
+DB_PRESSURE_LOGS_QUERY = (
+    "body: (*connection* OR *pool* OR *postgres* OR *redis* OR *timeout* OR *Pgpool*)"
+)
+HTTP_SPANS_QUERY = 'name: "http_request"'
 
 
 class ApiError(RuntimeError):
@@ -377,6 +392,24 @@ def desired_monitors() -> list[dict[str, Any]]:
             condition="ctx.results[0].hits.total.value == 0",
             severity="1",
         ),
+        monitor_payload(
+            name="Redis metrics stale",
+            indices=[METRICS_PATTERN],
+            query={
+                "size": 0,
+                "track_total_hits": True,
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"range": {"time": {"gte": "now-10m", "lte": "now"}}},
+                            {"prefix": {"name.keyword": "redis_"}},
+                        ]
+                    }
+                },
+            },
+            condition="ctx.results[0].hits.total.value == 0",
+            severity="1",
+        ),
     ]
 
 
@@ -715,6 +748,70 @@ def metric_sum_table_visualization(
     }
 
 
+def assemble_dashboard(
+    *,
+    dashboard_id: str,
+    title: str,
+    description: str,
+    panels: list[tuple[str, str, int, int, int, int]],
+    panel_ref_prefix: str,
+    time_from: str = "now-6h",
+    refresh_ms: int = 30000,
+) -> tuple[str, str, dict[str, Any]]:
+    panel_json: list[dict[str, Any]] = []
+    references: list[dict[str, str]] = []
+    for position, (object_type, object_id, x, y, width, height) in enumerate(panels):
+        panel_ref = f"{panel_ref_prefix}_{position}"
+        panel_json.append(
+            {
+                "version": "2.19.6",
+                "type": object_type,
+                "gridData": {
+                    "x": x,
+                    "y": y,
+                    "w": width,
+                    "h": height,
+                    "i": str(position + 1),
+                },
+                "panelIndex": str(position + 1),
+                "embeddableConfig": {},
+                "panelRefName": panel_ref,
+            }
+        )
+        references.append({"name": panel_ref, "type": object_type, "id": object_id})
+    return (
+        "dashboard",
+        dashboard_id,
+        {
+            "attributes": {
+                "title": title,
+                "description": description,
+                "panelsJSON": compact(panel_json),
+                "optionsJSON": compact(
+                    {
+                        "useMargins": True,
+                        "syncColors": False,
+                        "syncCursor": True,
+                        "syncTooltips": False,
+                        "hidePanelTitles": False,
+                    }
+                ),
+                "version": 1,
+                "timeRestore": True,
+                "timeFrom": time_from,
+                "timeTo": "now",
+                "refreshInterval": {"pause": False, "value": refresh_ms},
+                "kibanaSavedObjectMeta": {
+                    "searchSourceJSON": compact(
+                        {"query": {"query": "", "language": "kuery"}, "filter": []}
+                    )
+                },
+            },
+            "references": references,
+        },
+    )
+
+
 def saved_search(
     *, title: str, data_view: str, time_field: str, columns: list[str], query: str
 ) -> dict[str, Any]:
@@ -739,6 +836,7 @@ def saved_search(
 def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
     metrics_view = "shared-observability-metrics"
     logs_view = "shared-observability-logs"
+    traces_view = "shared-observability-traces"
     objects: list[tuple[str, str, dict[str, Any]]] = [
         (
             "index-pattern",
@@ -749,6 +847,11 @@ def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
             "index-pattern",
             logs_view,
             {"attributes": {"title": LOGS_PATTERN, "timeFieldName": "observedTime"}},
+        ),
+        (
+            "index-pattern",
+            traces_view,
+            {"attributes": {"title": TRACES_PATTERN, "timeFieldName": "startTime"}},
         ),
         (
             "visualization",
@@ -777,7 +880,14 @@ def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
                 title="Recent error logs",
                 data_view=logs_view,
                 time_field="observedTime",
-                columns=["observedTime", "serviceName", "severityText", "body"],
+                columns=[
+                    "observedTime",
+                    "serviceName",
+                    "severityText",
+                    "traceId",
+                    "spanId",
+                    "body",
+                ],
                 query='severityText: ("ERROR" or "FATAL")',
             ),
         ),
@@ -856,6 +966,8 @@ def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
         )
     )
     objects.extend(postgres_dashboard_objects(metrics_view))
+    objects.extend(data_platform_dashboard_objects(metrics_view))
+    objects.extend(correlation_dashboard_objects(metrics_view, logs_view, traces_view))
     return objects
 
 
@@ -976,6 +1088,226 @@ def postgres_dashboard_objects(metrics_view: str) -> list[tuple[str, str, dict[s
     return objects
 
 
+def data_platform_dashboard_objects(
+    metrics_view: str,
+) -> list[tuple[str, str, dict[str, Any]]]:
+    """Data namespace health: Postgres, Pgpool, Redis."""
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            "data-redis-connected-clients",
+            metric_sum_line_visualization(
+                title="Redis connected clients",
+                data_view=metrics_view,
+                time_field="time",
+                group_field="name.keyword",
+                query=REDIS_CLIENTS_QUERY,
+            ),
+        ),
+        (
+            "visualization",
+            "data-redis-memory-used",
+            metric_sum_line_visualization(
+                title="Redis memory used (bytes)",
+                data_view=metrics_view,
+                time_field="time",
+                group_field="name.keyword",
+                query=REDIS_MEMORY_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "data-platform-metrics-snapshot",
+            saved_search(
+                title="Data namespace metrics snapshot",
+                data_view=metrics_view,
+                time_field="time",
+                columns=[
+                    "time",
+                    "name",
+                    "value",
+                    "metric.attributes.consumer_namespace",
+                    "metric.attributes.datname",
+                ],
+                query=DATA_PLATFORM_METRICS_QUERY,
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id="shared-data-platform",
+            title="Data namespace platform",
+            description=(
+                "Postgres HA, Pgpool, and Redis metrics from the data namespace. "
+                f"Managed by {MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "postgres-connections-by-namespace", 0, 0, 24, 12),
+                ("visualization", "pgpool-frontend-connections", 24, 0, 24, 12),
+                ("visualization", "data-redis-connected-clients", 0, 12, 24, 12),
+                ("visualization", "data-redis-memory-used", 24, 12, 24, 12),
+                ("search", "data-platform-metrics-snapshot", 0, 24, 48, 14),
+            ],
+            panel_ref_prefix="data_platform",
+            time_from="now-6h",
+        )
+    )
+    return objects
+
+
+def correlation_dashboard_objects(
+    metrics_view: str,
+    logs_view: str,
+    traces_view: str,
+) -> list[tuple[str, str, dict[str, Any]]]:
+    """Cross-system APM ↔ logs ↔ database correlation."""
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            "correlation-spans-by-service",
+            line_visualization(
+                title="Trace spans by service",
+                data_view=traces_view,
+                time_field="startTime",
+                group_field="serviceName.keyword",
+            ),
+        ),
+        (
+            "visualization",
+            "correlation-logs-with-trace-by-service",
+            line_visualization(
+                title="Correlated logs by service (traceId present)",
+                data_view=logs_view,
+                time_field="observedTime",
+                group_field="serviceName.keyword",
+                query=CORRELATED_LOGS_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "correlation-http-spans",
+            saved_search(
+                title="HTTP request spans",
+                data_view=traces_view,
+                time_field="startTime",
+                columns=[
+                    "startTime",
+                    "serviceName",
+                    "name",
+                    "traceId",
+                    "spanId",
+                    "durationInNanos",
+                    "span.attributes.path",
+                    "span.attributes.method",
+                ],
+                query=HTTP_SPANS_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "correlation-logs-by-trace",
+            saved_search(
+                title="Logs with trace context",
+                data_view=logs_view,
+                time_field="observedTime",
+                columns=[
+                    "observedTime",
+                    "serviceName",
+                    "severityText",
+                    "traceId",
+                    "spanId",
+                    "body",
+                ],
+                query=CORRELATED_LOGS_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "correlation-errors-with-trace",
+            saved_search(
+                title="Errors with trace context",
+                data_view=logs_view,
+                time_field="observedTime",
+                columns=[
+                    "observedTime",
+                    "serviceName",
+                    "severityText",
+                    "traceId",
+                    "spanId",
+                    "body",
+                ],
+                query=ERROR_LOGS_WITH_TRACE_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "correlation-db-pressure-logs",
+            saved_search(
+                title="Database / pool pressure logs",
+                data_view=logs_view,
+                time_field="observedTime",
+                columns=[
+                    "observedTime",
+                    "serviceName",
+                    "severityText",
+                    "traceId",
+                    "body",
+                ],
+                query=DB_PRESSURE_LOGS_QUERY,
+            ),
+        ),
+        (
+            "search",
+            "correlation-postgres-at-time",
+            saved_search(
+                title="Postgres connections (align time with logs/traces)",
+                data_view=metrics_view,
+                time_field="time",
+                columns=[
+                    "time",
+                    "name",
+                    "value",
+                    "metric.attributes.consumer_namespace",
+                    "metric.attributes.datname",
+                    "metric.attributes.usename",
+                ],
+                query=POSTGRES_ACTIVITY_QUERY,
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id="shared-apm-correlation",
+            title="APM & log correlation",
+            description=(
+                "Correlate traces, application logs, and database pressure using "
+                "traceId/spanId and aligned time windows. Filter Discover by traceId "
+                f"to pivot across signals. Managed by {MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "correlation-spans-by-service", 0, 0, 24, 10),
+                (
+                    "visualization",
+                    "correlation-logs-with-trace-by-service",
+                    24,
+                    0,
+                    24,
+                    10,
+                ),
+                ("search", "correlation-http-spans", 0, 10, 24, 14),
+                ("search", "correlation-logs-by-trace", 24, 10, 24, 14),
+                ("search", "correlation-errors-with-trace", 0, 24, 24, 12),
+                ("search", "correlation-db-pressure-logs", 24, 24, 24, 12),
+                ("search", "correlation-postgres-at-time", 0, 36, 48, 12),
+            ],
+            panel_ref_prefix="correlation",
+            time_from="now-1h",
+            refresh_ms=15000,
+        )
+    )
+    return objects
+
+
 def upsert_dashboards(client: JsonClient) -> None:
     for object_type, object_id, payload in dashboard_objects():
         client.request(
@@ -1002,6 +1334,8 @@ def verify(opensearch: JsonClient, dashboards: JsonClient, retention_days: int) 
         raise ApiError(f"missing monitors: {sorted(expected_monitors - monitor_names)}")
     dashboards.request("api/saved_objects/dashboard/shared-observability-overview")
     dashboards.request("api/saved_objects/dashboard/shared-postgres-connections")
+    dashboards.request("api/saved_objects/dashboard/shared-data-platform")
+    dashboards.request("api/saved_objects/dashboard/shared-apm-correlation")
 
 
 def main() -> int:

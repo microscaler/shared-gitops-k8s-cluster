@@ -51,8 +51,16 @@ def test_dashboard_references_are_complete_and_stable() -> None:
     assert len(identities) == len(objects)
     assert ("dashboard", "shared-observability-overview") in identities
     assert ("dashboard", "shared-postgres-connections") in identities
+    assert ("dashboard", "shared-data-platform") in identities
+    assert ("dashboard", "shared-apm-correlation") in identities
+    assert ("index-pattern", "shared-observability-traces") in identities
 
-    for dashboard_id in ("shared-observability-overview", "shared-postgres-connections"):
+    for dashboard_id in (
+        "shared-observability-overview",
+        "shared-postgres-connections",
+        "shared-data-platform",
+        "shared-apm-correlation",
+    ):
         dashboard = next(
             payload
             for object_type, object_id, payload in objects
@@ -70,6 +78,7 @@ def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
         "Telemetry error logs detected",
         "RERP API metrics stale",
         "Postgres metrics stale",
+        "Redis metrics stale",
     }
     assert all(monitor["enabled"] for monitor in monitors.values())
     assert all(
@@ -143,18 +152,24 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     ]
     metrics_receivers = otel["config"]["service"]["pipelines"]["metrics"]["receivers"]
     assert "otlp" in metrics_receivers
-    assert "prometheus/postgres" in metrics_receivers
-    postgres_scrape = otel["config"]["receivers"]["prometheus/postgres"]["config"][
+    assert "prometheus/data" in metrics_receivers
+    data_scrape = otel["config"]["receivers"]["prometheus/data"]["config"][
         "scrape_configs"
     ]
-    job_names = {job["job_name"] for job in postgres_scrape}
-    assert job_names == {"postgres-ha", "pgpool"}
+    job_names = {job["job_name"] for job in data_scrape}
+    assert job_names == {"postgres-ha", "pgpool", "redis"}
 
     pipelines = prepper["pipelineConfig"]["config"]
     metric_sink = pipelines["otel-metrics-pipeline"]["sink"][0]["opensearch"]
     log_sink = pipelines["otel-logs-pipeline"]["sink"][0]["opensearch"]
     assert metric_sink["index"] == "otel-v1-apm-metrics-%{yyyy.MM.dd}"
     assert log_sink["index"] == "otel-v1-apm-logs-%{yyyy.MM.dd}"
+
+
+def test_correlation_queries_reference_trace_fields() -> None:
+    assert "traceId" in provisioner.CORRELATED_LOGS_QUERY
+    assert "traceId" in provisioner.ERROR_LOGS_WITH_TRACE_QUERY
+    assert provisioner.TRACES_PATTERN == "otel-v1-apm-span-*"
 
 
 def test_helm_values_changes_trigger_release_reconciliation() -> None:

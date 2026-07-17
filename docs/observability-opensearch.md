@@ -19,19 +19,29 @@ Data Prepper
 OpenSearch 2.19.x ── OpenSearch Dashboards 2.19.x
 ```
 
-The Collector's Prometheus-format endpoint is a compatibility exporter only.
-There is no Prometheus database or Grafana deployment. OpenSearch is the
-durable metric store.
+The Collector also scrapes Postgres HA and Pgpool Prometheus exporters and
+forwards those metrics through the same OTLP metrics pipeline. Product
+databases are relabelled to a `consumer_namespace` dimension for dashboard
+grouping (`hauliage` → `loadlinker`, `sesame_idam` → `sesame-idam`, `rerp` →
+`rerp`, platform roles → `platform/data`).
 
 | Component | Dev delivery |
 |-----------|--------------|
 | OpenSearch | HelmRelease `opensearch`, single node, `zfs-iscsi` 30 GiB PVC |
 | Dashboards | HelmRelease `opensearch-dashboards`, MetalLB `.227:5601` |
-| Data Prepper | HelmRelease `data-prepper`, image 2.11, OTLP pipelines and pod-local server metrics on `:4900` |
-| OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231` |
+| Data Prepper | HelmRelease `data-prepper`, image 2.11, OTLP pipelines |
+| OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231`, Prometheus scrape |
+| Pgpool exporter | Deployment `postgres-ha-pgpool-exporter` in `data`, `:9719` |
 | Provisioner | Ten-minute CronJob reconciling lifecycle, saved objects, and monitors |
 
-LAN entrypoint: `opensearch.dev.microscaler.local:5601`.
+LAN entrypoints:
+
+| URL | Purpose |
+|-----|---------|
+| `http://opensearch.dev.microscaler.local/` | OpenSearch Dashboards (preferred) |
+| `http://192.168.1.189:5601/` | Legacy LAN proxy |
+| `http://10.177.76.227:5601/` | MetalLB (ms02 / in-cluster) |
+| `192.168.1.189:4317` / `10.177.76.231:4317` | OTLP gRPC ingest |
 
 ## Dev retention and volume control
 
@@ -64,18 +74,26 @@ retention policy. Production retention and topology must be sized separately.
 
 ## Managed dashboard and alerts
 
-The provisioner owns the `Shared observability overview` dashboard with:
+The provisioner owns these dashboards:
 
-- metric sample volume grouped by service;
-- stored log volume grouped by service;
-- recent error logs; and
-- RERP API metric records.
+| Dashboard | Purpose |
+|-----------|---------|
+| **Shared observability overview** | App metric/log volume by service, error logs, RERP API metrics |
+| **Postgres & Pgpool connections** | DB connections by Kubernetes namespace, pgpool frontend pressure, `max_connections` |
+
+Index patterns (use in **Discover**):
+
+| Pattern | Time field |
+|---------|------------|
+| `otel-v1-apm-metrics*` | `time` |
+| `otel-v1-apm-logs*` | `observedTime` |
 
 OpenSearch Alerting evaluates these query-level monitors every five minutes:
 
 - `Telemetry metrics stale` — no metric documents in ten minutes;
 - `Telemetry error logs detected` — ERROR/FATAL records in five minutes;
-- `RERP API metrics stale` — no `api_requests_total` records in ten minutes.
+- `RERP API metrics stale` — no `api_requests_total` records in ten minutes;
+- `Postgres metrics stale` — no `pg_*` metric documents in ten minutes.
 
 Alerts are visible and acknowledgeable in OpenSearch Dashboards. Notification
 actions are intentionally empty until a secret-backed email/webhook channel and
@@ -97,8 +115,13 @@ just observability-provision-now
 Expected terminal line:
 
 ```text
-observability provisioning passed: retention=7d monitors=3 saved_objects=7
+observability provisioning passed: retention=7d monitors=5 saved_objects=24
 ```
+
+Cluster health may show **yellow** on a single-node dev cluster because
+OpenSearch plugin indices still declare replica shards that cannot be assigned.
+Telemetry indices use zero replicas; yellow status does not block Dashboards or
+ingest.
 
 The provisioner is idempotent. Re-running it updates only objects carrying its
 stable IDs/names and refuses to replace an unexpected lifecycle policy already
