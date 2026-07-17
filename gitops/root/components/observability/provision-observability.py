@@ -875,7 +875,6 @@ def saved_search(
             "description": f"Managed by {MANAGED_BY}",
             "columns": columns,
             "sort": [[time_field, "desc"]],
-            "grid": {},
             "hideChart": False,
             "isTextBasedQuery": False,
             "kibanaSavedObjectMeta": {
