@@ -78,22 +78,30 @@ The provisioner owns these dashboards:
 
 | Dashboard | Purpose |
 |-----------|---------|
-| **Shared observability overview** | App metric/log volume by service, error logs, RERP API metrics |
-| **Postgres & Pgpool connections** | DB connections by Kubernetes namespace, pgpool frontend pressure, `max_connections` |
+| **Shared observability overview** | App metric/log volume by service, error logs (with traceId), RERP API metrics |
+| **Postgres & Pgpool connections** | DB connections by Kubernetes namespace, pgpool frontend pressure |
+| **Data namespace platform** | Postgres + Pgpool + Redis metrics for the `data` namespace |
+| **APM & log correlation** | Trace spans, correlated logs (traceId), DB pressure logs, aligned Postgres metrics |
 
 Index patterns (use in **Discover**):
 
-| Pattern | Time field |
-|---------|------------|
-| `otel-v1-apm-metrics*` | `time` |
-| `otel-v1-apm-logs*` | `observedTime` |
+| Pattern | Time field | Correlation keys |
+|---------|------------|------------------|
+| `otel-v1-apm-metrics*` | `time` | `serviceName`, `metric.attributes.consumer_namespace` |
+| `otel-v1-apm-logs*` | `observedTime` | `serviceName`, `traceId`, `spanId`, `body` |
+| `otel-v1-apm-span-*` | `startTime` | `traceId`, `spanId`, `serviceName`, `name` |
+
+**Cross-signal correlation:** pick a `traceId` from **HTTP request spans** or
+**Errors with trace context**, paste into Discover on logs or traces, and align
+the time picker with **Postgres connections** to relate app events to DB pressure.
 
 OpenSearch Alerting evaluates these query-level monitors every five minutes:
 
 - `Telemetry metrics stale` — no metric documents in ten minutes;
 - `Telemetry error logs detected` — ERROR/FATAL records in five minutes;
 - `RERP API metrics stale` — no `api_requests_total` records in ten minutes;
-- `Postgres metrics stale` — no `pg_*` metric documents in ten minutes.
+- `Postgres metrics stale` — no `pg_*` metric documents in ten minutes;
+- `Redis metrics stale` — no `redis_*` metric documents in ten minutes.
 
 Alerts are visible and acknowledgeable in OpenSearch Dashboards. Notification
 actions are intentionally empty until a secret-backed email/webhook channel and
