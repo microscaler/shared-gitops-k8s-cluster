@@ -6,7 +6,6 @@ opensearchHosts: "http://opensearch-nodes:9200"
 config:
   opensearch_dashboards.yml: |
     data_source.enabled: false
-    opensearchDashboards.defaultRoute: /app/dashboards#/list
 
 service:
   type: ClusterIP
