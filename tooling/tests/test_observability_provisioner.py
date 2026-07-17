@@ -53,7 +53,6 @@ def test_dashboard_references_are_complete_and_stable() -> None:
     assert ("dashboard", "shared-postgres-connections") in identities
     assert ("dashboard", "shared-data-platform") in identities
     assert ("dashboard", "shared-apm-correlation") in identities
-    assert ("index-pattern", "shared-observability-traces") in identities
 
     for dashboard_id in (
         "shared-observability-overview",
@@ -170,6 +169,13 @@ def test_correlation_queries_reference_trace_fields() -> None:
     assert "traceId" in provisioner.CORRELATED_LOGS_QUERY
     assert "traceId" in provisioner.ERROR_LOGS_WITH_TRACE_QUERY
     assert provisioner.TRACES_PATTERN == "otel-v1-apm-span-*"
+
+
+def test_dashboards_config_disables_data_sources_for_gitops_index_patterns() -> None:
+    profile = ROOT / "deployment-configuration/profiles/dev/observability"
+    dashboards = yaml.safe_load((profile / "helm-values-dashboards.yaml").read_text())
+    config = dashboards["config"]["opensearch_dashboards.yml"]
+    assert "data_source.enabled: false" in config
 
 
 def test_helm_values_changes_trigger_release_reconciliation() -> None:

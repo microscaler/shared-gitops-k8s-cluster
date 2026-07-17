@@ -1,6 +1,13 @@
 # Dev overlay for OpenSearch Dashboards (Flux valuesFrom).
 opensearchHosts: "http://opensearch-nodes:9200"
 
+# Single-cluster dev: disable the data-sources plugin so GitOps-provisioned
+# index patterns appear in Dashboards Management without a data source link.
+config:
+  opensearch_dashboards.yml: |
+    data_source.enabled: false
+    opensearchDashboards.defaultRoute: /app/dashboards#/list
+
 service:
   type: ClusterIP
   port: 5601

@@ -19,11 +19,9 @@ Data Prepper
 OpenSearch 2.19.x ── OpenSearch Dashboards 2.19.x
 ```
 
-The Collector also scrapes Postgres HA and Pgpool Prometheus exporters and
-forwards those metrics through the same OTLP metrics pipeline. Product
-databases are relabelled to a `consumer_namespace` dimension for dashboard
-grouping (`hauliage` → `loadlinker`, `sesame_idam` → `sesame-idam`, `rerp` →
-`rerp`, platform roles → `platform/data`).
+The Collector also scrapes Postgres HA, Pgpool, and Redis Prometheus exporters in
+the `data` namespace. Dev Dashboards runs with `data_source.enabled: false` so
+GitOps-provisioned index patterns register without a separate data-source object.
 
 | Component | Dev delivery |
 |-----------|--------------|

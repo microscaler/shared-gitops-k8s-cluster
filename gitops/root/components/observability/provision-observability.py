@@ -468,6 +468,59 @@ def compact(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
+def fetch_index_fields(client: JsonClient, pattern: str) -> str:
+    """Return index-pattern `fields` JSON string from a live wildcard lookup."""
+    query = urlencode(
+        {
+            "pattern": pattern,
+            "meta_fields": ["_source", "_id", "_type", "_index", "_score"],
+        },
+        doseq=True,
+    )
+    _, response = client.request(f"api/index_patterns/_fields_for_wildcard?{query}")
+    specs: list[dict[str, Any]] = []
+    for field in response.get("fields", []):
+        specs.append(
+            {
+                "count": 0,
+                "name": field["name"],
+                "type": field["type"],
+                "esTypes": field.get("esTypes", [field["type"]]),
+                "scripted": False,
+                "searchable": field.get("searchable", True),
+                "aggregatable": field.get("aggregatable", False),
+                "readFromDocValues": field.get("aggregatable", False),
+            }
+        )
+    return compact(specs)
+
+
+def upsert_index_pattern(
+    client: JsonClient, pattern_id: str, title: str, time_field: str
+) -> None:
+    """Register an index pattern with field mappings so Dashboards UI can use it."""
+    client.request(
+        f"api/saved_objects/index-pattern/{quote(pattern_id)}?overwrite=true",
+        method="POST",
+        payload={
+            "attributes": {
+                "title": title,
+                "timeFieldName": time_field,
+                "fields": fetch_index_fields(client, title),
+            }
+        },
+    )
+
+
+def reconcile_index_patterns(client: JsonClient) -> None:
+    for pattern_id, title, time_field in (
+        ("shared-observability-metrics", METRICS_PATTERN, "time"),
+        ("shared-observability-logs", LOGS_PATTERN, "observedTime"),
+        ("shared-observability-traces", TRACES_PATTERN, "startTime"),
+    ):
+        upsert_index_pattern(client, pattern_id, title, time_field)
+
+
 def search_source(index_reference: str, query: str = "") -> dict[str, Any]:
     return {
         "query": {"query": query, "language": "kuery"},
@@ -838,21 +891,6 @@ def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
     logs_view = "shared-observability-logs"
     traces_view = "shared-observability-traces"
     objects: list[tuple[str, str, dict[str, Any]]] = [
-        (
-            "index-pattern",
-            metrics_view,
-            {"attributes": {"title": METRICS_PATTERN, "timeFieldName": "time"}},
-        ),
-        (
-            "index-pattern",
-            logs_view,
-            {"attributes": {"title": LOGS_PATTERN, "timeFieldName": "observedTime"}},
-        ),
-        (
-            "index-pattern",
-            traces_view,
-            {"attributes": {"title": TRACES_PATTERN, "timeFieldName": "startTime"}},
-        ),
         (
             "visualization",
             "shared-metrics-by-service",
@@ -1388,6 +1426,7 @@ def main() -> int:
     )
     reconcile_trace_storage(opensearch)
     upsert_monitors(opensearch)
+    reconcile_index_patterns(dashboards)
     upsert_dashboards(dashboards)
     verify(opensearch, dashboards, retention_days)
     print(
