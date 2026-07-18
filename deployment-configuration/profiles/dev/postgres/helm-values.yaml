@@ -10,7 +10,8 @@ primary:
   name: postgres-primary
   persistence:
     storageClass: zfs-iscsi
-    size: 10Gi
+    # Must be >= existing Bound PVC capacity (shrink is forbidden).
+    size: 20Gi
   resources:
     requests:
       cpu: 250m

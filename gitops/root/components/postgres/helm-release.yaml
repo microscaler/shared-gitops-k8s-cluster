@@ -20,6 +20,8 @@ spec:
   chart:
     spec:
       chart: charts/postgres
+      # Git-sourced chart: reconcile on artifact revision, not Chart.yaml version.
+      reconcileStrategy: Revision
       sourceRef:
         kind: GitRepository
         name: lifeguard-charts
