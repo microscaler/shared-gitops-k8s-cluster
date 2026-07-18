@@ -690,7 +690,12 @@ def compact(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-def fetch_index_fields(client: JsonClient, pattern: str) -> str:
+def fetch_index_fields(
+    client: JsonClient,
+    pattern: str,
+    *,
+    popular_fields: list[str] | None = None,
+) -> str:
     """Return index-pattern `fields` JSON string from a live wildcard lookup."""
     query = urlencode(
         {
@@ -700,12 +705,18 @@ def fetch_index_fields(client: JsonClient, pattern: str) -> str:
         doseq=True,
     )
     _, response = client.request(f"api/index_patterns/_fields_for_wildcard?{query}")
+    # Higher count surfaces fields under Discover's "Popular" sidebar group.
+    popularity = {
+        name: max(50, 200 - (index * 10))
+        for index, name in enumerate(popular_fields or [])
+    }
     specs: list[dict[str, Any]] = []
     for field in response.get("fields", []):
+        name = field["name"]
         specs.append(
             {
-                "count": 0,
-                "name": field["name"],
+                "count": popularity.get(name, 0),
+                "name": name,
                 "type": field["type"],
                 "esTypes": field.get("esTypes", [field["type"]]),
                 "scripted": False,
@@ -718,7 +729,12 @@ def fetch_index_fields(client: JsonClient, pattern: str) -> str:
 
 
 def upsert_index_pattern(
-    client: JsonClient, pattern_id: str, title: str, time_field: str
+    client: JsonClient,
+    pattern_id: str,
+    title: str,
+    time_field: str,
+    *,
+    popular_fields: list[str] | None = None,
 ) -> None:
     """Register an index pattern with field mappings so Dashboards UI can use it."""
     client.request(
@@ -728,19 +744,41 @@ def upsert_index_pattern(
             "attributes": {
                 "title": title,
                 "timeFieldName": time_field,
-                "fields": fetch_index_fields(client, title),
+                "fields": fetch_index_fields(
+                    client, title, popular_fields=popular_fields
+                ),
             }
         },
     )
 
 
 def reconcile_index_patterns(client: JsonClient) -> None:
-    for pattern_id, title, time_field in (
-        ("shared-observability-metrics", METRICS_PATTERN, "time"),
-        ("shared-observability-logs", LOGS_PATTERN, LOGS_TIME_FIELD),
-        ("shared-observability-traces", TRACES_PATTERN, "startTime"),
+    for pattern_id, title, time_field, popular_fields in (
+        ("shared-observability-metrics", METRICS_PATTERN, "time", None),
+        (
+            "shared-observability-logs",
+            LOGS_PATTERN,
+            LOGS_TIME_FIELD,
+            list(dashboard_definitions.LOG_SIDEBAR_FILTER_FIELDS),
+        ),
+        ("shared-observability-traces", TRACES_PATTERN, "startTime", None),
     ):
-        upsert_index_pattern(client, pattern_id, title, time_field)
+        upsert_index_pattern(
+            client,
+            pattern_id,
+            title,
+            time_field,
+            popular_fields=popular_fields,
+        )
+
+
+def reconcile_ui_settings(client: JsonClient) -> None:
+    """Point Discover/home defaults at the logs index pattern (field sidebar UX)."""
+    client.request(
+        "api/opensearch-dashboards/settings",
+        method="POST",
+        payload={"changes": {"defaultIndex": "shared-observability-logs"}},
+    )
 
 
 def verify(opensearch: JsonClient, dashboards: JsonClient, retention_days: int) -> None:
@@ -813,6 +851,7 @@ def main() -> int:
     reconcile_trace_storage(opensearch)
     upsert_monitors(opensearch)
     reconcile_index_patterns(dashboards)
+    reconcile_ui_settings(dashboards)
     cleanup_deprecated_saved_objects(dashboards)
     import_dashboard_bundles(dashboards, DASHBOARDS_DIR)
     verify(opensearch, dashboards, retention_days)

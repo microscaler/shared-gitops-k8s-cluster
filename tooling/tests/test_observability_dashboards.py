@@ -45,6 +45,22 @@ def test_ndjson_bundle_exists_and_parses() -> None:
     assert any(item["type"] == "dashboard" and item["id"] == "logs-explore" for item in parsed)
     assert any(item["type"] == "search" and item["id"] == "logs-explore-stream" for item in parsed)
     assert any(item["type"] == "visualization" and item["id"] == "logs-explore-histogram" for item in parsed)
+    assert any(
+        item["type"] == "visualization" and item["id"] == "logs-explore-discover-guide"
+        for item in parsed
+    )
+
+
+def test_discover_is_canonical_field_sidebar_surface() -> None:
+    assert definitions.LOGS_DISCOVER_DEFAULT_ROUTE.startswith(
+        "/app/data-explorer/discover/"
+    )
+    assert "shared-observability-logs" in definitions.LOGS_DISCOVER_DEFAULT_ROUTE
+    guide = definitions.discover_guide_markdown()
+    vis_state = json.loads(guide["attributes"]["visState"])
+    assert vis_state["type"] == "markdown"
+    assert "Discover" in vis_state["params"]["markdown"]
+    assert definitions.LOG_EVENT_CATEGORY_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
 
 
 def test_log_stream_uses_structured_sidebar_columns() -> None:

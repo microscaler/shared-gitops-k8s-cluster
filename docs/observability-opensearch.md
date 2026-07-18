@@ -73,16 +73,24 @@ retention policy. Production retention and topology must be sized separately.
 
 ## Managed dashboards (GitOps NDJSON)
 
-One **Discover-style** log view is GitOps-managed:
+### Field filter sidebar (Logz.io-style)
+
+OpenSearch **Dashboard** embeds cannot host a left-hand Selected / Available
+fields panel. That UI is **Discover only**.
+
+| Surface | Left field sidebar | Use for |
+|---------|--------------------|---------|
+| **Discover** (canonical) | Yes — Search field names, Selected / Available / Popular | Day-to-day log triage and filtering |
+| **Dashboard `logs-explore`** | No — query bar + filter pills only | Overview / embeds; banner links to Discover |
+
+Primary log exploration is GitOps-managed:
 
 - **Discover (default landing)** — field sidebar, histogram, and document table
-- **Dashboard (`logs-explore`)** — histogram + log stream for embeds and direct links
-- **Log stream columns** — `observedTimestamp`, `serviceName`, `severityText`, `traceId`, `body`
-- **Default noise filters** — query-time exclusion via `log.attributes.event_category`, `log.attributes.log@target`, and `instrumentationScope.name` (raw logs remain indexed)
-- **Search bar + filter pills** — Lucene in the query bar; three toggleable pills (epoll target, memory scope, event_category)
-- **Field sidebar (Discover)** — selected columns include `event_category`, `serviceName`, `severityText`, `instrumentationScope.name`, `traceId`, `body`; use **Search field names** for `log.attributes.*` filters
-- **Default time window** — last 15 minutes with 30s refresh
-- **Landing page** — `opensearchDashboards.defaultRoute` opens Discover with noise filters applied
+- **Dashboard (`logs-explore`)** — Discover link banner + histogram + log stream
+- **Selected fields** — `observedTimestamp`, `log.attributes.event_category`, `serviceName`, `severityText`, `instrumentationScope.name`, `traceId`, `body`
+- **Popular sidebar fields** — `event_category`, `serviceName`, `severityText`, `instrumentationScope.name`, `log@target`, `traceId`, memory attrs
+- **Default noise filters** — query-time exclusion via structured fields (raw logs remain indexed)
+- **Landing page** — `opensearchDashboards.defaultRoute` opens Discover; provisioner sets `defaultIndex` to logs
 
 Source: `gitops/root/components/observability/dashboards/logs-explore.ndjson`.
 Regenerate after editing `dashboard_definitions.py`:
@@ -92,14 +100,15 @@ python3 tooling/generate_observability_dashboards.py
 ```
 
 The provisioner imports the NDJSON bundle, reconciles index patterns dynamically,
-and deletes deprecated saved objects from earlier dashboard iterations.
+boosts Popular field counts for the Discover sidebar, sets the default index to
+logs, and deletes deprecated saved objects from earlier dashboard iterations.
 
 Direct URLs:
 
 | View | URL |
 |------|-----|
-| Discover (field sidebar) | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
-| Dashboard (histogram + table) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
+| **Discover (use this — field sidebar)** | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
+| Dashboard (no field sidebar) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
 
 **Example Lucene queries** (search bar):
 

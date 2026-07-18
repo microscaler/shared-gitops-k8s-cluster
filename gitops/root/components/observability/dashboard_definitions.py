@@ -121,6 +121,7 @@ def _url_encode_lucene(query: str) -> str:
 
 
 # Discover landing URL (field sidebar + histogram + table).
+# Dashboard embeds cannot host this sidebar — Discover is the canonical logs UI.
 LOGS_DISCOVER_DEFAULT_ROUTE = (
     "/app/data-explorer/discover/#/?"
     "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
@@ -131,6 +132,10 @@ LOGS_DISCOVER_DEFAULT_ROUTE = (
     "&_q=(filters:!(),query:(language:lucene,query:'"
     + _url_encode_lucene(LOG_NOISE_EXCLUSION_LUCENE)
     + "'))"
+)
+
+LOGS_DISCOVER_PUBLIC_URL = (
+    "http://opensearch.dev.microscaler.local" + LOGS_DISCOVER_DEFAULT_ROUTE
 )
 
 
@@ -150,6 +155,43 @@ def search_source(
         "query": {"query": query, "language": "lucene"},
         "filter": filters if filters is not None else log_noise_filters(index_id=LOGS_VIEW),
         "indexRefName": index_reference,
+    }
+
+
+def discover_guide_markdown() -> dict[str, Any]:
+    """Dashboard banner: field sidebar lives in Discover, not Dashboard embeds."""
+    markdown = (
+        "## Field filter sidebar lives in Discover\n\n"
+        "OpenSearch **Dashboards** cannot host the left-hand Selected / Available "
+        "fields panel (Logz.io-style). Use **Discover** for that UI.\n\n"
+        f"[**Open Logs in Discover (field sidebar)**]({LOGS_DISCOVER_DEFAULT_ROUTE})\n\n"
+        "In Discover: search field names → click a field → **Filter for value** / "
+        "**Filter out value**, or add columns with **+**. Default query already hides "
+        "`epoll_io` and `runtime_metrics` noise (raw logs stay indexed)."
+    )
+    vis_state = {
+        "title": "Open Discover for field sidebar",
+        "type": "markdown",
+        "params": {
+            "fontSize": 12,
+            "openLinksInNewTab": False,
+            "markdown": markdown,
+        },
+        "aggs": [],
+    }
+    return {
+        "attributes": {
+            "title": "Open Discover for field sidebar",
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(
+                    {"query": {"query": "", "language": "lucene"}, "filter": []}
+                )
+            },
+        },
+        "references": [],
     }
 
 
@@ -334,8 +376,13 @@ def assemble_dashboard(
 
 
 def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
-    """Single Discover-style log view: histogram + document stream."""
+    """Dashboard companion to Discover: guide + histogram + document stream."""
     objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            "logs-explore-discover-guide",
+            discover_guide_markdown(),
+        ),
         (
             "visualization",
             "logs-explore-histogram",
@@ -362,15 +409,15 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             dashboard_id="logs-explore",
             title="Logs",
             description=(
-                "Unified log exploration (Discover-style). Default filters hide "
-                "classified runtime noise via event_category, log target, and "
-                "instrumentation scope; disable filter pills to inspect raw logs. "
-                "Open Discover for the full field sidebar. Lucene queries match "
-                f"alert monitors. Managed by {MANAGED_BY}"
+                "Companion overview for logs. For the left-hand field filter sidebar "
+                "(Selected / Available fields), open Discover — Dashboard embeds cannot "
+                "host that panel. Default filters hide classified runtime noise; disable "
+                f"filter pills to inspect raw logs. Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "logs-explore-histogram", 0, 0, 48, 12),
-                ("search", "logs-explore-stream", 0, 12, 48, 30),
+                ("visualization", "logs-explore-discover-guide", 0, 0, 48, 6),
+                ("visualization", "logs-explore-histogram", 0, 6, 48, 12),
+                ("search", "logs-explore-stream", 0, 18, 48, 28),
             ],
             panel_ref_prefix="logs_explore",
             time_from="now-15m",
