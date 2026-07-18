@@ -125,11 +125,13 @@ config:
       # Stay below the pod's 256 MiB cgroup limit so the limiter acts before OOM.
       limit_mib: 384
       spike_limit_mib: 96
+    # Drop DEBUG/TRACE except request access lines (BRRTRouter demoted those to
+    # debug; sesame RUST_LOG=debug still emits them — keep for Discover detail).
     filter/drop-low-severity:
       error_mode: ignore
       logs:
         log_record:
-          - 'IsMatch(severity_text, "^(DEBUG|TRACE)$")'
+          - 'IsMatch(severity_text, "^(DEBUG|TRACE)$") and not IsMatch(body, "(?i)^Request (completed|received)$")'
     # High-churn runtime I/O / metrics drown application signal. Drop at the
     # collector (source reader) before classify/export. Lifecycle/config noise
     # stays indexed for explicit selection via Logs / Runtime noise.
@@ -161,21 +163,28 @@ config:
             - set(attributes["service.namespace"], attributes["k8s.namespace.name"]) where attributes["k8s.namespace.name"] != nil
         - context: log
           statements:
+            # Fix missing SDK timestamps (Data Prepper otherwise indexes time=1970).
+            - set(time_unix_nano, observed_time_unix_nano) where time_unix_nano == 0
             # --- Runtime noise (epoll/memory already dropped by filter/drop-epoll-io) ---
             # may runtime knobs (workers / stack size)
             - set(attributes["event_category"], "runtime_config") where attributes["log.target"] == "may::config"
             - set(attributes["event_category"], "runtime_config") where attributes["event_category"] == nil and IsMatch(body, "(?i)^set (workers|stack size)=")
-            # BRRTRouter bootstrap / hot-reload lifecycle (not request-path signal)
-            - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i)^brrtrouter::(dispatcher::core|validator_cache|router::core|server::service)$")
+            # BRRTRouter bootstrap / hot-reload lifecycle (not request-path signal).
+            # Do NOT match brrtrouter::server::service by scope — that module also
+            # emits Request completed access logs that must stay application signal.
+            - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i)^brrtrouter::(dispatcher::core|validator_cache|router::core)$")
             - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(body, "(?i)^(Handler registered successfully|Replaced existing handler|Schema validator|Initializing JSON Schema|Precompiled schemas|Routing table loaded|Pre-registering paths)")
             - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
             # --- Application signal categories ---
+            - set(attributes["event_category"], "http") where attributes["event_category"] == nil and IsMatch(body, "(?i)^Request (completed|received)$")
             - set(attributes["event_category"], "auth") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i).*(jwks|login|session|authz|api.keys|org.mgmt|user.mgmt).*")
             - set(attributes["event_category"], "application") where attributes["event_category"] == nil
             - set(attributes["event_class"], "application") where attributes["event_class"] == nil
             # --- Correlation helper for Discover sidebar ---
             - set(attributes["has_trace"], false)
             - set(attributes["has_trace"], true) where trace_id != nil
+            # Promote body to message for clearer Discover detail labeling
+            - set(attributes["message"], body) where attributes["message"] == nil
   exporters:
     otlp/traces:
       endpoint: data-prepper.observability.svc.cluster.local:21890

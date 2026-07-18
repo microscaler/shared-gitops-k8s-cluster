@@ -33,7 +33,6 @@ LOG_FRAMEWORK_LIFECYCLE_SCOPES = (
     "brrtrouter::dispatcher::core",
     "brrtrouter::validator_cache",
     "brrtrouter::router::core",
-    "brrtrouter::server::service",
 )
 
 _NOISE_CATEGORY_OR = " OR ".join(f'"{c}"' for c in LOG_NOISE_CATEGORIES)
@@ -47,6 +46,10 @@ LOG_STREAM_COLUMNS = [
     "severityText",
     LOG_EVENT_CLASS_FIELD,
     LOG_EVENT_CATEGORY_FIELD,
+    "log.attributes.method",
+    "log.attributes.path",
+    "log.attributes.status",
+    "log.attributes.duration_ms",
     LOG_HAS_TRACE_FIELD,
     "body",
 ]

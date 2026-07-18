@@ -91,6 +91,7 @@ Primary log exploration is GitOps-managed:
 - **Selected / Popular fields** — `k8s.namespace.name`, `serviceName`, `severityText`, `event_class`, `event_category`, `has_trace`
 - **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`). No `microscaler` ns
 - **Collector drop** — `filter/drop-epoll-io` strips may `epoll select` and BRRTRouter `Memory statistics` before OpenSearch (was ~99% of volume)
+- **Request access logs** — `Request completed` (method/path/status/duration_ms) kept even at DEBUG; tagged `event_category:http`. Expand a row (or JSON tab) to see structured fields; `body` is the message
 - **Runtime noise tagging** — Collector sets `event_class:runtime_noise` with `event_category`:
   - `runtime_config` — may `set workers=` / `set stack size=`
   - `framework_lifecycle` — BRRTRouter handler registration, validator cache, routing table, metrics path pre-register
