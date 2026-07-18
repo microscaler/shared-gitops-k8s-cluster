@@ -86,16 +86,13 @@ fields panel. That UI is **Discover only**.
 Primary log exploration is GitOps-managed:
 
 - **Discover (default landing)** — field sidebar, histogram, and document table (Signal scope)
-- **Dashboard (`logs-explore`)** — Discover banner + signal histogram + stream
-- **Filter hierarchy** — **namespace** → **application** → **time** → **event_class** / **event_category**
-- **Selected / Popular fields** — `k8s.namespace.name`, `serviceName`, `severityText`, `event_class`, `event_category`, `has_trace`
+- **Dashboard (`logs-explore`)** — Discover banner + signal histogram + HTTP triage (top paths, status codes, avg duration) + stream
+- **Filter hierarchy** — **namespace** → **application** → **time** → **event_category** / method / path / status
+- **Selected / Popular fields** — namespace, `serviceName`, severity, `event_class`, `event_category`, method, path, status, `has_trace`
 - **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`). No `microscaler` ns
-- **Collector drop** — `filter/drop-epoll-io` strips may `epoll select` and BRRTRouter `Memory statistics` before OpenSearch (was ~99% of volume)
-- **Request access logs** — `Request completed` (method/path/status/duration_ms) kept even at DEBUG; tagged `event_category:http`. Expand a row (or JSON tab) to see structured fields; `body` is the message
-- **Runtime noise tagging** — Collector sets `event_class:runtime_noise` with `event_category`:
-  - `runtime_config` — may `set workers=` / `set stack size=`
-  - `framework_lifecycle` — BRRTRouter handler registration, validator cache, routing table, metrics path pre-register
-  These stay indexed; open **Logs / Runtime noise** to select them. Epoll/memory are not indexed.
+- **Collector drop** — epoll select, memory statistics, and k8s `/health` probe access logs are stripped before OpenSearch
+- **Request access logs** — `Request completed` / `received` tagged `event_category:http` with method/path/status/duration_ms. Expand a row for structured fields; `log.attributes.message` mirrors `body`
+- **Runtime noise tagging** — rare lifecycle/config lines stay as `event_class:runtime_noise` (selectable via Logs / Runtime noise)
 - **Landing page** — Discover saved searches (Signal); provisioner sets `defaultIndex` to logs. Do not set `opensearchDashboards.defaultRoute` in helm values (OSD 2.19 rejects it)
 
 ### Saved searches (Discover → Open)
@@ -103,10 +100,11 @@ Primary log exploration is GitOps-managed:
 | Title | Purpose |
 |-------|---------|
 | **Logs / Signal** | Application logs only (`event_class:application`) — default triage |
+| **Logs / HTTP** | Access logs only (`event_category:http`) — method/path/status/duration |
 | **Logs / Errors** | WARN+ within signal |
 | **Logs / Auth** | `sesame-idam` signal |
 | **Logs / BFF** | `loadlinker` + `serviceName:bff` signal |
-| **Logs / Runtime noise** | System noise (`event_class:runtime_noise`) — select *for* trash |
+| **Logs / Runtime noise** | Rare lifecycle/config (`event_class:runtime_noise`) |
 
 ### Two-click filter path
 
@@ -133,8 +131,8 @@ Direct URLs:
 | Goal | Query |
 |------|-------|
 | Signal (default) | `log.attributes.event_class:application` |
+| HTTP access logs | `log.attributes.event_class:application AND log.attributes.event_category:http` |
 | Runtime noise only | `log.attributes.event_class:runtime_noise` |
-| Memory stats only | `log.attributes.event_category:runtime_metrics` |
 | may config only | `log.attributes.event_category:runtime_config` |
 | BRRTRouter lifecycle only | `log.attributes.event_category:framework_lifecycle` |
 | Errors | `log.attributes.event_class:application AND severityText:(ERROR OR FATAL OR WARN)` |

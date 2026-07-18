@@ -46,6 +46,11 @@ def test_ndjson_bundle_exists_and_parses() -> None:
     assert any(item["type"] == "search" and item["id"] == "logs-explore-stream" for item in parsed)
     assert any(item["type"] == "search" and item["id"] == "logs-runtime-noise" for item in parsed)
     assert any(item["type"] == "search" and item["id"] == "logs-errors" for item in parsed)
+    assert any(item["type"] == "search" and item["id"] == "logs-http" for item in parsed)
+    assert any(
+        item["type"] == "visualization" and item["id"] == "logs-http-top-paths"
+        for item in parsed
+    )
 
 
 def test_discover_is_canonical_field_sidebar_surface() -> None:
@@ -56,13 +61,15 @@ def test_discover_is_canonical_field_sidebar_surface() -> None:
     guide = definitions.discover_guide_markdown()
     vis_state = json.loads(guide["attributes"]["visState"])
     assert vis_state["type"] == "markdown"
-    assert "Runtime noise" in vis_state["params"]["markdown"]
+    assert "Logs / HTTP" in vis_state["params"]["markdown"]
+    assert "dropped at the collector" in vis_state["params"]["markdown"]
 
 
 def test_log_stream_uses_structured_sidebar_columns() -> None:
     assert definitions.LOG_STREAM_COLUMNS[0] == definitions.LOG_NAMESPACE_FIELD
     assert definitions.LOG_STREAM_COLUMNS[1] == definitions.LOG_APPLICATION_FIELD
     assert definitions.LOG_EVENT_CLASS_FIELD in definitions.LOG_STREAM_COLUMNS
+    assert definitions.LOG_PATH_FIELD in definitions.LOG_STREAM_COLUMNS
     assert definitions.LOG_HAS_TRACE_FIELD in definitions.LOG_STREAM_COLUMNS
 
 
@@ -70,6 +77,7 @@ def test_sidebar_popular_fields_namespace_then_application() -> None:
     assert definitions.LOG_SIDEBAR_FILTER_FIELDS[0] == definitions.LOG_NAMESPACE_FIELD
     assert definitions.LOG_SIDEBAR_FILTER_FIELDS[1] == definitions.LOG_APPLICATION_FIELD
     assert definitions.LOG_EVENT_CLASS_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
+    assert definitions.LOG_PATH_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
     assert "service@namespace" not in "".join(definitions.LOG_SIDEBAR_FILTER_FIELDS)
 
 
@@ -79,6 +87,7 @@ def test_signal_and_runtime_noise_queries_are_complements() -> None:
         definitions.LOG_RUNTIME_NOISE_LUCENE
         == "log.attributes.event_class:runtime_noise"
     )
+    assert "event_category:http" in definitions.LOG_HTTP_LUCENE
     assert set(definitions.LOG_NOISE_CATEGORIES) == {
         "epoll_io",
         "runtime_metrics",
@@ -98,11 +107,21 @@ def test_saved_search_scopes_cover_roadmap() -> None:
     }
     assert {
         "logs-explore-stream",
+        "logs-http",
         "logs-errors",
         "logs-auth",
         "logs-bff",
         "logs-runtime-noise",
     }.issubset(ids)
+
+    http = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "search" and object_id == "logs-http"
+    )
+    source = json.loads(http["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
+    assert "http" in source["query"]["query"]
+    assert definitions.LOG_PATH_FIELD in http["attributes"]["columns"]
 
     noise = next(
         payload
@@ -111,10 +130,10 @@ def test_saved_search_scopes_cover_roadmap() -> None:
     )
     source = json.loads(noise["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
     assert source["filter"] == []
-    assert "runtime_noise" in source["query"]["query"] or "epoll" in source["query"]["query"]
+    assert "runtime_noise" in source["query"]["query"]
 
 
-def test_dashboard_defaults_to_fifteen_minute_window() -> None:
+def test_dashboard_includes_http_triage_panels() -> None:
     objects = definitions.all_dashboard_objects()
     dashboard = next(
         payload
@@ -122,3 +141,12 @@ def test_dashboard_defaults_to_fifteen_minute_window() -> None:
         if object_type == "dashboard" and object_id == "logs-explore"
     )
     assert dashboard["attributes"]["timeFrom"] == "now-15m"
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "logs-explore-discover-guide",
+        "logs-explore-histogram",
+        "logs-http-top-paths",
+        "logs-http-status-codes",
+        "logs-http-avg-duration",
+        "logs-explore-stream",
+    }.issubset(ref_ids)

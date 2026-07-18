@@ -17,6 +17,11 @@ LOG_EPOLL_TARGET_FIELD = "log.attributes.log@target"
 LOG_SCOPE_FIELD = "instrumentationScope.name"
 LOG_NAMESPACE_FIELD = "resource.attributes.k8s@namespace@name"
 LOG_APPLICATION_FIELD = "serviceName"
+LOG_METHOD_FIELD = "log.attributes.method"
+LOG_PATH_FIELD = "log.attributes.path"
+LOG_PATH_KEYWORD_FIELD = "log.attributes.path.keyword"
+LOG_STATUS_FIELD = "log.attributes.status"
+LOG_DURATION_FIELD = "log.attributes.duration_ms"
 
 # epoll_io is dropped at the collector (filter/drop-epoll-io); keep the token
 # for legacy docs still in the index and for Discover filter pills.
@@ -38,7 +43,7 @@ LOG_FRAMEWORK_LIFECYCLE_SCOPES = (
 _NOISE_CATEGORY_OR = " OR ".join(f'"{c}"' for c in LOG_NOISE_CATEGORIES)
 _FRAMEWORK_SCOPE_OR = " OR ".join(LOG_FRAMEWORK_LIFECYCLE_SCOPES)
 
-# Sidebar + table: namespace → application → time → class → signal fields.
+# Sidebar + table: namespace → application → time → class → HTTP → signal fields.
 LOG_STREAM_COLUMNS = [
     LOG_NAMESPACE_FIELD,
     LOG_APPLICATION_FIELD,
@@ -46,11 +51,22 @@ LOG_STREAM_COLUMNS = [
     "severityText",
     LOG_EVENT_CLASS_FIELD,
     LOG_EVENT_CATEGORY_FIELD,
-    "log.attributes.method",
-    "log.attributes.path",
-    "log.attributes.status",
-    "log.attributes.duration_ms",
+    LOG_METHOD_FIELD,
+    LOG_PATH_FIELD,
+    LOG_STATUS_FIELD,
+    LOG_DURATION_FIELD,
     LOG_HAS_TRACE_FIELD,
+    "body",
+]
+
+LOG_HTTP_COLUMNS = [
+    LOG_NAMESPACE_FIELD,
+    LOG_APPLICATION_FIELD,
+    "observedTimestamp",
+    LOG_METHOD_FIELD,
+    LOG_PATH_FIELD,
+    LOG_STATUS_FIELD,
+    LOG_DURATION_FIELD,
     "body",
 ]
 
@@ -61,6 +77,9 @@ LOG_SIDEBAR_FILTER_FIELDS = [
     "severityText",
     LOG_EVENT_CLASS_FIELD,
     LOG_EVENT_CATEGORY_FIELD,
+    LOG_METHOD_FIELD,
+    LOG_PATH_FIELD,
+    LOG_STATUS_FIELD,
     LOG_HAS_TRACE_FIELD,
     "traceId",
 ]
@@ -73,6 +92,10 @@ LOG_SIGNAL_LUCENE = f"{LOG_EVENT_CLASS_FIELD}:application"
 # Same constraint as Signal: keep Lucene to a single tagged phrase. Category /
 # body/scope selection is done in the Discover sidebar (event_category).
 LOG_RUNTIME_NOISE_LUCENE = f"{LOG_EVENT_CLASS_FIELD}:runtime_noise"
+
+LOG_HTTP_LUCENE = (
+    f"{LOG_EVENT_CLASS_FIELD}:application AND {LOG_EVENT_CATEGORY_FIELD}:http"
+)
 
 LOG_ERRORS_LUCENE = (
     f"({LOG_SIGNAL_LUCENE}) AND severityText: (ERROR OR FATAL OR WARN)"
@@ -176,28 +199,45 @@ def search_source(
     }
 
 
+def _discover_route_for_query(query: str) -> str:
+    return (
+        "/app/data-explorer/discover/#/?"
+        "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
+        "&_a=(discover:(columns:!("
+        + ",".join(LOG_STREAM_COLUMNS)
+        + "),interval:auto,sort:!(!(observedTimestamp,desc))),"
+        "metadata:(indexPattern:shared-observability-logs,view:discover))"
+        "&_q=(filters:!(),query:(language:lucene,query:'"
+        + _url_encode_lucene(query)
+        + "'))"
+    )
+
+
 def discover_guide_markdown() -> dict[str, Any]:
     """Dashboard banner: field sidebar + saved-search scopes live in Discover."""
+    http_route = _discover_route_for_query(LOG_HTTP_LUCENE)
     markdown = (
         "## Use Discover for filters (Logz.io-style left panel)\n\n"
-        f"[**Open Logs / Signal**]({LOGS_DISCOVER_DEFAULT_ROUTE}) — default triage view.\n\n"
+        f"[**Open Logs / Signal**]({LOGS_DISCOVER_DEFAULT_ROUTE}) — default triage.\n"
+        f"[**Open Logs / HTTP**]({http_route}) — access logs "
+        "(`Request completed` / method · path · status · duration).\n\n"
         "### Filter order\n"
-        "1. **namespace** (`resource.attributes.k8s@namespace@name`: "
-        "`loadlinker` / `sesame-idam` / `rerp`)\n"
+        "1. **namespace** (`loadlinker` / `sesame-idam` / `rerp`)\n"
         "2. **application** (`serviceName`)\n"
         "3. **time** (picker, top right)\n"
-        "4. **event_class** / **event_category** (signal vs runtime noise)\n\n"
+        "4. **event_category** (`http` / `auth`) or method / path / status\n\n"
         "### Saved searches (Discover → Open)\n"
-        "- **Logs / Signal** — application logs only (`event_class:application`)\n"
+        "- **Logs / Signal** — all application logs "
+        "(`event_class:application`)\n"
+        "- **Logs / HTTP** — access logs only (`event_category:http`)\n"
         "- **Logs / Errors** — WARN+ within signal\n"
         "- **Logs / Auth** — `sesame-idam` signal\n"
         "- **Logs / BFF** — `loadlinker` + `bff` signal\n"
-        "- **Logs / Runtime noise** — epoll, memory, may config, BRRTRouter "
-        "lifecycle (`event_class:runtime_noise`) — select *for* trash, not mixed "
-        "with triage\n\n"
-        "System lines stay indexed; they are tagged, not deleted. Filter "
-        "`event_category` for `epoll_io` / `runtime_metrics` / `runtime_config` / "
-        "`framework_lifecycle`."
+        "- **Logs / Runtime noise** — rare lifecycle/config lines "
+        "(`event_class:runtime_noise`)\n\n"
+        "Epoll and memory stats are **dropped at the collector** (not indexed). "
+        "Expand a row for structured fields (`log.attributes.message`, method, "
+        "path, status, duration_ms)."
     )
     vis_state = {
         "title": "Open Discover for field sidebar",
@@ -225,6 +265,28 @@ def discover_guide_markdown() -> dict[str, Any]:
     }
 
 
+def _visualization(
+    *,
+    title: str,
+    data_view: str,
+    vis_state: dict[str, Any],
+    query: str,
+) -> dict[str, Any]:
+    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
+    return {
+        "attributes": {
+            "title": title,
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(search_source(source_ref, query))
+            },
+        },
+        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
+    }
+
+
 def log_histogram_visualization(
     *,
     title: str,
@@ -232,7 +294,6 @@ def log_histogram_visualization(
     time_field: str,
     query: str = LOG_SIGNAL_LUCENE,
 ) -> dict[str, Any]:
-    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
     vis_state = {
         "title": title,
         "type": "histogram",
@@ -303,18 +364,109 @@ def log_histogram_visualization(
             },
         ],
     }
-    return {
-        "attributes": {
-            "title": title,
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_terms_table_visualization(
+    *,
+    title: str,
+    data_view: str,
+    field: str,
+    query: str,
+    size: int = 10,
+) -> dict[str, Any]:
+    """Top-N terms table (paths, status codes, …)."""
+    vis_state = {
+        "title": title,
+        "type": "table",
+        "params": {
+            "perPage": size,
+            "showPartialRows": False,
+            "showMeticsAtAllLevels": False,
+            "sort": {"columnIndex": None, "direction": None},
+            "showTotal": False,
+            "showToolbar": False,
+            "totalFunc": "sum",
+            "percentageCol": "",
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "count",
+                "schema": "metric",
+                "params": {},
+            },
+            {
+                "id": "2",
+                "enabled": True,
+                "type": "terms",
+                "schema": "bucket",
+                "params": {
+                    "field": field,
+                    "size": size,
+                    "order": "desc",
+                    "orderBy": "1",
+                    "otherBucket": False,
+                    "otherBucketLabel": "Other",
+                    "missingBucket": False,
+                    "missingBucketLabel": "Missing",
+                },
+            },
+        ],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_avg_metric_visualization(
+    *,
+    title: str,
+    data_view: str,
+    field: str,
+    query: str,
+) -> dict[str, Any]:
+    """Single-number average metric (e.g. avg duration_ms)."""
+    vis_state = {
+        "title": title,
+        "type": "metric",
+        "params": {
+            "addTooltip": True,
+            "addLegend": False,
+            "type": "metric",
+            "metric": {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [{"from": 0, "to": 10000}],
+                "labels": {"show": True},
+                "invertColors": False,
+                "style": {
+                    "bgFill": 0.0,
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": 48,
+                },
             },
         },
-        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "avg",
+                "schema": "metric",
+                "params": {"field": field, "customLabel": "avg duration_ms"},
+            }
+        ],
     }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
 
 
 def saved_search(
@@ -414,21 +566,25 @@ def assemble_dashboard(
 
 
 def _saved_search_scopes() -> list[tuple[str, str, dict[str, Any]]]:
-    """Discover → Open: Signal / Errors / Auth / BFF / Runtime noise."""
+    """Discover → Open: Signal / HTTP / Errors / Auth / BFF / Runtime noise."""
     # logs-explore-stream is the canonical "Logs / Signal" (dashboard + Discover).
-    scopes: list[tuple[str, str, str, list[dict[str, Any]] | None]] = [
-        ("logs-errors", "Logs / Errors", LOG_ERRORS_LUCENE, None),
-        ("logs-auth", "Logs / Auth", LOG_AUTH_LUCENE, None),
-        ("logs-bff", "Logs / BFF", LOG_BFF_LUCENE, None),
+    scopes: list[
+        tuple[str, str, str, list[str], list[dict[str, Any]] | None]
+    ] = [
+        ("logs-http", "Logs / HTTP", LOG_HTTP_LUCENE, LOG_HTTP_COLUMNS, None),
+        ("logs-errors", "Logs / Errors", LOG_ERRORS_LUCENE, LOG_STREAM_COLUMNS, None),
+        ("logs-auth", "Logs / Auth", LOG_AUTH_LUCENE, LOG_STREAM_COLUMNS, None),
+        ("logs-bff", "Logs / BFF", LOG_BFF_LUCENE, LOG_STREAM_COLUMNS, None),
         (
             "logs-runtime-noise",
             "Logs / Runtime noise",
             LOG_RUNTIME_NOISE_LUCENE,
-            [],  # no hide pills — this view *selects* trash
+            LOG_STREAM_COLUMNS,
+            [],  # no hide pills — this view *selects* rare lifecycle/config
         ),
     ]
     objects: list[tuple[str, str, dict[str, Any]]] = []
-    for object_id, title, query, filters in scopes:
+    for object_id, title, query, columns, filters in scopes:
         objects.append(
             (
                 "search",
@@ -437,7 +593,7 @@ def _saved_search_scopes() -> list[tuple[str, str, dict[str, Any]]]:
                     title=title,
                     data_view=LOGS_VIEW,
                     time_field=LOGS_TIME_FIELD,
-                    columns=LOG_STREAM_COLUMNS,
+                    columns=columns,
                     query=query,
                     filters=filters,
                 ),
@@ -447,7 +603,7 @@ def _saved_search_scopes() -> list[tuple[str, str, dict[str, Any]]]:
 
 
 def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
-    """Dashboard companion + Discover saved-search pack."""
+    """Dashboard companion + Discover saved-search pack + HTTP triage panels."""
     objects: list[tuple[str, str, dict[str, Any]]] = [
         (
             "visualization",
@@ -461,6 +617,38 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 title="Log volume (signal)",
                 data_view=LOGS_VIEW,
                 time_field=LOGS_TIME_FIELD,
+            ),
+        ),
+        (
+            "visualization",
+            "logs-http-top-paths",
+            log_terms_table_visualization(
+                title="Top paths (HTTP)",
+                data_view=LOGS_VIEW,
+                field=LOG_PATH_KEYWORD_FIELD,
+                query=LOG_HTTP_LUCENE,
+                size=10,
+            ),
+        ),
+        (
+            "visualization",
+            "logs-http-status-codes",
+            log_terms_table_visualization(
+                title="Status codes (HTTP)",
+                data_view=LOGS_VIEW,
+                field=LOG_STATUS_FIELD,
+                query=LOG_HTTP_LUCENE,
+                size=10,
+            ),
+        ),
+        (
+            "visualization",
+            "logs-http-avg-duration",
+            log_avg_metric_visualization(
+                title="Avg duration_ms (HTTP)",
+                data_view=LOGS_VIEW,
+                field=LOG_DURATION_FIELD,
+                query=LOG_HTTP_LUCENE,
             ),
         ),
         (
@@ -481,16 +669,19 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             dashboard_id="logs-explore",
             title="Logs",
             description=(
-                "Companion overview. Open Discover for the field sidebar and saved "
-                "searches (Signal / Errors / Auth / BFF / Runtime noise). System "
-                "noise (epoll, memory, may config, BRRTRouter lifecycle) is tagged "
-                "event_class:runtime_noise — hidden by default, selectable when "
-                f"needed. Managed by {MANAGED_BY}"
+                "Companion overview with HTTP triage (top paths, status, avg "
+                "latency). Open Discover for the field sidebar and saved searches "
+                "(Signal / HTTP / Errors / Auth / BFF / Runtime noise). Epoll and "
+                "memory are dropped at the collector; rare lifecycle/config noise "
+                f"is selectable via Runtime noise. Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "logs-explore-discover-guide", 0, 0, 48, 8),
-                ("visualization", "logs-explore-histogram", 0, 8, 48, 12),
-                ("search", "logs-explore-stream", 0, 20, 48, 26),
+                ("visualization", "logs-explore-discover-guide", 0, 0, 48, 7),
+                ("visualization", "logs-explore-histogram", 0, 7, 48, 10),
+                ("visualization", "logs-http-top-paths", 0, 17, 18, 12),
+                ("visualization", "logs-http-status-codes", 18, 17, 15, 12),
+                ("visualization", "logs-http-avg-duration", 33, 17, 15, 12),
+                ("search", "logs-explore-stream", 0, 29, 48, 24),
             ],
             panel_ref_prefix="logs_explore",
             time_from="now-15m",
