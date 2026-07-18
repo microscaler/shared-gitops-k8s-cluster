@@ -7,10 +7,11 @@ from typing import Any
 MANAGED_BY = "shared-gitops-k8s-cluster"
 
 LOGS_VIEW = "shared-observability-logs"
+LOGS_TIME_FIELD = "observedTimestamp"
 
 # Discover-style column layout: time + service context + message body.
 LOG_STREAM_COLUMNS = [
-    "observedTime",
+    "observedTimestamp",
     "serviceName",
     "severityText",
     "traceId",
@@ -218,7 +219,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             log_histogram_visualization(
                 title="Log volume",
                 data_view=LOGS_VIEW,
-                time_field="observedTime",
+                time_field=LOGS_TIME_FIELD,
             ),
         ),
         (
@@ -227,7 +228,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             saved_search(
                 title="Logs",
                 data_view=LOGS_VIEW,
-                time_field="observedTime",
+                time_field=LOGS_TIME_FIELD,
                 columns=LOG_STREAM_COLUMNS,
                 query="",
             ),

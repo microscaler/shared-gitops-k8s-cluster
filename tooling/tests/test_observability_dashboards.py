@@ -49,7 +49,7 @@ def test_ndjson_bundle_exists_and_parses() -> None:
 
 def test_log_stream_uses_discover_columns() -> None:
     assert definitions.LOG_STREAM_COLUMNS == [
-        "observedTime",
+        "observedTimestamp",
         "serviceName",
         "severityText",
         "traceId",

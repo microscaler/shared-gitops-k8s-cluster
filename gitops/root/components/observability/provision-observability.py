@@ -23,6 +23,7 @@ import dashboard_definitions
 METRICS_PATTERN = "otel-v1-apm-metrics*"
 LOGS_PATTERN = "otel-v1-apm-logs*"
 TRACES_PATTERN = "otel-v1-apm-span-*"
+LOGS_TIME_FIELD = dashboard_definitions.LOGS_TIME_FIELD
 MANAGED_BY = "shared-gitops-k8s-cluster"
 
 POSTGRES_ACTIVITY_QUERY = (
@@ -222,6 +223,32 @@ def index_template(pattern: str, time_field: str) -> dict[str, Any]:
     }
 
 
+def logs_index_template(pattern: str) -> dict[str, Any]:
+    """Map both OTLP log timestamp field names for backward compatibility."""
+    date_mapping = {
+        "type": "date",
+        "format": "strict_date_optional_time||epoch_millis",
+    }
+    return {
+        "index_patterns": [pattern],
+        "priority": 200,
+        "_meta": {"managed_by": MANAGED_BY},
+        "template": {
+            "settings": {
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+                "refresh_interval": "30s",
+            },
+            "mappings": {
+                "properties": {
+                    LOGS_TIME_FIELD: date_mapping,
+                    "observedTime": date_mapping,
+                }
+            },
+        },
+    }
+
+
 def attach_existing_index(
     client: JsonClient, index: str, policy_id: str, time_field: str
 ) -> None:
@@ -340,7 +367,7 @@ def desired_monitors() -> list[dict[str, Any]]:
         "query": {
             "bool": {
                 "filter": [
-                    {"range": {"observedTime": {"gte": "now-5m", "lte": "now"}}},
+                    {"range": {"observedTimestamp": {"gte": "now-5m", "lte": "now"}}},
                     {"terms": {"severityText.keyword": ["ERROR", "FATAL"]}},
                 ]
             }
@@ -377,7 +404,7 @@ def desired_monitors() -> list[dict[str, Any]]:
         "query": {
             "bool": {
                 "filter": [
-                    {"range": {"observedTime": {"gte": "now-5m", "lte": "now"}}},
+                    {"range": {"observedTimestamp": {"gte": "now-5m", "lte": "now"}}},
                     {"terms": {"severityText.keyword": ["ERROR", "FATAL"]}},
                     {
                         "terms": {
@@ -399,7 +426,7 @@ def desired_monitors() -> list[dict[str, Any]]:
         "query": {
             "bool": {
                 "filter": [
-                    {"range": {"observedTime": {"gte": "now-5m", "lte": "now"}}},
+                    {"range": {"observedTimestamp": {"gte": "now-5m", "lte": "now"}}},
                     {"terms": {"severityText.keyword": ["ERROR", "FATAL"]}},
                     {
                         "terms": {
@@ -697,7 +724,7 @@ def upsert_index_pattern(
 def reconcile_index_patterns(client: JsonClient) -> None:
     for pattern_id, title, time_field in (
         ("shared-observability-metrics", METRICS_PATTERN, "time"),
-        ("shared-observability-logs", LOGS_PATTERN, "observedTime"),
+        ("shared-observability-logs", LOGS_PATTERN, LOGS_TIME_FIELD),
         ("shared-observability-traces", TRACES_PATTERN, "startTime"),
     ):
         upsert_index_pattern(client, pattern_id, title, time_field)
@@ -756,7 +783,7 @@ def main() -> int:
     opensearch.request(
         "_index_template/observability-logs",
         method="PUT",
-        payload=index_template("otel-v1-apm-logs-*", "observedTime"),
+        payload=logs_index_template("otel-v1-apm-logs-*"),
     )
     reconcile_matching_indices(
         opensearch,
@@ -768,7 +795,7 @@ def main() -> int:
         opensearch,
         LOGS_PATTERN,
         "observability-logs-retention",
-        "observedTime",
+        LOGS_TIME_FIELD,
     )
     reconcile_trace_storage(opensearch)
     upsert_monitors(opensearch)

@@ -74,8 +74,8 @@ retention policy. Production retention and topology must be sized separately.
 
 One **Discover-style** log dashboard (`logs-explore`) is GitOps-managed:
 
-- **Histogram** — log volume over time (`observedTime`)
-- **Log stream** — document table with `observedTime`, `serviceName`, `severityText`, `traceId`, `body`
+- **Histogram** — log volume over time (`observedTimestamp`)
+- **Log stream** — document table with `observedTimestamp`, `serviceName`, `severityText`, `traceId`, `body`
 - **Search bar + filters** — use Lucene in the dashboard query bar (same syntax as alert monitors)
 - **Default time window** — last 15 minutes with 30s refresh
 - **Landing page** — `opensearchDashboards.defaultRoute` opens `/app/dashboards#/view/logs-explore`
@@ -105,7 +105,7 @@ Index patterns (Discover or raw queries):
 
 | Pattern | Time field | Key fields |
 |---------|------------|------------|
-| `otel-v1-apm-logs*` | `observedTime` | `serviceName`, `traceId`, `spanId`, `body`, `severityText` |
+| `otel-v1-apm-logs*` | `observedTimestamp` | `serviceName`, `traceId`, `spanId`, `body`, `severityText` |
 | `otel-v1-apm-metrics*` | `time` | `serviceName`, `name`, `value` |
 | `otel-v1-apm-span-*` | `startTime` | `traceId`, `spanId`, `serviceName`, `name` |
 
