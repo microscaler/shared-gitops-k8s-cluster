@@ -64,10 +64,15 @@ def test_discover_is_canonical_field_sidebar_surface() -> None:
 
 
 def test_log_stream_uses_structured_sidebar_columns() -> None:
-    assert definitions.LOG_EVENT_CATEGORY_FIELD in definitions.LOG_STREAM_COLUMNS
-    assert definitions.LOG_SCOPE_FIELD in definitions.LOG_STREAM_COLUMNS
-    assert "serviceName" in definitions.LOG_STREAM_COLUMNS
+    assert definitions.LOG_STREAM_COLUMNS[0] == definitions.LOG_NAMESPACE_FIELD
+    assert definitions.LOG_STREAM_COLUMNS[1] == definitions.LOG_APPLICATION_FIELD
+    assert definitions.LOG_STREAM_COLUMNS[2] == "observedTimestamp"
     assert "body" in definitions.LOG_STREAM_COLUMNS
+
+
+def test_sidebar_popular_fields_namespace_then_application() -> None:
+    assert definitions.LOG_SIDEBAR_FILTER_FIELDS[0] == definitions.LOG_NAMESPACE_FIELD
+    assert definitions.LOG_SIDEBAR_FILTER_FIELDS[1] == definitions.LOG_APPLICATION_FIELD
 
 
 def test_default_noise_exclusion_uses_structured_fields() -> None:

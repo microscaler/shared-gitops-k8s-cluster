@@ -6,7 +6,7 @@ opensearchHosts: "http://opensearch-nodes:9200"
 config:
   opensearch_dashboards.yml: |
     data_source.enabled: false
-    opensearchDashboards.defaultRoute: /app/data-explorer/discover/#/?_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))&_a=(discover:(columns:!(observedTimestamp,log.attributes.event_category,serviceName,severityText,instrumentationScope.name,traceId,body),interval:auto,sort:!(!(observedTimestamp,desc))),metadata:(indexPattern:shared-observability-logs,view:discover))&_q=(filters:!(),query:(language:lucene,query:'NOT%20%28log.attributes.event_category%3A%20%28%22epoll_io%22%20OR%20%22runtime_metrics%22%29%20OR%20log.attributes.log@target%3A%20%22may%3A%3Aio%3A%3Asys%3A%3Aselect%22%20OR%20instrumentationScope.name%3A%20%22brrtrouter%3A%3Amiddleware%3A%3Amemory%22%20OR%20body%3A%20%28*epoll*%29%20OR%20body%3A%20%22Memory%20statistics%22%29'))
+    opensearchDashboards.defaultRoute: /app/data-explorer/discover/#/?_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))&_a=(discover:(columns:!(resource.attributes.service@namespace,serviceName,observedTimestamp,severityText,log.attributes.event_category,traceId,body),interval:auto,sort:!(!(observedTimestamp,desc))),metadata:(indexPattern:shared-observability-logs,view:discover))&_q=(filters:!(),query:(language:lucene,query:'NOT%20%28log.attributes.event_category%3A%20%28%22epoll_io%22%20OR%20%22runtime_metrics%22%29%20OR%20log.attributes.log@target%3A%20%22may%3A%3Aio%3A%3Asys%3A%3Aselect%22%20OR%20instrumentationScope.name%3A%20%22brrtrouter%3A%3Amiddleware%3A%3Amemory%22%20OR%20body%3A%20%28*epoll*%29%20OR%20body%3A%20%22Memory%20statistics%22%29'))
 
 service:
   type: ClusterIP

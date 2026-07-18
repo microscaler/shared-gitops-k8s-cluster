@@ -4,6 +4,13 @@ mode: deployment
 fullnameOverride: otel-collector
 replicaCount: 1
 
+# Inject k8s.namespace.name / pod metadata onto OTLP resource attributes so
+# Discover can filter namespace → application → time (not the hardcoded
+# service.namespace=microscaler from app binaries).
+presets:
+  kubernetesAttributes:
+    enabled: true
+
 image:
   repository: otel/opentelemetry-collector-contrib
   tag: "0.114.0"
@@ -134,9 +141,13 @@ config:
           - flags == 1
     # Classify known runtime noise without dropping records. event_category is
     # indexed as log.attributes.event_category for Discover sidebar filters.
+    # Prefer k8s namespace over the app default service.namespace=microscaler.
     transform/classify-log-signal:
       error_mode: ignore
       log_statements:
+        - context: resource
+          statements:
+            - set(attributes["service.namespace"], attributes["k8s.namespace.name"]) where attributes["k8s.namespace.name"] != nil
         - context: log
           statements:
             - set(attributes["event_category"], "epoll_io") where attributes["log.target"] == "may::io::sys::select"
@@ -175,5 +186,7 @@ config:
         exporters: [otlp/metrics, prometheus]
       logs:
         receivers: [otlp]
+        # k8sattributes is injected by presets.kubernetesAttributes before this list
+        # is merged; transform overwrites service.namespace from k8s.namespace.name.
         processors: [memory_limiter, transform/classify-log-signal, filter/drop-low-severity, batch]
         exporters: [otlp/logs]

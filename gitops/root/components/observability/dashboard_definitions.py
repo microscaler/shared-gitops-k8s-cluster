@@ -13,27 +13,31 @@ LOGS_TIME_FIELD = "observedTimestamp"
 LOG_EVENT_CATEGORY_FIELD = "log.attributes.event_category"
 LOG_EPOLL_TARGET_FIELD = "log.attributes.log@target"
 LOG_SCOPE_FIELD = "instrumentationScope.name"
+# Filter hierarchy: namespace → application (service) → time (global picker).
+LOG_NAMESPACE_FIELD = "resource.attributes.service@namespace"
+LOG_APPLICATION_FIELD = "serviceName"
 
 LOG_NOISE_CATEGORIES = ("epoll_io", "runtime_metrics")
 LOG_EPOLL_TARGET = "may::io::sys::select"
 LOG_MEMORY_SCOPE = "brrtrouter::middleware::memory"
 
-# Sidebar + table columns (Discover selected fields).
+# Sidebar + table columns: namespace → application → time → signal fields.
 LOG_STREAM_COLUMNS = [
+    LOG_NAMESPACE_FIELD,
+    LOG_APPLICATION_FIELD,
     "observedTimestamp",
-    LOG_EVENT_CATEGORY_FIELD,
-    "serviceName",
     "severityText",
-    LOG_SCOPE_FIELD,
+    LOG_EVENT_CATEGORY_FIELD,
     "traceId",
     "body",
 ]
 
-# Sidebar filter fields surfaced via index pattern (popular / available).
+# Popular sidebar order drives Discover field ranking (highest count first).
 LOG_SIDEBAR_FILTER_FIELDS = [
-    LOG_EVENT_CATEGORY_FIELD,
-    "serviceName",
+    LOG_NAMESPACE_FIELD,
+    LOG_APPLICATION_FIELD,
     "severityText",
+    LOG_EVENT_CATEGORY_FIELD,
     LOG_SCOPE_FIELD,
     LOG_EPOLL_TARGET_FIELD,
     "traceId",
@@ -165,9 +169,10 @@ def discover_guide_markdown() -> dict[str, Any]:
         "OpenSearch **Dashboards** cannot host the left-hand Selected / Available "
         "fields panel (Logz.io-style). Use **Discover** for that UI.\n\n"
         f"[**Open Logs in Discover (field sidebar)**]({LOGS_DISCOVER_DEFAULT_ROUTE})\n\n"
-        "In Discover: search field names → click a field → **Filter for value** / "
-        "**Filter out value**, or add columns with **+**. Default query already hides "
-        "`epoll_io` and `runtime_metrics` noise (raw logs stay indexed)."
+        "Filter order: **1. namespace** (`resource.attributes.service@namespace`) → "
+        "**2. application** (`serviceName`) → **3. time** (picker, top right). "
+        "Then severity / event_category. Default query hides `epoll_io` and "
+        "`runtime_metrics` noise (raw logs stay indexed)."
     )
     vis_state = {
         "title": "Open Discover for field sidebar",
