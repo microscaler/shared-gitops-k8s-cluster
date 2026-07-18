@@ -24,6 +24,7 @@ METRICS_PATTERN = "otel-v1-apm-metrics*"
 LOGS_PATTERN = "otel-v1-apm-logs*"
 TRACES_PATTERN = "otel-v1-apm-span-*"
 LOGS_TIME_FIELD = dashboard_definitions.LOGS_TIME_FIELD
+LOGS_LEGACY_TIME_FIELD = "observedTime"
 MANAGED_BY = "shared-gitops-k8s-cluster"
 
 POSTGRES_ACTIVITY_QUERY = (
@@ -249,6 +250,14 @@ def logs_index_template(pattern: str) -> dict[str, Any]:
     }
 
 
+def index_exposes_time_field(properties: dict[str, Any], time_field: str) -> bool:
+    if time_field in properties:
+        return True
+    return (
+        time_field == LOGS_TIME_FIELD and LOGS_LEGACY_TIME_FIELD in properties
+    )
+
+
 def attach_existing_index(
     client: JsonClient, index: str, policy_id: str, time_field: str
 ) -> None:
@@ -275,7 +284,7 @@ def attach_existing_index(
     # The field is part of the contract even on the legacy unsuffixed index.
     _, mapping = client.request(f"{quote(index)}/_mapping")
     properties = mapping[index]["mappings"].get("properties", {})
-    if time_field not in properties:
+    if not index_exposes_time_field(properties, time_field):
         raise ApiError(f"{index} does not expose required time field {time_field}")
 
 
