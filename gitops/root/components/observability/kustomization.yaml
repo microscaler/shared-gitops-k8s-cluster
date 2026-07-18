@@ -20,3 +20,14 @@ configMapGenerator:
   - name: observability-provisioner
     files:
       - provision-observability.py
+      - dashboard_definitions.py
+  - name: observability-dashboards
+    files:
+      - dashboards/platform-postgres-connections.ndjson
+      - dashboards/platform-data-namespace.ndjson
+      - dashboards/platform-apm-correlation.ndjson
+      - dashboards/loadlinker-health.ndjson
+      - dashboards/loadlinker-bff-edge.ndjson
+      - dashboards/loadlinker-sesame-auth.ndjson
+      - dashboards/sesame-platform-health.ndjson
+      - dashboards/sesame-auth-critical-path.ndjson

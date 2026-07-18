@@ -70,16 +70,38 @@ sets `OBSERVABILITY_RETENTION_DAYS=7`.
 Seven days is a dev troubleshooting window, not an audit or financial-record
 retention policy. Production retention and topology must be sized separately.
 
-## Managed dashboard and alerts
+## Managed dashboards (GitOps NDJSON)
 
-The provisioner owns these dashboards:
+Dashboard bundles live in
+`gitops/root/components/observability/dashboards/*.ndjson` (one file per
+dashboard, including referenced visualizations and saved searches). Regenerate
+after editing `dashboard_definitions.py`:
 
-| Dashboard | Purpose |
-|-----------|---------|
-| **Shared observability overview** | App metric/log volume by service, error logs (with traceId), RERP API metrics |
-| **Postgres & Pgpool connections** | DB connections by Kubernetes namespace, pgpool frontend pressure |
-| **Data namespace platform** | Postgres + Pgpool + Redis metrics for the `data` namespace |
-| **APM & log correlation** | Trace spans, correlated logs (traceId), DB pressure logs, aligned Postgres metrics |
+```bash
+python3 tooling/generate_observability_dashboards.py
+```
+
+The provisioner imports NDJSON bundles, reconciles index patterns dynamically,
+and deletes deprecated `shared-*` dashboard IDs from earlier iterations.
+
+| Dashboard ID | Purpose |
+|--------------|---------|
+| **platform-postgres-connections** | Postgres/Pgpool saturation split by `loadlinker` / `sesame-idam` |
+| **platform-data-namespace** | Shared `data` namespace Postgres, Pgpool, Redis |
+| **platform-apm-correlation** | Incident war room: traceId pivot across logs, spans, DB |
+| **loadlinker-health** | P0 RED: `bff`, `bidding`, `consignments`, `notifications` |
+| **loadlinker-bff-edge** | BFF routes, errors, SLO p95 target 500 ms |
+| **loadlinker-sesame-auth** | BFF → Sesame auth dependency |
+| **sesame-platform-health** | All six Sesame-IDAM services |
+| **sesame-auth-critical-path** | Login, session, authz-core (authz SLO p95 50 ms) |
+
+Dev SLO starting points (refine against measured baselines):
+
+| Service / path | Target |
+|----------------|--------|
+| Loadlinker BFF p95 | 500 ms |
+| Loadlinker bidding p95 | 800 ms |
+| Sesame authz-core p95 | 50 ms |
 
 Index patterns (use in **Discover**):
 

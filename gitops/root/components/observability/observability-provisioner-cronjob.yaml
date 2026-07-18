@@ -48,7 +48,13 @@ spec:
                 - name: provisioner
                   mountPath: /opt/observability
                   readOnly: true
+                - name: dashboards
+                  mountPath: /opt/observability/dashboards
+                  readOnly: true
           volumes:
             - name: provisioner
               configMap:
                 name: observability-provisioner
+            - name: dashboards
+              configMap:
+                name: observability-dashboards

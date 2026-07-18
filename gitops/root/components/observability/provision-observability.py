@@ -5,11 +5,19 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+import dashboard_definitions
 
 
 METRICS_PATTERN = "otel-v1-apm-metrics*"
@@ -464,6 +472,66 @@ def upsert_monitors(client: JsonClient) -> None:
         )
 
 
+DASHBOARDS_DIR = Path(
+    os.environ.get("OBSERVABILITY_DASHBOARDS_DIR", "/opt/observability/dashboards")
+)
+
+
+def import_ndjson_file(client: JsonClient, path: Path) -> None:
+    boundary = "ObservabilityDashboardImport"
+    payload = path.read_bytes()
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+        f"Content-Type: application/ndjson\r\n\r\n"
+    ).encode() + payload + f"\r\n--{boundary}--\r\n".encode()
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "osd-xsrf": "true",
+    }
+    request = Request(
+        f"{client.base_url}/api/saved_objects/_import?overwrite=true",
+        data=body,
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=120) as response:  # noqa: S310
+            result = json.loads(response.read())
+    except HTTPError as error:
+        detail = error.read().decode(errors="replace")
+        raise ApiError(f"import {path.name} returned {error.code}: {detail}") from error
+    except URLError as error:
+        raise ApiError(f"import {path.name} failed: {error.reason}") from error
+    if result.get("errors"):
+        raise ApiError(f"import {path.name} failed: {result['errors']}")
+
+
+def import_dashboard_bundles(client: JsonClient, directory: Path) -> None:
+    if not directory.is_dir():
+        raise ApiError(f"dashboard bundle directory missing: {directory}")
+    bundle_files = sorted(directory.glob("*.ndjson"))
+    if not bundle_files:
+        raise ApiError(f"no dashboard NDJSON bundles in {directory}")
+    for path in bundle_files:
+        import_ndjson_file(client, path)
+
+
+def cleanup_deprecated_saved_objects(client: JsonClient) -> None:
+    for object_type, object_id in dashboard_definitions.DEPRECATED_SAVED_OBJECTS:
+        client.request(
+            f"api/saved_objects/{quote(object_type)}/{quote(object_id)}",
+            method="DELETE",
+            allowed=(404,),
+        )
+
+
+def verify_dashboards(client: JsonClient) -> None:
+    for dashboard_id in dashboard_definitions.DASHBOARD_BUNDLES:
+        client.request(f"api/saved_objects/dashboard/{quote(dashboard_id)}")
+
+
 def compact(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
 
@@ -521,837 +589,6 @@ def reconcile_index_patterns(client: JsonClient) -> None:
         upsert_index_pattern(client, pattern_id, title, time_field)
 
 
-def search_source(index_reference: str, query: str = "") -> dict[str, Any]:
-    return {
-        "query": {"query": query, "language": "kuery"},
-        "filter": [],
-        "indexRefName": index_reference,
-    }
-
-
-def line_visualization(
-    *, title: str, data_view: str, time_field: str, group_field: str, query: str = ""
-) -> dict[str, Any]:
-    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
-    vis_state = {
-        "title": title,
-        "type": "line",
-        "params": {
-            "type": "line",
-            "grid": {"categoryLines": False},
-            "categoryAxes": [
-                {
-                    "id": "CategoryAxis-1",
-                    "type": "category",
-                    "position": "bottom",
-                    "show": True,
-                    "style": {},
-                    "scale": {"type": "linear"},
-                    "labels": {"show": True, "truncate": 100},
-                    "title": {},
-                }
-            ],
-            "valueAxes": [
-                {
-                    "id": "ValueAxis-1",
-                    "name": "LeftAxis-1",
-                    "type": "value",
-                    "position": "left",
-                    "show": True,
-                    "style": {},
-                    "scale": {"type": "linear", "mode": "normal"},
-                    "labels": {"show": True, "rotate": 0, "filter": False},
-                    "title": {"text": "Documents"},
-                }
-            ],
-            "seriesParams": [
-                {
-                    "show": "true",
-                    "type": "line",
-                    "mode": "normal",
-                    "data": {"label": "Count", "id": "1"},
-                    "valueAxis": "ValueAxis-1",
-                    "drawLinesBetweenPoints": True,
-                    "showCircles": True,
-                }
-            ],
-            "addTooltip": True,
-            "addLegend": True,
-            "legendPosition": "right",
-            "times": [],
-            "addTimeMarker": False,
-        },
-        "aggs": [
-            {
-                "id": "1",
-                "enabled": True,
-                "type": "count",
-                "schema": "metric",
-                "params": {},
-            },
-            {
-                "id": "2",
-                "enabled": True,
-                "type": "date_histogram",
-                "schema": "segment",
-                "params": {
-                    "field": time_field,
-                    "interval": "auto",
-                    "min_doc_count": 1,
-                    "extended_bounds": {},
-                },
-            },
-            {
-                "id": "3",
-                "enabled": True,
-                "type": "terms",
-                "schema": "group",
-                "params": {
-                    "field": group_field,
-                    "size": 12,
-                    "order": "desc",
-                    "orderBy": "1",
-                    "otherBucket": False,
-                    "missingBucket": False,
-                },
-            },
-        ],
-    }
-    return {
-        "attributes": {
-            "title": title,
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
-            },
-        },
-        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
-    }
-
-
-def metric_sum_line_visualization(
-    *,
-    title: str,
-    data_view: str,
-    time_field: str,
-    group_field: str,
-    value_field: str = "value",
-    query: str = "",
-) -> dict[str, Any]:
-    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
-    vis_state = {
-        "title": title,
-        "type": "line",
-        "params": {
-            "type": "line",
-            "grid": {"categoryLines": False},
-            "categoryAxes": [
-                {
-                    "id": "CategoryAxis-1",
-                    "type": "category",
-                    "position": "bottom",
-                    "show": True,
-                    "style": {},
-                    "scale": {"type": "linear"},
-                    "labels": {"show": True, "truncate": 100},
-                    "title": {},
-                }
-            ],
-            "valueAxes": [
-                {
-                    "id": "ValueAxis-1",
-                    "name": "LeftAxis-1",
-                    "type": "value",
-                    "position": "left",
-                    "show": True,
-                    "style": {},
-                    "scale": {"type": "linear", "mode": "normal"},
-                    "labels": {"show": True, "rotate": 0, "filter": False},
-                    "title": {"text": "Connections"},
-                }
-            ],
-            "seriesParams": [
-                {
-                    "show": "true",
-                    "type": "line",
-                    "mode": "normal",
-                    "data": {"label": "Sum", "id": "1"},
-                    "valueAxis": "ValueAxis-1",
-                    "drawLinesBetweenPoints": True,
-                    "showCircles": True,
-                }
-            ],
-            "addTooltip": True,
-            "addLegend": True,
-            "legendPosition": "right",
-            "times": [],
-            "addTimeMarker": False,
-        },
-        "aggs": [
-            {
-                "id": "1",
-                "enabled": True,
-                "type": "sum",
-                "schema": "metric",
-                "params": {"field": value_field},
-            },
-            {
-                "id": "2",
-                "enabled": True,
-                "type": "date_histogram",
-                "schema": "segment",
-                "params": {
-                    "field": time_field,
-                    "interval": "auto",
-                    "min_doc_count": 1,
-                    "extended_bounds": {},
-                },
-            },
-            {
-                "id": "3",
-                "enabled": True,
-                "type": "terms",
-                "schema": "group",
-                "params": {
-                    "field": group_field,
-                    "size": 12,
-                    "order": "desc",
-                    "orderBy": "1",
-                    "otherBucket": False,
-                    "missingBucket": False,
-                },
-            },
-        ],
-    }
-    return {
-        "attributes": {
-            "title": title,
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
-            },
-        },
-        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
-    }
-
-
-def metric_sum_table_visualization(
-    *,
-    title: str,
-    data_view: str,
-    group_fields: list[str],
-    value_field: str = "value",
-    query: str = "",
-) -> dict[str, Any]:
-    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
-    aggs: list[dict[str, Any]] = [
-        {
-            "id": "1",
-            "enabled": True,
-            "type": "sum",
-            "schema": "metric",
-            "params": {"field": value_field},
-        }
-    ]
-    for index, field in enumerate(group_fields, start=2):
-        aggs.append(
-            {
-                "id": str(index),
-                "enabled": True,
-                "type": "terms",
-                "schema": "bucket",
-                "params": {
-                    "field": field,
-                    "size": 20,
-                    "order": "desc",
-                    "orderBy": "1",
-                    "otherBucket": False,
-                    "missingBucket": False,
-                },
-            }
-        )
-    vis_state = {
-        "title": title,
-        "type": "table",
-        "params": {
-            "perPage": 10,
-            "showPartialRows": False,
-            "showMetricsAtAllLevels": False,
-            "sort": {"columnIndex": None, "direction": None},
-            "showTotal": False,
-            "totalFunc": "sum",
-        },
-        "aggs": aggs,
-    }
-    return {
-        "attributes": {
-            "title": title,
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
-            },
-        },
-        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
-    }
-
-
-def assemble_dashboard(
-    *,
-    dashboard_id: str,
-    title: str,
-    description: str,
-    panels: list[tuple[str, str, int, int, int, int]],
-    panel_ref_prefix: str,
-    time_from: str = "now-6h",
-    refresh_ms: int = 30000,
-) -> tuple[str, str, dict[str, Any]]:
-    panel_json: list[dict[str, Any]] = []
-    references: list[dict[str, str]] = []
-    for position, (object_type, object_id, x, y, width, height) in enumerate(panels):
-        panel_ref = f"{panel_ref_prefix}_{position}"
-        panel_json.append(
-            {
-                "version": "2.19.6",
-                "type": object_type,
-                "gridData": {
-                    "x": x,
-                    "y": y,
-                    "w": width,
-                    "h": height,
-                    "i": str(position + 1),
-                },
-                "panelIndex": str(position + 1),
-                "embeddableConfig": {},
-                "panelRefName": panel_ref,
-            }
-        )
-        references.append({"name": panel_ref, "type": object_type, "id": object_id})
-    return (
-        "dashboard",
-        dashboard_id,
-        {
-            "attributes": {
-                "title": title,
-                "description": description,
-                "panelsJSON": compact(panel_json),
-                "optionsJSON": compact(
-                    {
-                        "useMargins": True,
-                        "syncColors": False,
-                        "syncCursor": True,
-                        "syncTooltips": False,
-                        "hidePanelTitles": False,
-                    }
-                ),
-                "version": 1,
-                "timeRestore": True,
-                "timeFrom": time_from,
-                "timeTo": "now",
-                "refreshInterval": {"pause": False, "value": refresh_ms},
-                "kibanaSavedObjectMeta": {
-                    "searchSourceJSON": compact(
-                        {"query": {"query": "", "language": "kuery"}, "filter": []}
-                    )
-                },
-            },
-            "references": references,
-        },
-    )
-
-
-def saved_search(
-    *, title: str, data_view: str, time_field: str, columns: list[str], query: str
-) -> dict[str, Any]:
-    source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
-    return {
-        "attributes": {
-            "title": title,
-            "description": f"Managed by {MANAGED_BY}",
-            "columns": columns,
-            "sort": [[time_field, "desc"]],
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
-            },
-        },
-        "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
-    }
-
-
-def dashboard_objects() -> list[tuple[str, str, dict[str, Any]]]:
-    metrics_view = "shared-observability-metrics"
-    logs_view = "shared-observability-logs"
-    traces_view = "shared-observability-traces"
-    objects: list[tuple[str, str, dict[str, Any]]] = [
-        (
-            "visualization",
-            "shared-metrics-by-service",
-            line_visualization(
-                title="Metric samples by service",
-                data_view=metrics_view,
-                time_field="time",
-                group_field="serviceName.keyword",
-            ),
-        ),
-        (
-            "visualization",
-            "shared-logs-by-service",
-            line_visualization(
-                title="Stored logs by service",
-                data_view=logs_view,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-            ),
-        ),
-        (
-            "search",
-            "shared-error-logs",
-            saved_search(
-                title="Recent error logs",
-                data_view=logs_view,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "spanId",
-                    "body",
-                ],
-                query='severityText: ("ERROR" or "FATAL")',
-            ),
-        ),
-        (
-            "search",
-            "rerp-api-metrics",
-            saved_search(
-                title="RERP API metrics",
-                data_view=metrics_view,
-                time_field="time",
-                columns=["time", "serviceName", "name", "value", "sum", "count"],
-                query='serviceName: "api"',
-            ),
-        ),
-    ]
-    panels = [
-        ("visualization", "shared-metrics-by-service", 0, 0, 24, 12),
-        ("visualization", "shared-logs-by-service", 24, 0, 24, 12),
-        ("search", "shared-error-logs", 0, 12, 24, 14),
-        ("search", "rerp-api-metrics", 24, 12, 24, 14),
-    ]
-    panel_json = []
-    references = []
-    for position, (object_type, object_id, x, y, width, height) in enumerate(panels):
-        panel_ref = f"panel_{position}"
-        panel_json.append(
-            {
-                "version": "2.19.6",
-                "type": object_type,
-                "gridData": {
-                    "x": x,
-                    "y": y,
-                    "w": width,
-                    "h": height,
-                    "i": str(position + 1),
-                },
-                "panelIndex": str(position + 1),
-                "embeddableConfig": {},
-                "panelRefName": panel_ref,
-            }
-        )
-        references.append({"name": panel_ref, "type": object_type, "id": object_id})
-    objects.append(
-        (
-            "dashboard",
-            "shared-observability-overview",
-            {
-                "attributes": {
-                    "title": "Shared observability overview",
-                    "description": (
-                        "Metrics and retained operational logs managed by " + MANAGED_BY
-                    ),
-                    "panelsJSON": compact(panel_json),
-                    "optionsJSON": compact(
-                        {
-                            "useMargins": True,
-                            "syncColors": False,
-                            "syncCursor": True,
-                            "syncTooltips": False,
-                            "hidePanelTitles": False,
-                        }
-                    ),
-                    "version": 1,
-                    "timeRestore": True,
-                    "timeFrom": "now-24h",
-                    "timeTo": "now",
-                    "refreshInterval": {"pause": False, "value": 60000},
-                    "kibanaSavedObjectMeta": {
-                        "searchSourceJSON": compact(
-                            {"query": {"query": "", "language": "kuery"}, "filter": []}
-                        )
-                    },
-                },
-                "references": references,
-            },
-        )
-    )
-    objects.extend(postgres_dashboard_objects(metrics_view))
-    objects.extend(data_platform_dashboard_objects(metrics_view))
-    objects.extend(correlation_dashboard_objects(metrics_view, logs_view, traces_view))
-    return objects
-
-
-def postgres_dashboard_objects(metrics_view: str) -> list[tuple[str, str, dict[str, Any]]]:
-    """Postgres/Pgpool connection dashboards (consumer_namespace = K8s namespace)."""
-    objects: list[tuple[str, str, dict[str, Any]]] = [
-        (
-            "visualization",
-            "postgres-connections-by-namespace",
-            metric_sum_line_visualization(
-                title="Postgres connections by namespace",
-                data_view=metrics_view,
-                time_field="time",
-                group_field="metric.attributes.consumer_namespace.keyword",
-                query=POSTGRES_ACTIVITY_QUERY,
-            ),
-        ),
-        (
-            "visualization",
-            "postgres-connections-by-database",
-            metric_sum_table_visualization(
-                title="Postgres connections by database and user",
-                data_view=metrics_view,
-                group_fields=[
-                    "metric.attributes.consumer_namespace.keyword",
-                    "metric.attributes.datname.keyword",
-                    "metric.attributes.usename.keyword",
-                ],
-                query=POSTGRES_ACTIVITY_QUERY,
-            ),
-        ),
-        (
-            "visualization",
-            "pgpool-frontend-connections",
-            metric_sum_line_visualization(
-                title="Pgpool frontend connections (used vs capacity)",
-                data_view=metrics_view,
-                time_field="time",
-                group_field="name.keyword",
-                query=PGPOOL_FRONTEND_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "postgres-max-connections",
-            saved_search(
-                title="Postgres max_connections setting",
-                data_view=metrics_view,
-                time_field="time",
-                columns=["time", "name", "value", "metric.attributes.server"],
-                query='name: "pg_settings_max_connections"',
-            ),
-        ),
-    ]
-    panels = [
-        ("visualization", "postgres-connections-by-namespace", 0, 0, 36, 14),
-        ("visualization", "pgpool-frontend-connections", 36, 0, 12, 14),
-        ("visualization", "postgres-connections-by-database", 0, 14, 36, 16),
-        ("search", "postgres-max-connections", 36, 14, 12, 16),
-    ]
-    panel_json = []
-    references = []
-    for position, (object_type, object_id, x, y, width, height) in enumerate(panels):
-        panel_ref = f"postgres_panel_{position}"
-        panel_json.append(
-            {
-                "version": "2.19.6",
-                "type": object_type,
-                "gridData": {
-                    "x": x,
-                    "y": y,
-                    "w": width,
-                    "h": height,
-                    "i": str(position + 1),
-                },
-                "panelIndex": str(position + 1),
-                "embeddableConfig": {},
-                "panelRefName": panel_ref,
-            }
-        )
-        references.append({"name": panel_ref, "type": object_type, "id": object_id})
-    objects.append(
-        (
-            "dashboard",
-            "shared-postgres-connections",
-            {
-                "attributes": {
-                    "title": "Postgres & Pgpool connections",
-                    "description": (
-                        "Database consumer pressure by Kubernetes namespace "
-                        f"(datname → consumer_namespace mapping). Managed by {MANAGED_BY}"
-                    ),
-                    "panelsJSON": compact(panel_json),
-                    "optionsJSON": compact(
-                        {
-                            "useMargins": True,
-                            "syncColors": False,
-                            "syncCursor": True,
-                            "syncTooltips": False,
-                            "hidePanelTitles": False,
-                        }
-                    ),
-                    "version": 1,
-                    "timeRestore": True,
-                    "timeFrom": "now-6h",
-                    "timeTo": "now",
-                    "refreshInterval": {"pause": False, "value": 30000},
-                    "kibanaSavedObjectMeta": {
-                        "searchSourceJSON": compact(
-                            {"query": {"query": "", "language": "kuery"}, "filter": []}
-                        )
-                    },
-                },
-                "references": references,
-            },
-        )
-    )
-    return objects
-
-
-def data_platform_dashboard_objects(
-    metrics_view: str,
-) -> list[tuple[str, str, dict[str, Any]]]:
-    """Data namespace health: Postgres, Pgpool, Redis."""
-    objects: list[tuple[str, str, dict[str, Any]]] = [
-        (
-            "visualization",
-            "data-redis-connected-clients",
-            metric_sum_line_visualization(
-                title="Redis connected clients",
-                data_view=metrics_view,
-                time_field="time",
-                group_field="name.keyword",
-                query=REDIS_CLIENTS_QUERY,
-            ),
-        ),
-        (
-            "visualization",
-            "data-redis-memory-used",
-            metric_sum_line_visualization(
-                title="Redis memory used (bytes)",
-                data_view=metrics_view,
-                time_field="time",
-                group_field="name.keyword",
-                query=REDIS_MEMORY_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "data-platform-metrics-snapshot",
-            saved_search(
-                title="Data namespace metrics snapshot",
-                data_view=metrics_view,
-                time_field="time",
-                columns=[
-                    "time",
-                    "name",
-                    "value",
-                    "metric.attributes.consumer_namespace",
-                    "metric.attributes.datname",
-                ],
-                query=DATA_PLATFORM_METRICS_QUERY,
-            ),
-        ),
-    ]
-    objects.append(
-        assemble_dashboard(
-            dashboard_id="shared-data-platform",
-            title="Data namespace platform",
-            description=(
-                "Postgres HA, Pgpool, and Redis metrics from the data namespace. "
-                f"Managed by {MANAGED_BY}"
-            ),
-            panels=[
-                ("visualization", "postgres-connections-by-namespace", 0, 0, 24, 12),
-                ("visualization", "pgpool-frontend-connections", 24, 0, 24, 12),
-                ("visualization", "data-redis-connected-clients", 0, 12, 24, 12),
-                ("visualization", "data-redis-memory-used", 24, 12, 24, 12),
-                ("search", "data-platform-metrics-snapshot", 0, 24, 48, 14),
-            ],
-            panel_ref_prefix="data_platform",
-            time_from="now-6h",
-        )
-    )
-    return objects
-
-
-def correlation_dashboard_objects(
-    metrics_view: str,
-    logs_view: str,
-    traces_view: str,
-) -> list[tuple[str, str, dict[str, Any]]]:
-    """Cross-system APM ↔ logs ↔ database correlation."""
-    objects: list[tuple[str, str, dict[str, Any]]] = [
-        (
-            "visualization",
-            "correlation-spans-by-service",
-            line_visualization(
-                title="Trace spans by service",
-                data_view=traces_view,
-                time_field="startTime",
-                group_field="serviceName.keyword",
-            ),
-        ),
-        (
-            "visualization",
-            "correlation-logs-with-trace-by-service",
-            line_visualization(
-                title="Correlated logs by service (traceId present)",
-                data_view=logs_view,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-                query=CORRELATED_LOGS_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "correlation-http-spans",
-            saved_search(
-                title="HTTP request spans",
-                data_view=traces_view,
-                time_field="startTime",
-                columns=[
-                    "startTime",
-                    "serviceName",
-                    "name",
-                    "traceId",
-                    "spanId",
-                    "durationInNanos",
-                    "span.attributes.path",
-                    "span.attributes.method",
-                ],
-                query=HTTP_SPANS_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "correlation-logs-by-trace",
-            saved_search(
-                title="Logs with trace context",
-                data_view=logs_view,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "spanId",
-                    "body",
-                ],
-                query=CORRELATED_LOGS_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "correlation-errors-with-trace",
-            saved_search(
-                title="Errors with trace context",
-                data_view=logs_view,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "spanId",
-                    "body",
-                ],
-                query=ERROR_LOGS_WITH_TRACE_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "correlation-db-pressure-logs",
-            saved_search(
-                title="Database / pool pressure logs",
-                data_view=logs_view,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "body",
-                ],
-                query=DB_PRESSURE_LOGS_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "correlation-postgres-at-time",
-            saved_search(
-                title="Postgres connections (align time with logs/traces)",
-                data_view=metrics_view,
-                time_field="time",
-                columns=[
-                    "time",
-                    "name",
-                    "value",
-                    "metric.attributes.consumer_namespace",
-                    "metric.attributes.datname",
-                    "metric.attributes.usename",
-                ],
-                query=POSTGRES_ACTIVITY_QUERY,
-            ),
-        ),
-    ]
-    objects.append(
-        assemble_dashboard(
-            dashboard_id="shared-apm-correlation",
-            title="APM & log correlation",
-            description=(
-                "Correlate traces, application logs, and database pressure using "
-                "traceId/spanId and aligned time windows. Filter Discover by traceId "
-                f"to pivot across signals. Managed by {MANAGED_BY}"
-            ),
-            panels=[
-                ("visualization", "correlation-spans-by-service", 0, 0, 24, 10),
-                (
-                    "visualization",
-                    "correlation-logs-with-trace-by-service",
-                    24,
-                    0,
-                    24,
-                    10,
-                ),
-                ("search", "correlation-http-spans", 0, 10, 24, 14),
-                ("search", "correlation-logs-by-trace", 24, 10, 24, 14),
-                ("search", "correlation-errors-with-trace", 0, 24, 24, 12),
-                ("search", "correlation-db-pressure-logs", 24, 24, 24, 12),
-                ("search", "correlation-postgres-at-time", 0, 36, 48, 12),
-            ],
-            panel_ref_prefix="correlation",
-            time_from="now-1h",
-            refresh_ms=15000,
-        )
-    )
-    return objects
-
-
-def upsert_dashboards(client: JsonClient) -> None:
-    for object_type, object_id, payload in dashboard_objects():
-        client.request(
-            f"api/saved_objects/{quote(object_type)}/{quote(object_id)}?overwrite=true",
-            method="POST",
-            payload=payload,
-        )
-
-
 def verify(opensearch: JsonClient, dashboards: JsonClient, retention_days: int) -> None:
     for policy_id in (
         "observability-metrics-retention",
@@ -1367,10 +604,8 @@ def verify(opensearch: JsonClient, dashboards: JsonClient, retention_days: int) 
     expected_monitors = {monitor["name"] for monitor in desired_monitors()}
     if not expected_monitors.issubset(monitor_names):
         raise ApiError(f"missing monitors: {sorted(expected_monitors - monitor_names)}")
-    dashboards.request("api/saved_objects/dashboard/shared-observability-overview")
-    dashboards.request("api/saved_objects/dashboard/shared-postgres-connections")
-    dashboards.request("api/saved_objects/dashboard/shared-data-platform")
-    dashboards.request("api/saved_objects/dashboard/shared-apm-correlation")
+    verify_dashboards(dashboards)
+
 
 
 def main() -> int:
@@ -1424,12 +659,14 @@ def main() -> int:
     reconcile_trace_storage(opensearch)
     upsert_monitors(opensearch)
     reconcile_index_patterns(dashboards)
-    upsert_dashboards(dashboards)
+    cleanup_deprecated_saved_objects(dashboards)
+    import_dashboard_bundles(dashboards, DASHBOARDS_DIR)
     verify(opensearch, dashboards, retention_days)
     print(
         "observability provisioning passed: "
         f"retention={retention_days}d monitors={len(desired_monitors())} "
-        f"saved_objects={len(dashboard_objects())}"
+        f"dashboard_bundles={len(dashboard_definitions.DASHBOARD_BUNDLES)} "
+        f"saved_objects={len(dashboard_definitions.all_dashboard_objects())}"
     )
     return 0
 
