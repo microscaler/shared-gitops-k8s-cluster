@@ -1,12 +1,16 @@
-# Dev overlay for Lifeguard charts/postgres (Flux valuesFrom).
-# Structural secret keys stay in the HelmRelease `values:` block.
-fullnameOverride: postgres
+# Dev overlay for lifeguard/charts/postgres (Flux valuesFrom).
+# Secrets: application.secrets.env → postgres-credentials (existingSecret).
+
+auth:
+  existingSecret: postgres-credentials
+  passwordKey: postgres-password
+  replicationPasswordKey: postgres-replication-password
 
 primary:
   name: postgres-primary
   persistence:
-    size: 20Gi
     storageClass: zfs-iscsi
+    size: 10Gi
   resources:
     requests:
       cpu: 250m
@@ -22,18 +26,12 @@ service:
   annotations:
     metallb.universe.tf/loadBalancerIPs: "10.177.76.224"
 
-postgresql:
-  maxConnections: "200"
-
-# Stability: no streaming standbys on the shared multi-tenant cluster.
 replica:
-  enabled: false
-  count: 0
-
-initScripts:
   enabled: true
-  extraFiles:
-    - 10-pact-role.sql
+  count: 2
+  persistence:
+    storageClass: zfs-iscsi
+    size: 10Gi
 
 exporter:
   enabled: true

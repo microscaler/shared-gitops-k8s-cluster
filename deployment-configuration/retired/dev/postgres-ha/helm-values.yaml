@@ -16,13 +16,15 @@ postgresql:
   repmgrUsername: repmgr
   repmgrDatabase: repmgr
   podAntiAffinityPreset: hard
+  # Medium t-shirt: more shared clients (loadlinker + sesame + rerp) after
+  # app-pool bumps exhausted the previous small pgpool front-end.
   resources:
     requests:
-      cpu: 250m
-      memory: 512Mi
+      cpu: 500m
+      memory: 1Gi
     limits:
       cpu: "2"
-      memory: 2Gi
+      memory: 4Gi
   livenessProbe:
     enabled: true
     initialDelaySeconds: 120
@@ -38,9 +40,9 @@ postgresql:
   audit:
     logHostname: false
   repmgrConnectTimeout: 30
-  # Dev runs many microservice pools through 2× pgpool; raise backend headroom.
+  # Backend headroom for pgpool children × maxPool (+ repmgr / admin).
   extendedConf: |
-    max_connections = 300
+    max_connections = 400
 
 pgpool:
   image:
@@ -55,13 +57,21 @@ pgpool:
   logHostname: false
   srCheckUsername: sr_check_user
   srCheckDatabase: postgres
-  # Connection budget vs postgresql max_connections=300 (extendedConf above):
-  #   numInitChildren × maxPool × replicaCount = 32 × 4 × 1 = 128  (< 300, ok).
-  # 32 children keeps ample front-end headroom for hauliage + sesame-idam + rerp
-  # + opengroupware pools; the memory bump below is what actually prevents the
-  # pgpool OOM that previously masqueraded as "too many clients" during crashes.
-  numInitChildren: "32"
+  # Connection budget vs postgresql max_connections=400 (extendedConf above):
+  #   numInitChildren × maxPool × replicaCount = 64 × 4 × 1 = 256  (< 400, ok).
+  # Front-end slots ≈ numInitChildren − reservedConnections = 62 concurrent
+  # clients — enough for ~25 microservices × 2-slot Lifeguard pools without
+  # "sorry, too many clients already".
+  numInitChildren: "64"
   maxPool: "4"
+  # Lifeguard `with_session_transaction` issues BEGIN + RLS SET before the first
+  # write. With load balancing on, pgpool can pin that preamble to a standby and
+  # then reopen the write on primary — org INSERT commits, membership INSERT FK
+  # fails ("org_id not present"), leaving orphan organizations. Dev: send all
+  # traffic to primary; HA still comes from the 3-node postgresql StatefulSet.
+  useLoadBalancing: false
+  # Belt-and-suspenders if load balancing is re-enabled later.
+  disableLoadBalancingOnWrite: always
   reservedConnections: "2"
   childLifeTime: "300"
   childMaxConnections: "0"
@@ -81,16 +91,14 @@ pgpool:
     periodSeconds: 20
     timeoutSeconds: 5
     failureThreshold: 6
-  # Init was OOM-killed at 384Mi, then again at 768Mi (container init OOM,
-  # containerd) — 32 forked children + parent + PCP need real headroom.
-  # Raised to 1.5Gi limit / 768Mi request per replica.
+  # Medium t-shirt: 64 children need more RSS than the previous 32-child pack.
   resources:
     requests:
-      cpu: 250m
-      memory: 768Mi
-    limits:
       cpu: 500m
-      memory: 2000Mi
+      memory: 1Gi
+    limits:
+      cpu: "1500m"
+      memory: 3500Mi
 
 metrics:
   enabled: true

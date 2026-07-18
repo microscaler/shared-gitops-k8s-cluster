@@ -27,7 +27,7 @@ stacks:
 
   - name: postgres
     path: ./gitops/root/components/postgres
-    description: Lifeguard charts/postgres — primary-direct Bitnami (no Pgpool); Service postgres
+    description: Lifeguard Helm charts/postgres (primary+replicas, zfs-iscsi); Service postgres
     depends_on: [namespaces]
     profile: postgres
 
