@@ -150,13 +150,21 @@ config:
             - set(attributes["service.namespace"], attributes["k8s.namespace.name"]) where attributes["k8s.namespace.name"] != nil
         - context: log
           statements:
-            # --- Runtime noise (add/del/mod fd epoll + memory stats) ---
+            # --- Runtime noise (never drop; select via Logs / Runtime noise) ---
+            # may epoll I/O churn
             - set(attributes["event_category"], "epoll_io") where attributes["log.target"] == "may::io::sys::select"
             - set(attributes["event_category"], "epoll_io") where attributes["event_category"] == nil and IsMatch(body, "(?i).*epoll select.*")
+            # BRRTRouter periodic memory stats
             - set(attributes["event_category"], "runtime_metrics") where instrumentation_scope.name == "brrtrouter::middleware::memory"
             - set(attributes["event_category"], "runtime_metrics") where attributes["event_category"] == nil and attributes["rss_mb"] != nil
             - set(attributes["event_category"], "runtime_metrics") where attributes["event_category"] == nil and IsMatch(body, "(?i)^Memory statistics$")
-            - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "epoll_io" or attributes["event_category"] == "runtime_metrics"
+            # may runtime knobs (workers / stack size)
+            - set(attributes["event_category"], "runtime_config") where attributes["log.target"] == "may::config"
+            - set(attributes["event_category"], "runtime_config") where attributes["event_category"] == nil and IsMatch(body, "(?i)^set (workers|stack size)=")
+            # BRRTRouter bootstrap / hot-reload lifecycle (not request-path signal)
+            - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i)^brrtrouter::(dispatcher::core|validator_cache|router::core|server::service)$")
+            - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(body, "(?i)^(Handler registered successfully|Replaced existing handler|Schema validator|Initializing JSON Schema|Precompiled schemas|Routing table loaded|Pre-registering paths)")
+            - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "epoll_io" or attributes["event_category"] == "runtime_metrics" or attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
             # --- Application signal categories ---
             - set(attributes["event_category"], "auth") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i).*(jwks|login|session|authz|api.keys|org.mgmt|user.mgmt).*")
             - set(attributes["event_category"], "application") where attributes["event_category"] == nil

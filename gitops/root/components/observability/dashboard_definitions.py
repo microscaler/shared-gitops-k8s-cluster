@@ -18,9 +18,32 @@ LOG_SCOPE_FIELD = "instrumentationScope.name"
 LOG_NAMESPACE_FIELD = "resource.attributes.k8s@namespace@name"
 LOG_APPLICATION_FIELD = "serviceName"
 
-LOG_NOISE_CATEGORIES = ("epoll_io", "runtime_metrics")
+LOG_NOISE_CATEGORIES = (
+    "epoll_io",
+    "runtime_metrics",
+    "runtime_config",
+    "framework_lifecycle",
+)
 LOG_EPOLL_TARGET = "may::io::sys::select"
 LOG_MEMORY_SCOPE = "brrtrouter::middleware::memory"
+LOG_RUNTIME_CONFIG_TARGET = "may::config"
+LOG_FRAMEWORK_LIFECYCLE_SCOPES = (
+    "brrtrouter::dispatcher::core",
+    "brrtrouter::validator_cache",
+    "brrtrouter::router::core",
+    "brrtrouter::server::service",
+)
+
+_NOISE_CATEGORY_OR = " OR ".join(f'"{c}"' for c in LOG_NOISE_CATEGORIES)
+_FRAMEWORK_SCOPE_OR = " OR ".join(LOG_FRAMEWORK_LIFECYCLE_SCOPES)
+# Untagged legacy fallbacks (pre-classifier docs still in the index).
+_LEGACY_NOISE_BODY = (
+    'body: (*epoll select*) OR body: "Memory statistics" OR '
+    'body: ("Handler registered successfully" OR "Replaced existing handler*" OR '
+    '"Schema validator*" OR "Initializing JSON Schema*" OR "Precompiled schemas*" OR '
+    '"Routing table loaded*" OR "Pre-registering paths*" OR '
+    '"set stack size=*" OR "set workers=*")'
+)
 
 # Sidebar + table: namespace → application → time → class → signal fields.
 LOG_STREAM_COLUMNS = [
@@ -49,15 +72,18 @@ LOG_SIDEBAR_FILTER_FIELDS = [
 LOG_SIGNAL_LUCENE = (
     f"({LOG_EVENT_CLASS_FIELD}:application) OR "
     f"(NOT {LOG_EVENT_CLASS_FIELD}:* AND NOT "
-    f'{LOG_EVENT_CATEGORY_FIELD}: ("epoll_io" OR "runtime_metrics") AND NOT '
-    f'body: (*epoll select*) AND NOT body: "Memory statistics")'
+    f"{LOG_EVENT_CATEGORY_FIELD}: ({_NOISE_CATEGORY_OR}) AND NOT "
+    f"({_LEGACY_NOISE_BODY}) AND NOT "
+    f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_RUNTIME_CONFIG_TARGET}" AND NOT '
+    f"{LOG_SCOPE_FIELD}: ({_FRAMEWORK_SCOPE_OR}))"
 )
 
 LOG_RUNTIME_NOISE_LUCENE = (
     f"({LOG_EVENT_CLASS_FIELD}:runtime_noise) OR "
-    f'{LOG_EVENT_CATEGORY_FIELD}: ("epoll_io" OR "runtime_metrics") OR '
-    "body: (*epoll select*) OR "
-    'body: "Memory statistics"'
+    f"{LOG_EVENT_CATEGORY_FIELD}: ({_NOISE_CATEGORY_OR}) OR "
+    f"({_LEGACY_NOISE_BODY}) OR "
+    f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_RUNTIME_CONFIG_TARGET}" OR '
+    f"{LOG_SCOPE_FIELD}: ({_FRAMEWORK_SCOPE_OR})"
 )
 
 LOG_ERRORS_LUCENE = (
@@ -83,7 +109,7 @@ def log_signal_filters(*, index_id: str = LOGS_VIEW) -> list[dict[str, Any]]:
         {
             "$state": {"store": "appState"},
             "meta": {
-                "alias": "Hide runtime noise (epoll + memory)",
+                "alias": "Hide runtime noise (tagged)",
                 "disabled": False,
                 "index": index_id,
                 "key": LOG_EVENT_CLASS_FIELD,
@@ -178,10 +204,12 @@ def discover_guide_markdown() -> dict[str, Any]:
         "- **Logs / Errors** — WARN+ within signal\n"
         "- **Logs / Auth** — `sesame-idam` signal\n"
         "- **Logs / BFF** — `loadlinker` + `bff` signal\n"
-        "- **Logs / Runtime noise** — epoll + memory stats "
-        "(`event_class:runtime_noise`) — select *for* trash, not mixed with triage\n\n"
-        "Runtime I/O lines (`add/del/mod fd … epoll select`) stay indexed; "
-        "they are tagged, not deleted."
+        "- **Logs / Runtime noise** — epoll, memory, may config, BRRTRouter "
+        "lifecycle (`event_class:runtime_noise`) — select *for* trash, not mixed "
+        "with triage\n\n"
+        "System lines stay indexed; they are tagged, not deleted. Filter "
+        "`event_category` for `epoll_io` / `runtime_metrics` / `runtime_config` / "
+        "`framework_lifecycle`."
     )
     vis_state = {
         "title": "Open Discover for field sidebar",
@@ -466,9 +494,10 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="Logs",
             description=(
                 "Companion overview. Open Discover for the field sidebar and saved "
-                "searches (Signal / Errors / Auth / BFF / Runtime noise). Epoll and "
-                "memory lines are tagged event_class:runtime_noise — hidden by default, "
-                f"selectable when needed. Managed by {MANAGED_BY}"
+                "searches (Signal / Errors / Auth / BFF / Runtime noise). System "
+                "noise (epoll, memory, may config, BRRTRouter lifecycle) is tagged "
+                "event_class:runtime_noise — hidden by default, selectable when "
+                f"needed. Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "logs-explore-discover-guide", 0, 0, 48, 8),

@@ -90,7 +90,12 @@ Primary log exploration is GitOps-managed:
 - **Filter hierarchy** — **namespace** → **application** → **time** → **event_class** / **event_category**
 - **Selected / Popular fields** — `k8s.namespace.name`, `serviceName`, `severityText`, `event_class`, `event_category`, `has_trace`
 - **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`). No `microscaler` ns
-- **Runtime noise tagging** — Collector sets `event_class:runtime_noise` + `event_category:epoll_io|runtime_metrics` on may epoll (`add/del/mod fd …`) and memory stats. Logs are **not dropped**; open **Logs / Runtime noise** to select them
+- **Runtime noise tagging** — Collector sets `event_class:runtime_noise` with `event_category`:
+  - `epoll_io` — may `add/del/mod fd … epoll select`
+  - `runtime_metrics` — BRRTRouter memory stats
+  - `runtime_config` — may `set workers=` / `set stack size=`
+  - `framework_lifecycle` — BRRTRouter handler registration, validator cache, routing table, metrics path pre-register
+  Logs are **not dropped**; open **Logs / Runtime noise** to select them
 - **Landing page** — Discover with Signal query; provisioner sets `defaultIndex` to logs
 
 ### Saved searches (Discover → Open)
@@ -101,7 +106,7 @@ Primary log exploration is GitOps-managed:
 | **Logs / Errors** | WARN+ within signal |
 | **Logs / Auth** | `sesame-idam` signal |
 | **Logs / BFF** | `loadlinker` + `serviceName:bff` signal |
-| **Logs / Runtime noise** | Epoll + memory (`event_class:runtime_noise`) — select *for* trash |
+| **Logs / Runtime noise** | System noise (`event_class:runtime_noise`) — select *for* trash |
 
 ### Two-click filter path
 
@@ -131,6 +136,8 @@ Direct URLs:
 | Runtime noise only | `log.attributes.event_class:runtime_noise` |
 | Epoll only | `log.attributes.event_category:epoll_io` |
 | Memory stats only | `log.attributes.event_category:runtime_metrics` |
+| may config only | `log.attributes.event_category:runtime_config` |
+| BRRTRouter lifecycle only | `log.attributes.event_category:framework_lifecycle` |
 | Errors | `log.attributes.event_class:application AND severityText:(ERROR OR FATAL OR WARN)` |
 | Auth ns | `resource.attributes.k8s@namespace@name:sesame-idam AND log.attributes.event_class:application` |
 | With trace | `log.attributes.has_trace:true` |

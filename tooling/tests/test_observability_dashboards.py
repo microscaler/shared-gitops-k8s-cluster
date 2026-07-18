@@ -77,6 +77,16 @@ def test_signal_and_runtime_noise_queries_are_complements() -> None:
     assert "event_class" in definitions.LOG_SIGNAL_LUCENE
     assert "runtime_noise" in definitions.LOG_RUNTIME_NOISE_LUCENE
     assert "epoll select" in definitions.LOG_RUNTIME_NOISE_LUCENE
+    for category in (
+        "epoll_io",
+        "runtime_metrics",
+        "runtime_config",
+        "framework_lifecycle",
+    ):
+        assert category in definitions.LOG_RUNTIME_NOISE_LUCENE
+        assert category in definitions.LOG_SIGNAL_LUCENE
+    assert "brrtrouter::dispatcher::core" in definitions.LOG_RUNTIME_NOISE_LUCENE
+    assert "may::config" in definitions.LOG_RUNTIME_NOISE_LUCENE
     filters = definitions.log_signal_filters()
     assert len(filters) == 2
     assert all(item["meta"]["negate"] is True for item in filters)
