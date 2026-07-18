@@ -23,6 +23,9 @@ LOG_PATH_KEYWORD_FIELD = "log.attributes.path.keyword"
 LOG_STATUS_FIELD = "log.attributes.status"
 LOG_DURATION_FIELD = "log.attributes.duration_ms"
 
+# Default HTTP latency SLO percentile target (BFF edge design: p95 ≤ 500 ms).
+HTTP_P95_SLO_MS = 500
+
 # epoll_io is dropped at the collector (filter/drop-epoll-io); keep the token
 # for legacy docs still in the index and for Discover filter pills.
 LOG_NOISE_CATEGORIES = (
@@ -43,30 +46,53 @@ LOG_FRAMEWORK_LIFECYCLE_SCOPES = (
 _NOISE_CATEGORY_OR = " OR ".join(f'"{c}"' for c in LOG_NOISE_CATEGORIES)
 _FRAMEWORK_SCOPE_OR = " OR ".join(LOG_FRAMEWORK_LIFECYCLE_SCOPES)
 
+# Short root-level copies (ingest pipeline) used as Discover column headers.
+# Source fields keep full OTel paths for Lucene / aggregations / filters.
+LOG_FIELD_SHORT_COPIES = {
+    "name": LOG_NAMESPACE_FIELD,
+    "event_class": LOG_EVENT_CLASS_FIELD,
+    "event_category": LOG_EVENT_CATEGORY_FIELD,
+    "method": LOG_METHOD_FIELD,
+    "path": LOG_PATH_FIELD,
+    "status": LOG_STATUS_FIELD,
+    "duration_ms": LOG_DURATION_FIELD,
+    "has_trace": LOG_HAS_TRACE_FIELD,
+}
+
+# Discover also keeps customLabel on long paths (detail/sidebar); DE headers
+# ignore it, so columns use the short copies above.
+LOG_FIELD_SHORT_LABELS = {
+    source: short for short, source in LOG_FIELD_SHORT_COPIES.items()
+} | {
+    LOG_PATH_KEYWORD_FIELD: "path",
+    "log.attributes.message": "message",
+    LOG_EPOLL_TARGET_FIELD: "log_target",
+}
+
 # Sidebar + table: namespace → application → time → class → HTTP → signal fields.
 LOG_STREAM_COLUMNS = [
-    LOG_NAMESPACE_FIELD,
+    "name",
     LOG_APPLICATION_FIELD,
     "observedTimestamp",
     "severityText",
-    LOG_EVENT_CLASS_FIELD,
-    LOG_EVENT_CATEGORY_FIELD,
-    LOG_METHOD_FIELD,
-    LOG_PATH_FIELD,
-    LOG_STATUS_FIELD,
-    LOG_DURATION_FIELD,
-    LOG_HAS_TRACE_FIELD,
+    "event_class",
+    "event_category",
+    "method",
+    "path",
+    "status",
+    "duration_ms",
+    "has_trace",
     "body",
 ]
 
 LOG_HTTP_COLUMNS = [
-    LOG_NAMESPACE_FIELD,
+    "name",
     LOG_APPLICATION_FIELD,
     "observedTimestamp",
-    LOG_METHOD_FIELD,
-    LOG_PATH_FIELD,
-    LOG_STATUS_FIELD,
-    LOG_DURATION_FIELD,
+    "method",
+    "path",
+    "status",
+    "duration_ms",
     "body",
 ]
 
@@ -376,8 +402,21 @@ def log_terms_table_visualization(
     field: str,
     query: str,
     size: int = 10,
+    field_label: str | None = None,
 ) -> dict[str, Any]:
     """Top-N terms table (paths, status codes, …)."""
+    bucket_params: dict[str, Any] = {
+        "field": field,
+        "size": size,
+        "order": "desc",
+        "orderBy": "1",
+        "otherBucket": False,
+        "otherBucketLabel": "Other",
+        "missingBucket": False,
+        "missingBucketLabel": "Missing",
+    }
+    if field_label:
+        bucket_params["customLabel"] = field_label
     vis_state = {
         "title": title,
         "type": "table",
@@ -397,25 +436,336 @@ def log_terms_table_visualization(
                 "enabled": True,
                 "type": "count",
                 "schema": "metric",
-                "params": {},
+                "params": {"customLabel": "count"},
             },
             {
                 "id": "2",
                 "enabled": True,
                 "type": "terms",
                 "schema": "bucket",
-                "params": {
-                    "field": field,
-                    "size": size,
-                    "order": "desc",
-                    "orderBy": "1",
-                    "otherBucket": False,
-                    "otherBucketLabel": "Other",
-                    "missingBucket": False,
-                    "missingBucketLabel": "Missing",
-                },
+                "params": bucket_params,
             },
         ],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_http_top_paths_visualization(
+    *,
+    title: str,
+    data_view: str,
+    query: str,
+    size: int = 10,
+    slo_ms: int = HTTP_P95_SLO_MS,
+) -> dict[str, Any]:
+    """Top paths with count, RPS (window-normalized), and p95 vs SLO."""
+    # Full Vega: classic table cannot compute RPS from the dashboard time range.
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 8,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "signals": [
+            # Dashboard default window is 15m; RPS = count / windowSeconds.
+            # (OSD 2.19 does not reliably substitute %timefilter% into Vega signals.)
+            {"name": "windowSeconds", "value": 900},
+            {"name": "sloMs", "value": slo_ms},
+        ],
+        "data": [
+            {
+                "name": "paths",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": LOGS_TIME_FIELD,
+                    "index": "otel-v1-apm-logs*",
+                    "body": {
+                        "size": 0,
+                        "aggs": {
+                            "paths": {
+                                "terms": {
+                                    "field": LOG_PATH_KEYWORD_FIELD,
+                                    "size": size,
+                                    "order": {"_count": "desc"},
+                                },
+                                "aggs": {
+                                    "p95": {
+                                        "percentiles": {
+                                            "field": LOG_DURATION_FIELD,
+                                            "percents": [95],
+                                        }
+                                    }
+                                },
+                            }
+                        },
+                    },
+                },
+                "format": {"property": "aggregations.paths.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "p95",
+                        "expr": "datum.p95.values['95.0']",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "vsSlo",
+                        "expr": "datum.p95 <= sloMs ? 'ok' : 'breach'",
+                    },
+                    {
+                        "type": "window",
+                        "ops": ["row_number"],
+                        "as": ["row"],
+                        "sort": [{"field": "doc_count", "order": "descending"}],
+                    },
+                ],
+            },
+            {
+                "name": "header",
+                "values": [
+                    {
+                        "path": "path",
+                        "count": "count",
+                        "rps": "rps/15m",
+                        "p95": "p95 ms",
+                        "slo": "SLO ms",
+                        "vs": "pSLO",
+                        "row": 0,
+                    }
+                ],
+            },
+        ],
+        "scales": [
+            {
+                "name": "y",
+                "type": "band",
+                "domain": {"data": "paths", "field": "row"},
+                "range": {"step": 22},
+                "padding": 0.1,
+            }
+        ],
+        "marks": [
+            {
+                "type": "group",
+                "encode": {
+                    "update": {
+                        "x": {"value": 0},
+                        "y": {"value": 0},
+                        "width": {"signal": "width"},
+                        "height": {"signal": "22"},
+                    }
+                },
+                "marks": [
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"value": 0},
+                                "y": {"value": 14},
+                                "text": {"field": "path"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.48"},
+                                "y": {"value": 14},
+                                "text": {"field": "count"},
+                                "align": {"value": "right"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.60"},
+                                "y": {"value": 14},
+                                "text": {"field": "rps"},
+                                "align": {"value": "right"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.74"},
+                                "y": {"value": 14},
+                                "text": {"field": "p95"},
+                                "align": {"value": "right"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.86"},
+                                "y": {"value": 14},
+                                "text": {"field": "slo"},
+                                "align": {"value": "right"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width"},
+                                "y": {"value": 14},
+                                "text": {"field": "vs"},
+                                "align": {"value": "right"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                ],
+            },
+            {
+                "type": "group",
+                "encode": {
+                    "update": {
+                        "y": {"value": 24},
+                        "width": {"signal": "width"},
+                        "height": {"signal": "height - 24"},
+                    }
+                },
+                "marks": [
+                    {
+                        "type": "text",
+                        "from": {"data": "paths"},
+                        "encode": {
+                            "update": {
+                                "x": {"value": 0},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"field": "key"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#111"},
+                                "limit": {"signal": "width * 0.46"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "paths"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.48"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"field": "doc_count"},
+                                "align": {"value": "right"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#111"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "paths"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.60"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {
+                                    "signal": (
+                                        "format(datum.doc_count / windowSeconds, '.3f')"
+                                    )
+                                },
+                                "align": {"value": "right"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#111"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "paths"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.74"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"signal": "format(datum.p95, '.1f')"},
+                                "align": {"value": "right"},
+                                "fontSize": {"value": 11},
+                                "fill": {
+                                    "signal": (
+                                        "datum.vsSlo === 'ok' ? '#0a7a28' : '#b00020'"
+                                    )
+                                },
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "paths"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.86"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"signal": "sloMs"},
+                                "align": {"value": "right"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#555"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "paths"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"field": "vsSlo"},
+                                "align": {"value": "right"},
+                                "fontSize": {"value": 11},
+                                "fontWeight": {"value": "bold"},
+                                "fill": {
+                                    "signal": (
+                                        "datum.vsSlo === 'ok' ? '#0a7a28' : '#b00020'"
+                                    )
+                                },
+                            }
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {
+            "spec": compact(spec),
+            "hideWarnings": True,
+        },
+        "aggs": [],
     }
     return _visualization(
         title=title, data_view=data_view, vis_state=vis_state, query=query
@@ -622,12 +972,12 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "logs-http-top-paths",
-            log_terms_table_visualization(
-                title="Top paths (HTTP)",
+            log_http_top_paths_visualization(
+                title=f"Top paths (HTTP) — RPS + p95 vs {HTTP_P95_SLO_MS}ms SLO",
                 data_view=LOGS_VIEW,
-                field=LOG_PATH_KEYWORD_FIELD,
                 query=LOG_HTTP_LUCENE,
                 size=10,
+                slo_ms=HTTP_P95_SLO_MS,
             ),
         ),
         (
@@ -639,6 +989,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 field=LOG_STATUS_FIELD,
                 query=LOG_HTTP_LUCENE,
                 size=10,
+                field_label="status",
             ),
         ),
         (
@@ -678,10 +1029,10 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             panels=[
                 ("visualization", "logs-explore-discover-guide", 0, 0, 48, 7),
                 ("visualization", "logs-explore-histogram", 0, 7, 48, 10),
-                ("visualization", "logs-http-top-paths", 0, 17, 18, 12),
-                ("visualization", "logs-http-status-codes", 18, 17, 15, 12),
-                ("visualization", "logs-http-avg-duration", 33, 17, 15, 12),
-                ("search", "logs-explore-stream", 0, 29, 48, 24),
+                ("visualization", "logs-http-top-paths", 0, 17, 28, 14),
+                ("visualization", "logs-http-status-codes", 28, 17, 10, 14),
+                ("visualization", "logs-http-avg-duration", 38, 17, 10, 14),
+                ("search", "logs-explore-stream", 0, 31, 48, 24),
             ],
             panel_ref_prefix="logs_explore",
             time_from="now-15m",

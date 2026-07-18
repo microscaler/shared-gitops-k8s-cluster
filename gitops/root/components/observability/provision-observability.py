@@ -224,11 +224,53 @@ def index_template(pattern: str, time_field: str) -> dict[str, Any]:
     }
 
 
+LOGS_SHORT_FIELDS_PIPELINE = "observability-logs-short-fields"
+
+
+def logs_short_fields_pipeline() -> dict[str, Any]:
+    """Copy long OTel paths to short root fields for Discover column headers.
+
+    OpenSearch 2.x `set` requires `value` (no `copy_from`); source keys are flat
+    dotted names including `@`, so a single painless script is the reliable path.
+    """
+    assignments = "\n".join(
+        f"if (ctx.containsKey('{source}') && ctx['{source}'] != null) {{"
+        f" ctx['{short}'] = ctx['{source}']; }}"
+        for short, source in dashboard_definitions.LOG_FIELD_SHORT_COPIES.items()
+    )
+    return {
+        "description": (
+            f"Short Discover column aliases for OTel log attributes "
+            f"(managed by {MANAGED_BY})"
+        ),
+        "processors": [
+            {
+                "script": {
+                    "lang": "painless",
+                    "source": assignments,
+                }
+            }
+        ],
+    }
+
+
 def logs_index_template(pattern: str) -> dict[str, Any]:
     """Map both OTLP log timestamp field names for backward compatibility."""
     date_mapping = {
         "type": "date",
         "format": "strict_date_optional_time||epoch_millis",
+    }
+    keyword = {"type": "keyword", "ignore_above": 256}
+    # Match source OTel attr types so copy_from does not fight dynamic mapping.
+    short_props = {
+        "name": keyword,
+        "event_class": keyword,
+        "event_category": keyword,
+        "method": keyword,
+        "path": keyword,
+        "status": {"type": "long"},
+        "duration_ms": {"type": "long"},
+        "has_trace": {"type": "boolean"},
     }
     return {
         "index_patterns": [pattern],
@@ -239,22 +281,16 @@ def logs_index_template(pattern: str) -> dict[str, Any]:
                 "number_of_shards": 1,
                 "number_of_replicas": 0,
                 "refresh_interval": "30s",
+                "default_pipeline": LOGS_SHORT_FIELDS_PIPELINE,
             },
             "mappings": {
                 "properties": {
                     LOGS_TIME_FIELD: date_mapping,
                     "observedTime": date_mapping,
-                    "log.attributes.event_category": {
-                        "type": "keyword",
-                        "ignore_above": 256,
-                    },
-                    "log.attributes.event_class": {
-                        "type": "keyword",
-                        "ignore_above": 256,
-                    },
-                    "log.attributes.has_trace": {
-                        "type": "boolean",
-                    },
+                    "log.attributes.event_category": keyword,
+                    "log.attributes.event_class": keyword,
+                    "log.attributes.has_trace": {"type": "boolean"},
+                    **short_props,
                 }
             },
         },
@@ -270,15 +306,26 @@ def index_exposes_time_field(properties: dict[str, Any], time_field: str) -> boo
 
 
 def attach_existing_index(
-    client: JsonClient, index: str, policy_id: str, time_field: str
+    client: JsonClient,
+    index: str,
+    policy_id: str,
+    time_field: str,
+    *,
+    default_pipeline: str | None = None,
 ) -> None:
     status, _ = client.request(index, method="HEAD", allowed=(404,))
     if status == 404:
         return
+    index_settings: dict[str, Any] = {
+        "number_of_replicas": 0,
+        "refresh_interval": "30s",
+    }
+    if default_pipeline:
+        index_settings["default_pipeline"] = default_pipeline
     client.request(
         f"{quote(index)}/_settings",
         method="PUT",
-        payload={"index": {"number_of_replicas": 0, "refresh_interval": "30s"}},
+        payload={"index": index_settings},
     )
     _, explanation = client.request(
         f"_plugins/_ism/explain/{quote(index)}", allowed=(404,)
@@ -315,11 +362,30 @@ def matching_indices(client: JsonClient, pattern: str) -> list[str]:
 
 
 def reconcile_matching_indices(
-    client: JsonClient, pattern: str, policy_id: str, time_field: str
+    client: JsonClient,
+    pattern: str,
+    policy_id: str,
+    time_field: str,
+    *,
+    default_pipeline: str | None = None,
 ) -> None:
     """Apply the contract to indices created before their template existed."""
     for index in matching_indices(client, pattern):
-        attach_existing_index(client, index, policy_id, time_field)
+        attach_existing_index(
+            client,
+            index,
+            policy_id,
+            time_field,
+            default_pipeline=default_pipeline,
+        )
+
+
+def upsert_logs_short_fields_pipeline(client: JsonClient) -> None:
+    client.request(
+        f"_ingest/pipeline/{quote(LOGS_SHORT_FIELDS_PIPELINE)}",
+        method="PUT",
+        payload=logs_short_fields_pipeline(),
+    )
 
 
 def reconcile_trace_storage(client: JsonClient) -> None:
@@ -717,21 +783,24 @@ def fetch_index_fields(
         name: max(50, 200 - (index * 10))
         for index, name in enumerate(popular_fields or [])
     }
+    short_labels = dashboard_definitions.LOG_FIELD_SHORT_LABELS
     specs: list[dict[str, Any]] = []
     for field in response.get("fields", []):
         name = field["name"]
-        specs.append(
-            {
-                "count": popularity.get(name, 0),
-                "name": name,
-                "type": field["type"],
-                "esTypes": field.get("esTypes", [field["type"]]),
-                "scripted": False,
-                "searchable": field.get("searchable", True),
-                "aggregatable": field.get("aggregatable", False),
-                "readFromDocValues": field.get("aggregatable", False),
-            }
-        )
+        spec: dict[str, Any] = {
+            "count": popularity.get(name, 0),
+            "name": name,
+            "type": field["type"],
+            "esTypes": field.get("esTypes", [field["type"]]),
+            "scripted": False,
+            "searchable": field.get("searchable", True),
+            "aggregatable": field.get("aggregatable", False),
+            "readFromDocValues": field.get("aggregatable", False),
+        }
+        label = short_labels.get(name)
+        if label:
+            spec["customLabel"] = label
+        specs.append(spec)
     return compact(specs)
 
 
@@ -833,6 +902,7 @@ def main() -> int:
         "raw-span-policy",
         trace_lifecycle_policy(retention_days),
     )
+    upsert_logs_short_fields_pipeline(opensearch)
     opensearch.request(
         "_index_template/observability-metrics",
         method="PUT",
@@ -854,6 +924,7 @@ def main() -> int:
         LOGS_PATTERN,
         "observability-logs-retention",
         LOGS_TIME_FIELD,
+        default_pipeline=LOGS_SHORT_FIELDS_PIPELINE,
     )
     reconcile_trace_storage(opensearch)
     upsert_monitors(opensearch)

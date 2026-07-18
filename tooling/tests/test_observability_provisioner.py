@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -54,6 +55,66 @@ def test_correlation_queries_reference_trace_fields() -> None:
 def test_dashboard_import_helpers_exist() -> None:
     assert hasattr(provisioner, "import_dashboard_bundles")
     assert hasattr(provisioner, "cleanup_deprecated_saved_objects")
+
+
+def test_logs_short_fields_pipeline_copies_otel_paths() -> None:
+    pipeline = provisioner.logs_short_fields_pipeline()
+    script = pipeline["processors"][0]["script"]["source"]
+    assert "ctx['method'] = ctx['log.attributes.method']" in script
+    assert (
+        "ctx['name'] = ctx['resource.attributes.k8s@namespace@name']" in script
+    )
+    template = provisioner.logs_index_template("otel-v1-apm-logs-*")
+    assert (
+        template["template"]["settings"]["default_pipeline"]
+        == provisioner.LOGS_SHORT_FIELDS_PIPELINE
+    )
+    assert "method" in template["template"]["mappings"]["properties"]
+
+
+def test_index_field_specs_apply_short_custom_labels() -> None:
+    class FakeClient:
+        def request(self, path: str, **_kwargs):
+            assert "index_patterns/_fields_for_wildcard" in path
+            return 200, {
+                "fields": [
+                    {
+                        "name": "log.attributes.method",
+                        "type": "string",
+                        "esTypes": ["keyword"],
+                        "searchable": True,
+                        "aggregatable": True,
+                    },
+                    {
+                        "name": "resource.attributes.k8s@namespace@name",
+                        "type": "string",
+                        "esTypes": ["keyword"],
+                        "searchable": True,
+                        "aggregatable": True,
+                    },
+                    {
+                        "name": "serviceName",
+                        "type": "string",
+                        "esTypes": ["keyword"],
+                        "searchable": True,
+                        "aggregatable": True,
+                    },
+                ]
+            }
+
+    fields = json.loads(
+        provisioner.fetch_index_fields(
+            FakeClient(),
+            "otel-v1-apm-logs*",
+            popular_fields=["log.attributes.method"],
+        )
+    )
+    by_name = {field["name"]: field for field in fields}
+    assert by_name["log.attributes.method"]["customLabel"] == "method"
+    assert (
+        by_name["resource.attributes.k8s@namespace@name"]["customLabel"] == "name"
+    )
+    assert "customLabel" not in by_name["serviceName"]
 
 
 def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
@@ -131,9 +192,15 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
     ]
     assert otel["config"]["service"]["pipelines"]["logs"]["processors"] == [
         "memory_limiter",
+        "filter/drop-epoll-io",
+        "filter/drop-health-probes",
+        "transform/classify-log-signal",
         "filter/drop-low-severity",
         "batch",
     ]
+    assert "filter/drop-epoll-io" in processors
+    assert "filter/drop-health-probes" in processors
+    assert "transform/classify-log-signal" in processors
     assert "debug" not in otel["config"]["exporters"]
     assert otel["config"]["service"]["pipelines"]["metrics"]["processors"] == [
         "memory_limiter",

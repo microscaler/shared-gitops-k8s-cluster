@@ -66,11 +66,13 @@ def test_discover_is_canonical_field_sidebar_surface() -> None:
 
 
 def test_log_stream_uses_structured_sidebar_columns() -> None:
-    assert definitions.LOG_STREAM_COLUMNS[0] == definitions.LOG_NAMESPACE_FIELD
+    assert definitions.LOG_STREAM_COLUMNS[0] == "name"
     assert definitions.LOG_STREAM_COLUMNS[1] == definitions.LOG_APPLICATION_FIELD
-    assert definitions.LOG_EVENT_CLASS_FIELD in definitions.LOG_STREAM_COLUMNS
-    assert definitions.LOG_PATH_FIELD in definitions.LOG_STREAM_COLUMNS
-    assert definitions.LOG_HAS_TRACE_FIELD in definitions.LOG_STREAM_COLUMNS
+    assert "event_class" in definitions.LOG_STREAM_COLUMNS
+    assert "path" in definitions.LOG_STREAM_COLUMNS
+    assert "has_trace" in definitions.LOG_STREAM_COLUMNS
+    assert "log.attributes" not in ",".join(definitions.LOG_STREAM_COLUMNS)
+    assert "resource.attributes" not in ",".join(definitions.LOG_STREAM_COLUMNS)
 
 
 def test_sidebar_popular_fields_namespace_then_application() -> None:
@@ -79,6 +81,17 @@ def test_sidebar_popular_fields_namespace_then_application() -> None:
     assert definitions.LOG_EVENT_CLASS_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
     assert definitions.LOG_PATH_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
     assert "service@namespace" not in "".join(definitions.LOG_SIDEBAR_FILTER_FIELDS)
+
+
+def test_log_field_short_labels_strip_otel_prefixes() -> None:
+    copies = definitions.LOG_FIELD_SHORT_COPIES
+    assert copies["name"] == definitions.LOG_NAMESPACE_FIELD
+    assert copies["method"] == definitions.LOG_METHOD_FIELD
+    assert copies["event_class"] == definitions.LOG_EVENT_CLASS_FIELD
+    assert copies["duration_ms"] == definitions.LOG_DURATION_FIELD
+    labels = definitions.LOG_FIELD_SHORT_LABELS
+    assert labels[definitions.LOG_NAMESPACE_FIELD] == "name"
+    assert labels[definitions.LOG_METHOD_FIELD] == "method"
 
 
 def test_signal_and_runtime_noise_queries_are_complements() -> None:
@@ -121,7 +134,8 @@ def test_saved_search_scopes_cover_roadmap() -> None:
     )
     source = json.loads(http["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
     assert "http" in source["query"]["query"]
-    assert definitions.LOG_PATH_FIELD in http["attributes"]["columns"]
+    assert "path" in http["attributes"]["columns"]
+    assert "method" in http["attributes"]["columns"]
 
     noise = next(
         payload
@@ -150,3 +164,21 @@ def test_dashboard_includes_http_triage_panels() -> None:
         "logs-http-avg-duration",
         "logs-explore-stream",
     }.issubset(ref_ids)
+
+
+def test_top_paths_includes_rps_and_pslo() -> None:
+    top_paths = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "visualization" and object_id == "logs-http-top-paths"
+    )
+    vis_state = json.loads(top_paths["attributes"]["visState"])
+    assert vis_state["type"] == "vega"
+    spec = json.loads(vis_state["params"]["spec"])
+    signals = {signal["name"]: signal.get("value") for signal in spec["signals"]}
+    assert signals["windowSeconds"] == 900
+    assert signals["sloMs"] == definitions.HTTP_P95_SLO_MS
+    assert "windowSeconds" in vis_state["params"]["spec"]
+    assert "vsSlo" in vis_state["params"]["spec"]
+    assert "log.attributes.path.keyword" in vis_state["params"]["spec"]
+    assert "p95" in spec["data"][0]["url"]["body"]["aggs"]["paths"]["aggs"]
