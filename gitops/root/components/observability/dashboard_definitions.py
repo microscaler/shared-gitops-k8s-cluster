@@ -710,7 +710,14 @@ def log_http_top_paths_visualization(
                             "update": {
                                 "x": {"signal": "width * 0.74"},
                                 "y": {"scale": "y", "field": "row", "band": 0.5},
-                                "text": {"signal": "format(datum.p95, '.1f')"},
+                                # Integer ms today (0/1/2…); use 3dp below 1 so
+                                # sub-ms floats are visible if emitters gain precision.
+                                "text": {
+                                    "signal": (
+                                        "datum.p95 < 1 ? format(datum.p95, '.3f') "
+                                        ": format(datum.p95, '.1f')"
+                                    )
+                                },
                                 "align": {"value": "right"},
                                 "fontSize": {"value": 11},
                                 "fill": {

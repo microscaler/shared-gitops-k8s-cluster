@@ -182,3 +182,5 @@ def test_top_paths_includes_rps_and_pslo() -> None:
     assert "vsSlo" in vis_state["params"]["spec"]
     assert "log.attributes.path.keyword" in vis_state["params"]["spec"]
     assert "p95" in spec["data"][0]["url"]["body"]["aggs"]["paths"]["aggs"]
+    assert "datum.p95 < 1" in vis_state["params"]["spec"]
+    assert ".3f" in vis_state["params"]["spec"]
