@@ -72,60 +72,42 @@ retention policy. Production retention and topology must be sized separately.
 
 ## Managed dashboards (GitOps NDJSON)
 
-Dashboard bundles live in
-`gitops/root/components/observability/dashboards/*.ndjson` (one file per
-dashboard, including referenced visualizations and saved searches). Regenerate
-after editing `dashboard_definitions.py`:
+One **Discover-style** log dashboard (`logs-explore`) is GitOps-managed:
+
+- **Histogram** — log volume over time (`observedTime`)
+- **Log stream** — document table with `observedTime`, `serviceName`, `severityText`, `traceId`, `body`
+- **Search bar + filters** — use Lucene in the dashboard query bar (same syntax as alert monitors)
+- **Default time window** — last 15 minutes with 30s refresh
+- **Landing page** — `opensearchDashboards.defaultRoute` opens `/app/dashboards#/view/logs-explore`
+
+Source: `gitops/root/components/observability/dashboards/logs-explore.ndjson`.
+Regenerate after editing `dashboard_definitions.py`:
 
 ```bash
 python3 tooling/generate_observability_dashboards.py
 ```
 
-The provisioner imports NDJSON bundles, reconciles index patterns dynamically,
-and deletes deprecated saved objects from earlier iterations.
+The provisioner imports the NDJSON bundle, reconciles index patterns dynamically,
+and deletes deprecated saved objects from earlier dashboard iterations.
 
-### Dashboard tiers
+Direct URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore`
 
-| Tier | Purpose |
-|------|---------|
-| **Log hubs** | Unified log triage — errors, WARN, trace-correlated, DB pressure |
-| **Health / SLO** | Traces and metrics only; link out to log hubs |
-| **War room** | Cross-signal pivot by traceId (incident response) |
-| **Platform** | Postgres, Pgpool, Redis infrastructure |
+**Example Lucene queries** (search bar):
 
-| Dashboard ID | Purpose |
-|--------------|---------|
-| **platform-logs-explore** | All services — ERROR, WARN, trace-correlated logs |
-| **loadlinker-logs-explore** | Loadlinker P0 + P1 log triage |
-| **sesame-logs-explore** | All six Sesame-IDAM services |
-| **platform-postgres-connections** | Postgres/Pgpool saturation split by `loadlinker` / `sesame-idam` |
-| **platform-data-namespace** | Shared `data` namespace Postgres, Pgpool, Redis |
-| **platform-apm-correlation** | Incident war room: traceId pivot across logs, spans, DB |
-| **loadlinker-health** | P0 RED: `bff`, `bidding`, `consignments`, `notifications` |
-| **loadlinker-bff-edge** | BFF routes, SLO p95 target 500 ms |
-| **loadlinker-sesame-auth** | BFF → Sesame auth dependency (traces) |
-| **sesame-platform-health** | All six Sesame-IDAM services |
-| **sesame-auth-critical-path** | Login, session, authz-core (authz SLO p95 50 ms) |
+| Goal | Query |
+|------|-------|
+| Errors only | `severityText: (ERROR OR FATAL)` |
+| Service filter | `serviceName: bff` |
+| With trace | `traceId: * AND NOT traceId: ""` |
+| Free text | `"connection pool"` |
 
-Dev SLO starting points (refine against measured baselines):
+Index patterns (Discover or raw queries):
 
-| Service / path | Target |
-|----------------|--------|
-| Loadlinker BFF p95 | 500 ms |
-| Loadlinker bidding p95 | 800 ms |
-| Sesame authz-core p95 | 50 ms |
-
-Index patterns (use in **Discover**):
-
-| Pattern | Time field | Correlation keys |
-|---------|------------|------------------|
-| `otel-v1-apm-metrics*` | `time` | `serviceName`, `metric.attributes.consumer_namespace` |
-| `otel-v1-apm-logs*` | `observedTime` | `serviceName`, `traceId`, `spanId`, `body` |
+| Pattern | Time field | Key fields |
+|---------|------------|------------|
+| `otel-v1-apm-logs*` | `observedTime` | `serviceName`, `traceId`, `spanId`, `body`, `severityText` |
+| `otel-v1-apm-metrics*` | `time` | `serviceName`, `name`, `value` |
 | `otel-v1-apm-span-*` | `startTime` | `traceId`, `spanId`, `serviceName`, `name` |
-
-**Cross-signal correlation:** pick a `traceId` from **HTTP request spans** or
-**Errors with trace context**, paste into Discover on logs or traces, and align
-the time picker with **Postgres connections** to relate app events to DB pressure.
 
 OpenSearch Alerting evaluates these query-level monitors every five minutes:
 
@@ -155,7 +137,7 @@ just observability-provision-now
 Expected terminal line:
 
 ```text
-observability provisioning passed: retention=7d monitors=5 saved_objects=24
+observability provisioning passed: retention=7d monitors=9 dashboard_bundles=1 saved_objects=3
 ```
 
 Cluster health may show **yellow** on a single-node dev cluster because

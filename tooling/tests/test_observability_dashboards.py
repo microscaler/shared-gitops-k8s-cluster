@@ -19,20 +19,8 @@ sys.modules[spec.name] = definitions
 spec.loader.exec_module(definitions)
 
 
-def test_dashboard_bundles_cover_products() -> None:
-    assert set(definitions.DASHBOARD_BUNDLES) == {
-        "platform-postgres-connections",
-        "platform-data-namespace",
-        "platform-apm-correlation",
-        "platform-logs-explore",
-        "loadlinker-logs-explore",
-        "loadlinker-health",
-        "loadlinker-bff-edge",
-        "loadlinker-sesame-auth",
-        "sesame-logs-explore",
-        "sesame-platform-health",
-        "sesame-auth-critical-path",
-    }
+def test_single_logs_dashboard_bundle() -> None:
+    assert set(definitions.DASHBOARD_BUNDLES) == {"logs-explore"}
 
 
 def test_dashboard_references_are_complete_and_stable() -> None:
@@ -40,45 +28,40 @@ def test_dashboard_references_are_complete_and_stable() -> None:
     identities = {(object_type, object_id) for object_type, object_id, _ in objects}
     assert len(identities) == len(objects)
 
-    for dashboard_id in definitions.DASHBOARD_BUNDLES:
-        dashboard = next(
-            payload
-            for object_type, object_id, payload in objects
-            if object_type == "dashboard" and object_id == dashboard_id
-        )
-        for reference in dashboard["references"]:
-            assert (reference["type"], reference["id"]) in identities
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "logs-explore"
+    )
+    for reference in dashboard["references"]:
+        assert (reference["type"], reference["id"]) in identities
 
 
-def test_ndjson_bundles_exist_and_parse() -> None:
-    for bundle_name in definitions.DASHBOARD_BUNDLES:
-        path = DASHBOARDS / f"{bundle_name}.ndjson"
-        assert path.is_file(), f"missing generated bundle {path.name}"
-        lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        assert lines, f"{path.name} is empty"
-        parsed = [json.loads(line) for line in lines]
-        assert any(item["type"] == "dashboard" for item in parsed)
+def test_ndjson_bundle_exists_and_parses() -> None:
+    path = DASHBOARDS / "logs-explore.ndjson"
+    assert path.is_file()
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    parsed = [json.loads(line) for line in lines]
+    assert any(item["type"] == "dashboard" and item["id"] == "logs-explore" for item in parsed)
+    assert any(item["type"] == "search" and item["id"] == "logs-explore-stream" for item in parsed)
+    assert any(item["type"] == "visualization" and item["id"] == "logs-explore-histogram" for item in parsed)
 
 
-def test_loadlinker_p0_query_present() -> None:
-    assert "bff" in definitions.LOADLINKER_P0_QUERY
-    assert "bidding" in definitions.LOADLINKER_P0_QUERY
+def test_log_stream_uses_discover_columns() -> None:
+    assert definitions.LOG_STREAM_COLUMNS == [
+        "observedTime",
+        "serviceName",
+        "severityText",
+        "traceId",
+        "body",
+    ]
 
 
-def test_standard_log_columns_defined() -> None:
-    assert "traceId" in definitions.STANDARD_LOG_COLUMNS
-    assert "severityText" in definitions.STANDARD_LOG_COLUMNS
-
-
-def test_log_hub_bundles_exist() -> None:
-    for bundle_id in (
-        "platform-logs-explore",
-        "loadlinker-logs-explore",
-        "sesame-logs-explore",
-    ):
-        assert bundle_id in definitions.DASHBOARD_BUNDLES
-
-
-def test_slo_targets_are_positive() -> None:
-    assert definitions.SLO_BFF_P95_MS > 0
-    assert definitions.SLO_AUTHZ_P95_MS > 0
+def test_dashboard_defaults_to_fifteen_minute_window() -> None:
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "logs-explore"
+    )
+    assert dashboard["attributes"]["timeFrom"] == "now-15m"

@@ -23,14 +23,4 @@ configMapGenerator:
       - dashboard_definitions.py
   - name: observability-dashboards
     files:
-      - dashboards/platform-postgres-connections.ndjson
-      - dashboards/platform-data-namespace.ndjson
-      - dashboards/platform-apm-correlation.ndjson
-      - dashboards/platform-logs-explore.ndjson
-      - dashboards/loadlinker-logs-explore.ndjson
-      - dashboards/loadlinker-health.ndjson
-      - dashboards/loadlinker-bff-edge.ndjson
-      - dashboards/loadlinker-sesame-auth.ndjson
-      - dashboards/sesame-logs-explore.ndjson
-      - dashboards/sesame-platform-health.ndjson
-      - dashboards/sesame-auth-critical-path.ndjson
+      - dashboards/logs-explore.ndjson
