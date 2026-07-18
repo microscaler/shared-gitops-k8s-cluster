@@ -60,15 +60,10 @@ LOG_SIDEBAR_FILTER_FIELDS = [
     "traceId",
 ]
 
-# Signal = application logs. Keep Lucene short — long nested body ORs break
-# Discover URL state (rison) and can 400 the search API. Collector tagging is
-# the source of truth; body/target/scope clauses cover high-volume legacy only.
-LOG_SIGNAL_LUCENE = (
-    f"({LOG_EVENT_CLASS_FIELD}:application) OR "
-    f"(NOT {LOG_EVENT_CLASS_FIELD}:* AND NOT "
-    f"{LOG_EVENT_CATEGORY_FIELD}: ({_NOISE_CATEGORY_OR}) AND NOT "
-    f'body: (*epoll select*) AND NOT body: "Memory statistics")'
-)
+# Signal = application logs. Prefer a single phrase query — nested NOT/OR
+# Lucene 400s Discover against this OpenSearch mapping. Collector tagging is
+# the source of truth; filter pills hide leftover untagged epoll lines.
+LOG_SIGNAL_LUCENE = f"{LOG_EVENT_CLASS_FIELD}:application"
 
 LOG_RUNTIME_NOISE_LUCENE = (
     f"({LOG_EVENT_CLASS_FIELD}:runtime_noise) OR "
