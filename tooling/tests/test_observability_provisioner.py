@@ -161,6 +161,8 @@ def test_dashboards_config_disables_data_sources_for_gitops_index_patterns() -> 
     dashboards = yaml.safe_load((profile / "helm-values-dashboards.yaml").read_text())
     config = dashboards["config"]["opensearch_dashboards.yml"]
     assert "data_source.enabled: false" in config
+    # OSD 2.19 rejects opensearchDashboards.defaultRoute (CrashLoop).
+    assert "defaultRoute" not in config
 
 
 def test_helm_values_changes_trigger_release_reconciliation() -> None:
