@@ -13,8 +13,11 @@ LOGS_TIME_FIELD = "observedTimestamp"
 LOG_EVENT_CATEGORY_FIELD = "log.attributes.event_category"
 LOG_EPOLL_TARGET_FIELD = "log.attributes.log@target"
 LOG_SCOPE_FIELD = "instrumentationScope.name"
-# Filter hierarchy: namespace → application (service) → time (global picker).
-LOG_NAMESPACE_FIELD = "resource.attributes.service@namespace"
+# Filter hierarchy: k8s namespace → application (service) → time (global picker).
+# Prefer k8s.namespace.name (real cluster ns: loadlinker, sesame-idam, rerp).
+# service.namespace is overwritten to match by the OTel Collector transform.
+LOG_NAMESPACE_FIELD = "resource.attributes.k8s@namespace@name"
+LOG_NAMESPACE_FIELD_LEGACY = "resource.attributes.service@namespace"
 LOG_APPLICATION_FIELD = "serviceName"
 
 LOG_NOISE_CATEGORIES = ("epoll_io", "runtime_metrics")
@@ -35,6 +38,7 @@ LOG_STREAM_COLUMNS = [
 # Popular sidebar order drives Discover field ranking (highest count first).
 LOG_SIDEBAR_FILTER_FIELDS = [
     LOG_NAMESPACE_FIELD,
+    LOG_NAMESPACE_FIELD_LEGACY,
     LOG_APPLICATION_FIELD,
     "severityText",
     LOG_EVENT_CATEGORY_FIELD,
@@ -169,7 +173,8 @@ def discover_guide_markdown() -> dict[str, Any]:
         "OpenSearch **Dashboards** cannot host the left-hand Selected / Available "
         "fields panel (Logz.io-style). Use **Discover** for that UI.\n\n"
         f"[**Open Logs in Discover (field sidebar)**]({LOGS_DISCOVER_DEFAULT_ROUTE})\n\n"
-        "Filter order: **1. namespace** (`resource.attributes.service@namespace`) → "
+        "Filter order: **1. namespace** (`resource.attributes.k8s@namespace@name` — "
+        "e.g. `loadlinker`, `sesame-idam`, `rerp`; there is no `microscaler` ns) → "
         "**2. application** (`serviceName`) → **3. time** (picker, top right). "
         "Then severity / event_category. Default query hides `epoll_io` and "
         "`runtime_metrics` noise (raw logs stay indexed)."

@@ -72,7 +72,9 @@ def test_log_stream_uses_structured_sidebar_columns() -> None:
 
 def test_sidebar_popular_fields_namespace_then_application() -> None:
     assert definitions.LOG_SIDEBAR_FILTER_FIELDS[0] == definitions.LOG_NAMESPACE_FIELD
-    assert definitions.LOG_SIDEBAR_FILTER_FIELDS[1] == definitions.LOG_APPLICATION_FIELD
+    assert "k8s@namespace@name" in definitions.LOG_NAMESPACE_FIELD
+    assert definitions.LOG_SIDEBAR_FILTER_FIELDS[2] == definitions.LOG_APPLICATION_FIELD
+    assert "microscaler" not in definitions.LOG_NAMESPACE_FIELD
 
 
 def test_default_noise_exclusion_uses_structured_fields() -> None:

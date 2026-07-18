@@ -87,9 +87,9 @@ Primary log exploration is GitOps-managed:
 
 - **Discover (default landing)** — field sidebar, histogram, and document table
 - **Dashboard (`logs-explore`)** — Discover link banner + histogram + log stream
-- **Filter hierarchy** — **namespace** → **application** (`serviceName`) → **time** (picker), then severity / event_category
-- **Selected fields** — `resource.attributes.service@namespace`, `serviceName`, `observedTimestamp`, `severityText`, `event_category`, `traceId`, `body`
-- **Popular sidebar fields** — namespace and `serviceName` ranked first; OTel Collector sets namespace from `k8s.namespace.name`
+- **Filter hierarchy** — **k8s namespace** → **application** (`serviceName`) → **time** (picker), then severity / event_category
+- **Selected fields** — `resource.attributes.k8s@namespace@name`, `serviceName`, `observedTimestamp`, `severityText`, `event_category`, `traceId`, `body`
+- **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`, …). There is no `microscaler` namespace; the Collector overwrites the old app default via `k8sattributes`
 - **Default noise filters** — query-time exclusion via structured fields (raw logs remain indexed)
 - **Landing page** — `opensearchDashboards.defaultRoute` opens Discover; provisioner sets `defaultIndex` to logs
 
