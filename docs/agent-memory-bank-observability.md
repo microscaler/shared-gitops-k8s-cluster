@@ -3,13 +3,11 @@
 Updated: 2026-07-18
 
 ## Status
-- Commits:  (noise categories),  (remove OSD defaultRoute CrashLoop), / (docs), Signal Lucene simplified to .
-- OTEL tags live: epoll_io, runtime_metrics, runtime_config, framework_lifecycle → event_class:runtime_noise.
+- HEAD includes noise categories, OSD CrashLoop fix (no defaultRoute), Signal Lucene = `log.attributes.event_class:application`.
+- OTEL tags live: `epoll_io`, `runtime_metrics`, `runtime_config`, `framework_lifecycle` under `event_class:runtime_noise`.
 - Discover: Open **Logs / Signal** (no epoll); **Logs / Runtime noise** to select trash.
-- Do not put  in helm values (OSD 2.19 rejects).
-- Unrelated dirty: >> Waiting for OpenBao pod to be Running...
-pod/openbao-0 condition met
->> Initialising (1 key share, threshold 1 — dev only)... — leave unstaged.
+- Do not put `opensearchDashboards.defaultRoute` in helm values (OSD 2.19 rejects).
+- Unrelated dirty: `gitops/root/components/platform/openbao/bootstrap.sh` — leave unstaged.
 
 ## UI verify
-- Signal simple query shows JWKS / application hits; epoll excluded.
+- Signal shows JWKS / application hits; epoll excluded.

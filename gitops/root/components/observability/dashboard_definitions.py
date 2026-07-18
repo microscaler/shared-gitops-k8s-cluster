@@ -65,13 +65,9 @@ LOG_SIDEBAR_FILTER_FIELDS = [
 # the source of truth; filter pills hide leftover untagged epoll lines.
 LOG_SIGNAL_LUCENE = f"{LOG_EVENT_CLASS_FIELD}:application"
 
-LOG_RUNTIME_NOISE_LUCENE = (
-    f"({LOG_EVENT_CLASS_FIELD}:runtime_noise) OR "
-    f"{LOG_EVENT_CATEGORY_FIELD}: ({_NOISE_CATEGORY_OR}) OR "
-    'body: (*epoll select*) OR body: "Memory statistics" OR '
-    f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_RUNTIME_CONFIG_TARGET}" OR '
-    f"{LOG_SCOPE_FIELD}: ({_FRAMEWORK_SCOPE_OR})"
-)
+# Same constraint as Signal: keep Lucene to a single tagged phrase. Category /
+# body/scope selection is done in the Discover sidebar (event_category).
+LOG_RUNTIME_NOISE_LUCENE = f"{LOG_EVENT_CLASS_FIELD}:runtime_noise"
 
 LOG_ERRORS_LUCENE = (
     f"({LOG_SIGNAL_LUCENE}) AND severityText: (ERROR OR FATAL OR WARN)"
