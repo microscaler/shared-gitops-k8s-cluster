@@ -83,19 +83,20 @@ stacks:
   description: OpenBao via Flux HelmRelease
   depends:
   - name: stack-namespaces
+- name: postgres
+  path: ./gitops/root/components/postgres
+  description: "Lifeguard charts/postgres \u2014 primary-direct Bitnami (no Pgpool);\
+    \ Service postgres"
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-postgres
 - name: postgres-backup
   path: ./gitops/root/components/postgres-backup
   description: "pg_dumpall CronJob \u2192 MinIO bucket postgres-backups"
   depends:
-  - name: stack-postgres-ha
+  - name: stack-postgres
   - name: stack-minio
   - name: profile-config-postgres-backup
-- name: postgres-ha
-  path: ./gitops/root/components/postgres-ha
-  description: Bitnami postgresql-ha (repmgr + Pgpool) with bitnamilegacy images
-  depends:
-  - name: stack-namespaces
-  - name: profile-config-postgres-ha
 - name: redis
   path: ./gitops/root/components/redis
   description: Bitnami Redis Helm (standalone, AOF, existingClaim Retain); MetalLB

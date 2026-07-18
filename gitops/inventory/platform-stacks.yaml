@@ -25,11 +25,11 @@ stacks:
     depends_on: [namespaces]
     profile: cluster
 
-  - name: postgres-ha
-    path: ./gitops/root/components/postgres-ha
-    description: Bitnami postgresql-ha (repmgr + Pgpool) with bitnamilegacy images
+  - name: postgres
+    path: ./gitops/root/components/postgres
+    description: Lifeguard charts/postgres — primary-direct Bitnami (no Pgpool); Service postgres
     depends_on: [namespaces]
-    profile: postgres-ha
+    profile: postgres
 
   - name: minio
     path: ./gitops/root/components/minio
@@ -40,7 +40,7 @@ stacks:
   - name: postgres-backup
     path: ./gitops/root/components/postgres-backup
     description: pg_dumpall CronJob → MinIO bucket postgres-backups
-    depends_on: [postgres-ha, minio]
+    depends_on: [postgres, minio]
     profile: postgres-backup
 
   - name: redis

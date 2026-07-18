@@ -1,0 +1,39 @@
+# Dev overlay for Lifeguard charts/postgres (Flux valuesFrom).
+# Structural secret keys stay in the HelmRelease `values:` block.
+fullnameOverride: postgres
+
+primary:
+  name: postgres-primary
+  persistence:
+    size: 20Gi
+    storageClass: zfs-iscsi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+service:
+  name: postgres
+  type: LoadBalancer
+  port: 5432
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: "10.177.76.224"
+
+postgresql:
+  maxConnections: "200"
+
+# Stability: no streaming standbys on the shared multi-tenant cluster.
+replica:
+  enabled: false
+  count: 0
+
+initScripts:
+  enabled: true
+  extraFiles:
+    - 10-pact-role.sql
+
+exporter:
+  enabled: true
