@@ -130,6 +130,15 @@ config:
       logs:
         log_record:
           - 'IsMatch(severity_text, "^(DEBUG|TRACE)$")'
+    # may add/del/mod fd epoll select is ~99% of log volume and drowns application
+    # signal. Drop at the collector (source reader) before classify/export.
+    # Memory stats and other runtime_noise stay indexed for explicit selection.
+    filter/drop-epoll-io:
+      error_mode: ignore
+      logs:
+        log_record:
+          - 'attributes["log.target"] == "may::io::sys::select"'
+          - 'IsMatch(body, "(?i).*epoll select.*")'
     # Prometheus staleness markers are OTLP datapoints with
     # DATA_POINT_FLAGS_NO_RECORDED_VALUE (currently bit value 1). Data Prepper
     # cannot index a gauge without a value, so discard the marker, not a real
@@ -139,9 +148,9 @@ config:
       metrics:
         datapoint:
           - flags == 1
-    # Tag every log with event_class + event_category (never drop). Discover
-    # defaults to event_class:application; open "Logs / Runtime noise" to select
-    # epoll/memory trash explicitly. Prefer k8s namespace over app defaults.
+    # Tag remaining logs with event_class + event_category. Epoll is dropped
+    # upstream; other runtime_noise stays selectable via Logs / Runtime noise.
+    # Prefer k8s namespace over app defaults.
     transform/classify-log-signal:
       error_mode: ignore
       log_statements:
@@ -150,10 +159,7 @@ config:
             - set(attributes["service.namespace"], attributes["k8s.namespace.name"]) where attributes["k8s.namespace.name"] != nil
         - context: log
           statements:
-            # --- Runtime noise (never drop; select via Logs / Runtime noise) ---
-            # may epoll I/O churn
-            - set(attributes["event_category"], "epoll_io") where attributes["log.target"] == "may::io::sys::select"
-            - set(attributes["event_category"], "epoll_io") where attributes["event_category"] == nil and IsMatch(body, "(?i).*epoll select.*")
+            # --- Runtime noise (epoll already dropped by filter/drop-epoll-io) ---
             # BRRTRouter periodic memory stats
             - set(attributes["event_category"], "runtime_metrics") where instrumentation_scope.name == "brrtrouter::middleware::memory"
             - set(attributes["event_category"], "runtime_metrics") where attributes["event_category"] == nil and attributes["rss_mb"] != nil
@@ -164,7 +170,7 @@ config:
             # BRRTRouter bootstrap / hot-reload lifecycle (not request-path signal)
             - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i)^brrtrouter::(dispatcher::core|validator_cache|router::core|server::service)$")
             - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(body, "(?i)^(Handler registered successfully|Replaced existing handler|Schema validator|Initializing JSON Schema|Precompiled schemas|Routing table loaded|Pre-registering paths)")
-            - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "epoll_io" or attributes["event_category"] == "runtime_metrics" or attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
+            - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "runtime_metrics" or attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
             # --- Application signal categories ---
             - set(attributes["event_category"], "auth") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i).*(jwks|login|session|authz|api.keys|org.mgmt|user.mgmt).*")
             - set(attributes["event_category"], "application") where attributes["event_category"] == nil
@@ -207,5 +213,6 @@ config:
         receivers: [otlp]
         # k8sattributes is injected by presets.kubernetesAttributes before this list
         # is merged; transform overwrites service.namespace from k8s.namespace.name.
-        processors: [memory_limiter, transform/classify-log-signal, filter/drop-low-severity, batch]
+        # Drop epoll before classify so volume never reaches OpenSearch.
+        processors: [memory_limiter, filter/drop-epoll-io, transform/classify-log-signal, filter/drop-low-severity, batch]
         exporters: [otlp/logs]

@@ -18,6 +18,8 @@ LOG_SCOPE_FIELD = "instrumentationScope.name"
 LOG_NAMESPACE_FIELD = "resource.attributes.k8s@namespace@name"
 LOG_APPLICATION_FIELD = "serviceName"
 
+# epoll_io is dropped at the collector (filter/drop-epoll-io); keep the token
+# for legacy docs still in the index and for Discover filter pills.
 LOG_NOISE_CATEGORIES = (
     "epoll_io",
     "runtime_metrics",

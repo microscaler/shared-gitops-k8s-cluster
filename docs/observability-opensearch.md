@@ -90,12 +90,12 @@ Primary log exploration is GitOps-managed:
 - **Filter hierarchy** — **namespace** → **application** → **time** → **event_class** / **event_category**
 - **Selected / Popular fields** — `k8s.namespace.name`, `serviceName`, `severityText`, `event_class`, `event_category`, `has_trace`
 - **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`). No `microscaler` ns
+- **Epoll drop (collector)** — may `add/del/mod fd … epoll select` is dropped by `filter/drop-epoll-io` before export (was ~99% of volume)
 - **Runtime noise tagging** — Collector sets `event_class:runtime_noise` with `event_category`:
-  - `epoll_io` — may `add/del/mod fd … epoll select`
   - `runtime_metrics` — BRRTRouter memory stats
   - `runtime_config` — may `set workers=` / `set stack size=`
   - `framework_lifecycle` — BRRTRouter handler registration, validator cache, routing table, metrics path pre-register
-  Logs are **not dropped**; open **Logs / Runtime noise** to select them
+  These stay indexed; open **Logs / Runtime noise** to select them. Epoll is not indexed.
 - **Landing page** — Discover saved searches (Signal); provisioner sets `defaultIndex` to logs. Do not set `opensearchDashboards.defaultRoute` in helm values (OSD 2.19 rejects it)
 
 ### Saved searches (Discover → Open)
@@ -134,7 +134,6 @@ Direct URLs:
 |------|-------|
 | Signal (default) | `log.attributes.event_class:application` |
 | Runtime noise only | `log.attributes.event_class:runtime_noise` |
-| Epoll only | `log.attributes.event_category:epoll_io` |
 | Memory stats only | `log.attributes.event_category:runtime_metrics` |
 | may config only | `log.attributes.event_category:runtime_config` |
 | BRRTRouter lifecycle only | `log.attributes.event_category:framework_lifecycle` |
