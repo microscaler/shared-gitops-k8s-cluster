@@ -96,7 +96,7 @@ Primary log exploration is GitOps-managed:
   - `runtime_config` — may `set workers=` / `set stack size=`
   - `framework_lifecycle` — BRRTRouter handler registration, validator cache, routing table, metrics path pre-register
   Logs are **not dropped**; open **Logs / Runtime noise** to select them
-- **Landing page** — Discover with Signal query; provisioner sets `defaultIndex` to logs
+- **Landing page** — Discover saved searches (Signal); provisioner sets `defaultIndex` to logs. Do not set `opensearchDashboards.defaultRoute` in helm values (OSD 2.19 rejects it)
 
 ### Saved searches (Discover → Open)
 
