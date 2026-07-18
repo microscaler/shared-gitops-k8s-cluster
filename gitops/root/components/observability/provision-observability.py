@@ -248,6 +248,13 @@ def logs_index_template(pattern: str) -> dict[str, Any]:
                         "type": "keyword",
                         "ignore_above": 256,
                     },
+                    "log.attributes.event_class": {
+                        "type": "keyword",
+                        "ignore_above": 256,
+                    },
+                    "log.attributes.has_trace": {
+                        "type": "boolean",
+                    },
                 }
             },
         },

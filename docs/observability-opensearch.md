@@ -85,13 +85,29 @@ fields panel. That UI is **Discover only**.
 
 Primary log exploration is GitOps-managed:
 
-- **Discover (default landing)** — field sidebar, histogram, and document table
-- **Dashboard (`logs-explore`)** — Discover link banner + histogram + log stream
-- **Filter hierarchy** — **k8s namespace** → **application** (`serviceName`) → **time** (picker), then severity / event_category
-- **Selected fields** — `resource.attributes.k8s@namespace@name`, `serviceName`, `observedTimestamp`, `severityText`, `event_category`, `traceId`, `body`
-- **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`, …). There is no `microscaler` namespace; the Collector overwrites the old app default via `k8sattributes`
-- **Default noise filters** — query-time exclusion via structured fields (raw logs remain indexed)
-- **Landing page** — `opensearchDashboards.defaultRoute` opens Discover; provisioner sets `defaultIndex` to logs
+- **Discover (default landing)** — field sidebar, histogram, and document table (Signal scope)
+- **Dashboard (`logs-explore`)** — Discover banner + signal histogram + stream
+- **Filter hierarchy** — **namespace** → **application** → **time** → **event_class** / **event_category**
+- **Selected / Popular fields** — `k8s.namespace.name`, `serviceName`, `severityText`, `event_class`, `event_category`, `has_trace`
+- **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`). No `microscaler` ns
+- **Runtime noise tagging** — Collector sets `event_class:runtime_noise` + `event_category:epoll_io|runtime_metrics` on may epoll (`add/del/mod fd …`) and memory stats. Logs are **not dropped**; open **Logs / Runtime noise** to select them
+- **Landing page** — Discover with Signal query; provisioner sets `defaultIndex` to logs
+
+### Saved searches (Discover → Open)
+
+| Title | Purpose |
+|-------|---------|
+| **Logs / Signal** | Application logs only (`event_class:application`) — default triage |
+| **Logs / Errors** | WARN+ within signal |
+| **Logs / Auth** | `sesame-idam` signal |
+| **Logs / BFF** | `loadlinker` + `serviceName:bff` signal |
+| **Logs / Runtime noise** | Epoll + memory (`event_class:runtime_noise`) — select *for* trash |
+
+### Two-click filter path
+
+1. Expand **namespace** → Filter for `sesame-idam` (or `loadlinker` / `rerp`)
+2. Expand **serviceName** → values are now scoped to that namespace
+3. Adjust **time** last; optionally filter `event_category` / `has_trace`
 
 Source: `gitops/root/components/observability/dashboards/logs-explore.ndjson`.
 Regenerate after editing `dashboard_definitions.py`:
@@ -100,35 +116,31 @@ Regenerate after editing `dashboard_definitions.py`:
 python3 tooling/generate_observability_dashboards.py
 ```
 
-The provisioner imports the NDJSON bundle, reconciles index patterns dynamically,
-boosts Popular field counts for the Discover sidebar, sets the default index to
-logs, and deletes deprecated saved objects from earlier dashboard iterations.
-
 Direct URLs:
 
 | View | URL |
 |------|-----|
-| **Discover (use this — field sidebar)** | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
-| Dashboard (no field sidebar) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
+| **Discover (field sidebar)** | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
+| Dashboard | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
 
 **Example Lucene queries** (search bar):
 
 | Goal | Query |
 |------|-------|
-| Signal logs (default) | `NOT (log.attributes.event_category: ("epoll_io" OR "runtime_metrics") OR log.attributes.log@target: "may::io::sys::select" OR instrumentationScope.name: "brrtrouter::middleware::memory")` |
-| Epoll noise only | `log.attributes.log@target: "may::io::sys::select"` |
-| Memory stats only | `instrumentationScope.name: "brrtrouter::middleware::memory"` |
-| By event category | `log.attributes.event_category: epoll_io` |
-| Errors only | `severityText: (ERROR OR FATAL)` |
-| Service filter | `serviceName: bff` |
-| With trace | `traceId: * AND NOT traceId: ""` |
+| Signal (default) | `log.attributes.event_class:application` |
+| Runtime noise only | `log.attributes.event_class:runtime_noise` |
+| Epoll only | `log.attributes.event_category:epoll_io` |
+| Memory stats only | `log.attributes.event_category:runtime_metrics` |
+| Errors | `log.attributes.event_class:application AND severityText:(ERROR OR FATAL OR WARN)` |
+| Auth ns | `resource.attributes.k8s@namespace@name:sesame-idam AND log.attributes.event_class:application` |
+| With trace | `log.attributes.has_trace:true` |
 | Free text | `"connection pool"` |
 
 Index patterns (Discover or raw queries):
 
 | Pattern | Time field | Key fields |
 |---------|------------|------------|
-| `otel-v1-apm-logs*` | `observedTimestamp` | `log.attributes.event_category`, `serviceName`, `instrumentationScope.name`, `traceId`, `body`, `severityText` |
+| `otel-v1-apm-logs*` | `observedTimestamp` | `k8s.namespace.name`, `serviceName`, `event_class`, `event_category`, `has_trace`, `body`, `severityText` |
 | `otel-v1-apm-metrics*` | `time` | `serviceName`, `name`, `value` |
 | `otel-v1-apm-span-*` | `startTime` | `traceId`, `spanId`, `serviceName`, `name` |
 

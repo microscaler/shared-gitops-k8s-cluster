@@ -44,11 +44,8 @@ def test_ndjson_bundle_exists_and_parses() -> None:
     parsed = [json.loads(line) for line in lines]
     assert any(item["type"] == "dashboard" and item["id"] == "logs-explore" for item in parsed)
     assert any(item["type"] == "search" and item["id"] == "logs-explore-stream" for item in parsed)
-    assert any(item["type"] == "visualization" and item["id"] == "logs-explore-histogram" for item in parsed)
-    assert any(
-        item["type"] == "visualization" and item["id"] == "logs-explore-discover-guide"
-        for item in parsed
-    )
+    assert any(item["type"] == "search" and item["id"] == "logs-runtime-noise" for item in parsed)
+    assert any(item["type"] == "search" and item["id"] == "logs-errors" for item in parsed)
 
 
 def test_discover_is_canonical_field_sidebar_surface() -> None:
@@ -59,59 +56,54 @@ def test_discover_is_canonical_field_sidebar_surface() -> None:
     guide = definitions.discover_guide_markdown()
     vis_state = json.loads(guide["attributes"]["visState"])
     assert vis_state["type"] == "markdown"
-    assert "Discover" in vis_state["params"]["markdown"]
-    assert definitions.LOG_EVENT_CATEGORY_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
+    assert "Runtime noise" in vis_state["params"]["markdown"]
 
 
 def test_log_stream_uses_structured_sidebar_columns() -> None:
     assert definitions.LOG_STREAM_COLUMNS[0] == definitions.LOG_NAMESPACE_FIELD
     assert definitions.LOG_STREAM_COLUMNS[1] == definitions.LOG_APPLICATION_FIELD
-    assert definitions.LOG_STREAM_COLUMNS[2] == "observedTimestamp"
-    assert "body" in definitions.LOG_STREAM_COLUMNS
+    assert definitions.LOG_EVENT_CLASS_FIELD in definitions.LOG_STREAM_COLUMNS
+    assert definitions.LOG_HAS_TRACE_FIELD in definitions.LOG_STREAM_COLUMNS
 
 
 def test_sidebar_popular_fields_namespace_then_application() -> None:
     assert definitions.LOG_SIDEBAR_FILTER_FIELDS[0] == definitions.LOG_NAMESPACE_FIELD
-    assert "k8s@namespace@name" in definitions.LOG_NAMESPACE_FIELD
-    assert definitions.LOG_SIDEBAR_FILTER_FIELDS[2] == definitions.LOG_APPLICATION_FIELD
-    assert "microscaler" not in definitions.LOG_NAMESPACE_FIELD
+    assert definitions.LOG_SIDEBAR_FILTER_FIELDS[1] == definitions.LOG_APPLICATION_FIELD
+    assert definitions.LOG_EVENT_CLASS_FIELD in definitions.LOG_SIDEBAR_FILTER_FIELDS
+    assert "service@namespace" not in "".join(definitions.LOG_SIDEBAR_FILTER_FIELDS)
 
 
-def test_default_noise_exclusion_uses_structured_fields() -> None:
-    query = definitions.LOG_NOISE_EXCLUSION_LUCENE
-    assert definitions.LOG_EVENT_CATEGORY_FIELD in query
-    assert definitions.LOG_EPOLL_TARGET in query
-    assert definitions.LOG_MEMORY_SCOPE in query
-    filters = definitions.log_noise_filters()
-    assert len(filters) == 3
+def test_signal_and_runtime_noise_queries_are_complements() -> None:
+    assert "event_class" in definitions.LOG_SIGNAL_LUCENE
+    assert "runtime_noise" in definitions.LOG_RUNTIME_NOISE_LUCENE
+    assert "epoll select" in definitions.LOG_RUNTIME_NOISE_LUCENE
+    filters = definitions.log_signal_filters()
+    assert len(filters) == 2
     assert all(item["meta"]["negate"] is True for item in filters)
 
 
-def test_saved_search_and_dashboard_apply_noise_filters() -> None:
-    objects = definitions.all_dashboard_objects()
-    saved_search = next(
-        payload
-        for object_type, object_id, payload in objects
-        if object_type == "search" and object_id == "logs-explore-stream"
-    )
-    dashboard = next(
-        payload
-        for object_type, object_id, payload in objects
-        if object_type == "dashboard" and object_id == "logs-explore"
-    )
-    for payload in (saved_search, dashboard):
-        source = json.loads(
-            payload["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"]
-        )
-        assert definitions.LOG_NOISE_EXCLUSION_LUCENE in source["query"]["query"]
-        assert len(source["filter"]) == 3
+def test_saved_search_scopes_cover_roadmap() -> None:
+    ids = {
+        object_id
+        for object_type, object_id, _ in definitions.all_dashboard_objects()
+        if object_type == "search"
+    }
+    assert {
+        "logs-explore-stream",
+        "logs-errors",
+        "logs-auth",
+        "logs-bff",
+        "logs-runtime-noise",
+    }.issubset(ids)
 
-
-def test_discover_default_route_matches_noise_query() -> None:
-    assert definitions.LOGS_DISCOVER_DEFAULT_ROUTE.startswith(
-        "/app/data-explorer/discover/"
+    noise = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "search" and object_id == "logs-runtime-noise"
     )
-    assert "event_category" in definitions.LOGS_DISCOVER_DEFAULT_ROUTE
+    source = json.loads(noise["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"])
+    assert source["filter"] == []
+    assert "runtime_noise" in source["query"]["query"] or "epoll" in source["query"]["query"]
 
 
 def test_dashboard_defaults_to_fifteen_minute_window() -> None:

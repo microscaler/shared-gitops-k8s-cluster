@@ -9,112 +9,109 @@ MANAGED_BY = "shared-gitops-k8s-cluster"
 LOGS_VIEW = "shared-observability-logs"
 LOGS_TIME_FIELD = "observedTimestamp"
 
-# Structured classification field (set by OTel Collector + BRRTRouter source tags).
+# Collector-set classification (see helm-values-otel transform/classify-log-signal).
+LOG_EVENT_CLASS_FIELD = "log.attributes.event_class"
 LOG_EVENT_CATEGORY_FIELD = "log.attributes.event_category"
+LOG_HAS_TRACE_FIELD = "log.attributes.has_trace"
 LOG_EPOLL_TARGET_FIELD = "log.attributes.log@target"
 LOG_SCOPE_FIELD = "instrumentationScope.name"
-# Filter hierarchy: k8s namespace → application (service) → time (global picker).
-# Prefer k8s.namespace.name (real cluster ns: loadlinker, sesame-idam, rerp).
-# service.namespace is overwritten to match by the OTel Collector transform.
 LOG_NAMESPACE_FIELD = "resource.attributes.k8s@namespace@name"
-LOG_NAMESPACE_FIELD_LEGACY = "resource.attributes.service@namespace"
 LOG_APPLICATION_FIELD = "serviceName"
 
 LOG_NOISE_CATEGORIES = ("epoll_io", "runtime_metrics")
 LOG_EPOLL_TARGET = "may::io::sys::select"
 LOG_MEMORY_SCOPE = "brrtrouter::middleware::memory"
 
-# Sidebar + table columns: namespace → application → time → signal fields.
+# Sidebar + table: namespace → application → time → class → signal fields.
 LOG_STREAM_COLUMNS = [
     LOG_NAMESPACE_FIELD,
     LOG_APPLICATION_FIELD,
     "observedTimestamp",
     "severityText",
+    LOG_EVENT_CLASS_FIELD,
     LOG_EVENT_CATEGORY_FIELD,
-    "traceId",
+    LOG_HAS_TRACE_FIELD,
     "body",
 ]
 
-# Popular sidebar order drives Discover field ranking (highest count first).
+# Popular sidebar ranking (highest count first). Curated SRE control plane.
 LOG_SIDEBAR_FILTER_FIELDS = [
     LOG_NAMESPACE_FIELD,
-    LOG_NAMESPACE_FIELD_LEGACY,
     LOG_APPLICATION_FIELD,
     "severityText",
+    LOG_EVENT_CLASS_FIELD,
     LOG_EVENT_CATEGORY_FIELD,
-    LOG_SCOPE_FIELD,
-    LOG_EPOLL_TARGET_FIELD,
+    LOG_HAS_TRACE_FIELD,
     "traceId",
-    "log.attributes.rss_mb",
-    "log.attributes.growth_mb",
 ]
 
-# Query-time signal view: structured fields first, body fallback for legacy docs.
-LOG_NOISE_EXCLUSION_LUCENE = (
-    "NOT ("
-    f'{LOG_EVENT_CATEGORY_FIELD}: ("epoll_io" OR "runtime_metrics") OR '
-    f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_EPOLL_TARGET}" OR '
-    f'{LOG_SCOPE_FIELD}: "{LOG_MEMORY_SCOPE}" OR '
-    'body: (*epoll*) OR body: "Memory statistics"'
-    ")"
+# Signal = application logs. Runtime noise stays indexed for explicit selection.
+LOG_SIGNAL_LUCENE = (
+    f"({LOG_EVENT_CLASS_FIELD}:application) OR "
+    f"(NOT {LOG_EVENT_CLASS_FIELD}:* AND NOT "
+    f'{LOG_EVENT_CATEGORY_FIELD}: ("epoll_io" OR "runtime_metrics") AND NOT '
+    f'body: (*epoll select*) AND NOT body: "Memory statistics")'
 )
 
+LOG_RUNTIME_NOISE_LUCENE = (
+    f"({LOG_EVENT_CLASS_FIELD}:runtime_noise) OR "
+    f'{LOG_EVENT_CATEGORY_FIELD}: ("epoll_io" OR "runtime_metrics") OR '
+    "body: (*epoll select*) OR "
+    'body: "Memory statistics"'
+)
 
-def log_noise_filters(*, index_id: str = LOGS_VIEW) -> list[dict[str, Any]]:
-    """Toggleable filter pills backed by structured log fields."""
+LOG_ERRORS_LUCENE = (
+    f"({LOG_SIGNAL_LUCENE}) AND severityText: (ERROR OR FATAL OR WARN)"
+)
+
+LOG_AUTH_LUCENE = (
+    f'({LOG_SIGNAL_LUCENE}) AND {LOG_NAMESPACE_FIELD}: "sesame-idam"'
+)
+
+LOG_BFF_LUCENE = (
+    f'({LOG_SIGNAL_LUCENE}) AND {LOG_NAMESPACE_FIELD}: "loadlinker" AND '
+    f'{LOG_APPLICATION_FIELD}: "bff"'
+)
+
+# Backward-compatible alias used by older docs / filter helpers.
+LOG_NOISE_EXCLUSION_LUCENE = LOG_SIGNAL_LUCENE
+
+
+def log_signal_filters(*, index_id: str = LOGS_VIEW) -> list[dict[str, Any]]:
+    """Default pills: hide runtime_noise; keep docs selectable via event_class."""
     return [
         {
             "$state": {"store": "appState"},
             "meta": {
-                "alias": "Hide epoll I/O noise",
+                "alias": "Hide runtime noise (epoll + memory)",
                 "disabled": False,
                 "index": index_id,
-                "key": LOG_EPOLL_TARGET_FIELD,
+                "key": LOG_EVENT_CLASS_FIELD,
                 "negate": True,
                 "type": "phrase",
-                "params": {"query": LOG_EPOLL_TARGET},
+                "params": {"query": "runtime_noise"},
             },
             "query": {
-                "match_phrase": {LOG_EPOLL_TARGET_FIELD: LOG_EPOLL_TARGET}
+                "match_phrase": {LOG_EVENT_CLASS_FIELD: "runtime_noise"}
             },
         },
         {
             "$state": {"store": "appState"},
             "meta": {
-                "alias": "Hide memory statistics",
+                "alias": "Hide untagged epoll lines",
                 "disabled": False,
                 "index": index_id,
-                "key": LOG_SCOPE_FIELD,
+                "key": "body",
                 "negate": True,
-                "type": "phrase",
-                "params": {"query": LOG_MEMORY_SCOPE},
+                "type": "custom",
             },
-            "query": {
-                "match_phrase": {LOG_SCOPE_FIELD: LOG_MEMORY_SCOPE}
-            },
-        },
-        {
-            "$state": {"store": "appState"},
-            "meta": {
-                "alias": "Hide classified runtime noise",
-                "disabled": False,
-                "index": index_id,
-                "key": LOG_EVENT_CATEGORY_FIELD,
-                "negate": True,
-                "type": "phrases",
-                "params": list(LOG_NOISE_CATEGORIES),
-            },
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {f"{LOG_EVENT_CATEGORY_FIELD}.keyword": category}}
-                        for category in LOG_NOISE_CATEGORIES
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
+            "query": {"wildcard": {"body.keyword": "*epoll select*"}},
         },
     ]
+
+
+# Legacy name used by older call sites / tests.
+log_noise_filters = log_signal_filters
 
 
 def _url_encode_lucene(query: str) -> str:
@@ -128,8 +125,7 @@ def _url_encode_lucene(query: str) -> str:
     )
 
 
-# Discover landing URL (field sidebar + histogram + table).
-# Dashboard embeds cannot host this sidebar — Discover is the canonical logs UI.
+# Discover landing = Signal scope (field sidebar). Open saved searches for scopes.
 LOGS_DISCOVER_DEFAULT_ROUTE = (
     "/app/data-explorer/discover/#/?"
     "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
@@ -138,7 +134,7 @@ LOGS_DISCOVER_DEFAULT_ROUTE = (
     + "),interval:auto,sort:!(!(observedTimestamp,desc))),"
     "metadata:(indexPattern:shared-observability-logs,view:discover))"
     "&_q=(filters:!(),query:(language:lucene,query:'"
-    + _url_encode_lucene(LOG_NOISE_EXCLUSION_LUCENE)
+    + _url_encode_lucene(LOG_SIGNAL_LUCENE)
     + "'))"
 )
 
@@ -155,29 +151,37 @@ def compact(value: Any) -> str:
 
 def search_source(
     index_reference: str,
-    query: str = LOG_NOISE_EXCLUSION_LUCENE,
+    query: str = LOG_SIGNAL_LUCENE,
     *,
     filters: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "query": {"query": query, "language": "lucene"},
-        "filter": filters if filters is not None else log_noise_filters(index_id=LOGS_VIEW),
+        "filter": filters if filters is not None else log_signal_filters(index_id=LOGS_VIEW),
         "indexRefName": index_reference,
     }
 
 
 def discover_guide_markdown() -> dict[str, Any]:
-    """Dashboard banner: field sidebar lives in Discover, not Dashboard embeds."""
+    """Dashboard banner: field sidebar + saved-search scopes live in Discover."""
     markdown = (
-        "## Field filter sidebar lives in Discover\n\n"
-        "OpenSearch **Dashboards** cannot host the left-hand Selected / Available "
-        "fields panel (Logz.io-style). Use **Discover** for that UI.\n\n"
-        f"[**Open Logs in Discover (field sidebar)**]({LOGS_DISCOVER_DEFAULT_ROUTE})\n\n"
-        "Filter order: **1. namespace** (`resource.attributes.k8s@namespace@name` — "
-        "e.g. `loadlinker`, `sesame-idam`, `rerp`; there is no `microscaler` ns) → "
-        "**2. application** (`serviceName`) → **3. time** (picker, top right). "
-        "Then severity / event_category. Default query hides `epoll_io` and "
-        "`runtime_metrics` noise (raw logs stay indexed)."
+        "## Use Discover for filters (Logz.io-style left panel)\n\n"
+        f"[**Open Logs / Signal**]({LOGS_DISCOVER_DEFAULT_ROUTE}) — default triage view.\n\n"
+        "### Filter order\n"
+        "1. **namespace** (`resource.attributes.k8s@namespace@name`: "
+        "`loadlinker` / `sesame-idam` / `rerp`)\n"
+        "2. **application** (`serviceName`)\n"
+        "3. **time** (picker, top right)\n"
+        "4. **event_class** / **event_category** (signal vs runtime noise)\n\n"
+        "### Saved searches (Discover → Open)\n"
+        "- **Logs / Signal** — application logs only (`event_class:application`)\n"
+        "- **Logs / Errors** — WARN+ within signal\n"
+        "- **Logs / Auth** — `sesame-idam` signal\n"
+        "- **Logs / BFF** — `loadlinker` + `bff` signal\n"
+        "- **Logs / Runtime noise** — epoll + memory stats "
+        "(`event_class:runtime_noise`) — select *for* trash, not mixed with triage\n\n"
+        "Runtime I/O lines (`add/del/mod fd … epoll select`) stay indexed; "
+        "they are tagged, not deleted."
     )
     vis_state = {
         "title": "Open Discover for field sidebar",
@@ -210,7 +214,7 @@ def log_histogram_visualization(
     title: str,
     data_view: str,
     time_field: str,
-    query: str = LOG_NOISE_EXCLUSION_LUCENE,
+    query: str = LOG_SIGNAL_LUCENE,
 ) -> dict[str, Any]:
     source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
     vis_state = {
@@ -298,7 +302,13 @@ def log_histogram_visualization(
 
 
 def saved_search(
-    *, title: str, data_view: str, time_field: str, columns: list[str], query: str
+    *,
+    title: str,
+    data_view: str,
+    time_field: str,
+    columns: list[str],
+    query: str,
+    filters: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
     return {
@@ -308,7 +318,9 @@ def saved_search(
             "columns": columns,
             "sort": [[time_field, "desc"]],
             "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
+                "searchSourceJSON": compact(
+                    search_source(source_ref, query, filters=filters)
+                )
             },
         },
         "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
@@ -372,10 +384,10 @@ def assemble_dashboard(
                     "searchSourceJSON": compact(
                         {
                             "query": {
-                                "query": LOG_NOISE_EXCLUSION_LUCENE,
+                                "query": LOG_SIGNAL_LUCENE,
                                 "language": "lucene",
                             },
-                            "filter": log_noise_filters(),
+                            "filter": log_signal_filters(),
                         }
                     )
                 },
@@ -385,8 +397,41 @@ def assemble_dashboard(
     )
 
 
+def _saved_search_scopes() -> list[tuple[str, str, dict[str, Any]]]:
+    """Discover → Open: Signal / Errors / Auth / BFF / Runtime noise."""
+    # logs-explore-stream is the canonical "Logs / Signal" (dashboard + Discover).
+    scopes: list[tuple[str, str, str, list[dict[str, Any]] | None]] = [
+        ("logs-errors", "Logs / Errors", LOG_ERRORS_LUCENE, None),
+        ("logs-auth", "Logs / Auth", LOG_AUTH_LUCENE, None),
+        ("logs-bff", "Logs / BFF", LOG_BFF_LUCENE, None),
+        (
+            "logs-runtime-noise",
+            "Logs / Runtime noise",
+            LOG_RUNTIME_NOISE_LUCENE,
+            [],  # no hide pills — this view *selects* trash
+        ),
+    ]
+    objects: list[tuple[str, str, dict[str, Any]]] = []
+    for object_id, title, query, filters in scopes:
+        objects.append(
+            (
+                "search",
+                object_id,
+                saved_search(
+                    title=title,
+                    data_view=LOGS_VIEW,
+                    time_field=LOGS_TIME_FIELD,
+                    columns=LOG_STREAM_COLUMNS,
+                    query=query,
+                    filters=filters,
+                ),
+            )
+        )
+    return objects
+
+
 def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
-    """Dashboard companion to Discover: guide + histogram + document stream."""
+    """Dashboard companion + Discover saved-search pack."""
     objects: list[tuple[str, str, dict[str, Any]]] = [
         (
             "visualization",
@@ -397,7 +442,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             "visualization",
             "logs-explore-histogram",
             log_histogram_visualization(
-                title="Log volume",
+                title="Log volume (signal)",
                 data_view=LOGS_VIEW,
                 time_field=LOGS_TIME_FIELD,
             ),
@@ -406,28 +451,29 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             "search",
             "logs-explore-stream",
             saved_search(
-                title="Logs",
+                title="Logs / Signal",
                 data_view=LOGS_VIEW,
                 time_field=LOGS_TIME_FIELD,
                 columns=LOG_STREAM_COLUMNS,
-                query=LOG_NOISE_EXCLUSION_LUCENE,
+                query=LOG_SIGNAL_LUCENE,
             ),
         ),
     ]
+    objects.extend(_saved_search_scopes())
     objects.append(
         assemble_dashboard(
             dashboard_id="logs-explore",
             title="Logs",
             description=(
-                "Companion overview for logs. For the left-hand field filter sidebar "
-                "(Selected / Available fields), open Discover — Dashboard embeds cannot "
-                "host that panel. Default filters hide classified runtime noise; disable "
-                f"filter pills to inspect raw logs. Managed by {MANAGED_BY}"
+                "Companion overview. Open Discover for the field sidebar and saved "
+                "searches (Signal / Errors / Auth / BFF / Runtime noise). Epoll and "
+                "memory lines are tagged event_class:runtime_noise — hidden by default, "
+                f"selectable when needed. Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "logs-explore-discover-guide", 0, 0, 48, 6),
-                ("visualization", "logs-explore-histogram", 0, 6, 48, 12),
-                ("search", "logs-explore-stream", 0, 18, 48, 28),
+                ("visualization", "logs-explore-discover-guide", 0, 0, 48, 8),
+                ("visualization", "logs-explore-histogram", 0, 8, 48, 12),
+                ("search", "logs-explore-stream", 0, 20, 48, 26),
             ],
             panel_ref_prefix="logs_explore",
             time_from="now-15m",
