@@ -9,14 +9,129 @@ MANAGED_BY = "shared-gitops-k8s-cluster"
 LOGS_VIEW = "shared-observability-logs"
 LOGS_TIME_FIELD = "observedTimestamp"
 
-# Discover-style column layout: time + service context + message body.
+# Structured classification field (set by OTel Collector + BRRTRouter source tags).
+LOG_EVENT_CATEGORY_FIELD = "log.attributes.event_category"
+LOG_EPOLL_TARGET_FIELD = "log.attributes.log@target"
+LOG_SCOPE_FIELD = "instrumentationScope.name"
+
+LOG_NOISE_CATEGORIES = ("epoll_io", "runtime_metrics")
+LOG_EPOLL_TARGET = "may::io::sys::select"
+LOG_MEMORY_SCOPE = "brrtrouter::middleware::memory"
+
+# Sidebar + table columns (Discover selected fields).
 LOG_STREAM_COLUMNS = [
     "observedTimestamp",
+    LOG_EVENT_CATEGORY_FIELD,
     "serviceName",
     "severityText",
+    LOG_SCOPE_FIELD,
     "traceId",
     "body",
 ]
+
+# Sidebar filter fields surfaced via index pattern (popular / available).
+LOG_SIDEBAR_FILTER_FIELDS = [
+    LOG_EVENT_CATEGORY_FIELD,
+    "serviceName",
+    "severityText",
+    LOG_SCOPE_FIELD,
+    LOG_EPOLL_TARGET_FIELD,
+    "traceId",
+    "log.attributes.rss_mb",
+    "log.attributes.growth_mb",
+]
+
+# Query-time signal view: structured fields first, body fallback for legacy docs.
+LOG_NOISE_EXCLUSION_LUCENE = (
+    "NOT ("
+    f'{LOG_EVENT_CATEGORY_FIELD}: ("epoll_io" OR "runtime_metrics") OR '
+    f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_EPOLL_TARGET}" OR '
+    f'{LOG_SCOPE_FIELD}: "{LOG_MEMORY_SCOPE}" OR '
+    'body: (*epoll*) OR body: "Memory statistics"'
+    ")"
+)
+
+
+def log_noise_filters(*, index_id: str = LOGS_VIEW) -> list[dict[str, Any]]:
+    """Toggleable filter pills backed by structured log fields."""
+    return [
+        {
+            "$state": {"store": "appState"},
+            "meta": {
+                "alias": "Hide epoll I/O noise",
+                "disabled": False,
+                "index": index_id,
+                "key": LOG_EPOLL_TARGET_FIELD,
+                "negate": True,
+                "type": "phrase",
+                "params": {"query": LOG_EPOLL_TARGET},
+            },
+            "query": {
+                "match_phrase": {LOG_EPOLL_TARGET_FIELD: LOG_EPOLL_TARGET}
+            },
+        },
+        {
+            "$state": {"store": "appState"},
+            "meta": {
+                "alias": "Hide memory statistics",
+                "disabled": False,
+                "index": index_id,
+                "key": LOG_SCOPE_FIELD,
+                "negate": True,
+                "type": "phrase",
+                "params": {"query": LOG_MEMORY_SCOPE},
+            },
+            "query": {
+                "match_phrase": {LOG_SCOPE_FIELD: LOG_MEMORY_SCOPE}
+            },
+        },
+        {
+            "$state": {"store": "appState"},
+            "meta": {
+                "alias": "Hide classified runtime noise",
+                "disabled": False,
+                "index": index_id,
+                "key": LOG_EVENT_CATEGORY_FIELD,
+                "negate": True,
+                "type": "phrases",
+                "params": list(LOG_NOISE_CATEGORIES),
+            },
+            "query": {
+                "bool": {
+                    "should": [
+                        {"term": {f"{LOG_EVENT_CATEGORY_FIELD}.keyword": category}}
+                        for category in LOG_NOISE_CATEGORIES
+                    ],
+                    "minimum_should_match": 1,
+                }
+            },
+        },
+    ]
+
+
+def _url_encode_lucene(query: str) -> str:
+    return (
+        query.replace("\\", "%5C")
+        .replace(" ", "%20")
+        .replace('"', "%22")
+        .replace("(", "%28")
+        .replace(")", "%29")
+        .replace(":", "%3A")
+    )
+
+
+# Discover landing URL (field sidebar + histogram + table).
+LOGS_DISCOVER_DEFAULT_ROUTE = (
+    "/app/data-explorer/discover/#/?"
+    "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
+    "&_a=(discover:(columns:!("
+    + ",".join(LOG_STREAM_COLUMNS)
+    + "),interval:auto,sort:!(!(observedTimestamp,desc))),"
+    "metadata:(indexPattern:shared-observability-logs,view:discover))"
+    "&_q=(filters:!(),query:(language:lucene,query:'"
+    + _url_encode_lucene(LOG_NOISE_EXCLUSION_LUCENE)
+    + "'))"
+)
 
 
 def compact(value: Any) -> str:
@@ -25,10 +140,15 @@ def compact(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-def search_source(index_reference: str, query: str = "") -> dict[str, Any]:
+def search_source(
+    index_reference: str,
+    query: str = LOG_NOISE_EXCLUSION_LUCENE,
+    *,
+    filters: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     return {
         "query": {"query": query, "language": "lucene"},
-        "filter": [],
+        "filter": filters if filters is not None else log_noise_filters(index_id=LOGS_VIEW),
         "indexRefName": index_reference,
     }
 
@@ -38,7 +158,7 @@ def log_histogram_visualization(
     title: str,
     data_view: str,
     time_field: str,
-    query: str = "",
+    query: str = LOG_NOISE_EXCLUSION_LUCENE,
 ) -> dict[str, Any]:
     source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
     vis_state = {
@@ -199,8 +319,11 @@ def assemble_dashboard(
                 "kibanaSavedObjectMeta": {
                     "searchSourceJSON": compact(
                         {
-                            "query": {"query": "", "language": "lucene"},
-                            "filter": [],
+                            "query": {
+                                "query": LOG_NOISE_EXCLUSION_LUCENE,
+                                "language": "lucene",
+                            },
+                            "filter": log_noise_filters(),
                         }
                     )
                 },
@@ -230,7 +353,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 data_view=LOGS_VIEW,
                 time_field=LOGS_TIME_FIELD,
                 columns=LOG_STREAM_COLUMNS,
-                query="",
+                query=LOG_NOISE_EXCLUSION_LUCENE,
             ),
         ),
     ]
@@ -239,9 +362,11 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             dashboard_id="logs-explore",
             title="Logs",
             description=(
-                "Unified log exploration (Discover-style). Use the search bar and "
-                f"Add filter controls above; Lucene queries match alert monitors. "
-                f"Managed by {MANAGED_BY}"
+                "Unified log exploration (Discover-style). Default filters hide "
+                "classified runtime noise via event_category, log target, and "
+                "instrumentation scope; disable filter pills to inspect raw logs. "
+                "Open Discover for the full field sidebar. Lucene queries match "
+                f"alert monitors. Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "logs-explore-histogram", 0, 0, 48, 12),

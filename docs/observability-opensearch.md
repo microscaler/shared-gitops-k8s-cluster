@@ -11,6 +11,7 @@ applications/exporters
         │ OTLP gRPC/HTTP
         ▼
 OpenTelemetry Collector
+        │ transform/classify-log-signal (event_category on logs, no drop)
         │ traces :21890, metrics :21891, logs :21892
         ▼
 Data Prepper
@@ -72,13 +73,16 @@ retention policy. Production retention and topology must be sized separately.
 
 ## Managed dashboards (GitOps NDJSON)
 
-One **Discover-style** log dashboard (`logs-explore`) is GitOps-managed:
+One **Discover-style** log view is GitOps-managed:
 
-- **Histogram** — log volume over time (`observedTimestamp`)
-- **Log stream** — document table with `observedTimestamp`, `serviceName`, `severityText`, `traceId`, `body`
-- **Search bar + filters** — use Lucene in the dashboard query bar (same syntax as alert monitors)
+- **Discover (default landing)** — field sidebar, histogram, and document table
+- **Dashboard (`logs-explore`)** — histogram + log stream for embeds and direct links
+- **Log stream columns** — `observedTimestamp`, `serviceName`, `severityText`, `traceId`, `body`
+- **Default noise filters** — query-time exclusion via `log.attributes.event_category`, `log.attributes.log@target`, and `instrumentationScope.name` (raw logs remain indexed)
+- **Search bar + filter pills** — Lucene in the query bar; three toggleable pills (epoll target, memory scope, event_category)
+- **Field sidebar (Discover)** — selected columns include `event_category`, `serviceName`, `severityText`, `instrumentationScope.name`, `traceId`, `body`; use **Search field names** for `log.attributes.*` filters
 - **Default time window** — last 15 minutes with 30s refresh
-- **Landing page** — `opensearchDashboards.defaultRoute` opens `/app/dashboards#/view/logs-explore`
+- **Landing page** — `opensearchDashboards.defaultRoute` opens Discover with noise filters applied
 
 Source: `gitops/root/components/observability/dashboards/logs-explore.ndjson`.
 Regenerate after editing `dashboard_definitions.py`:
@@ -90,12 +94,21 @@ python3 tooling/generate_observability_dashboards.py
 The provisioner imports the NDJSON bundle, reconciles index patterns dynamically,
 and deletes deprecated saved objects from earlier dashboard iterations.
 
-Direct URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore`
+Direct URLs:
+
+| View | URL |
+|------|-----|
+| Discover (field sidebar) | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
+| Dashboard (histogram + table) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
 
 **Example Lucene queries** (search bar):
 
 | Goal | Query |
 |------|-------|
+| Signal logs (default) | `NOT (log.attributes.event_category: ("epoll_io" OR "runtime_metrics") OR log.attributes.log@target: "may::io::sys::select" OR instrumentationScope.name: "brrtrouter::middleware::memory")` |
+| Epoll noise only | `log.attributes.log@target: "may::io::sys::select"` |
+| Memory stats only | `instrumentationScope.name: "brrtrouter::middleware::memory"` |
+| By event category | `log.attributes.event_category: epoll_io` |
 | Errors only | `severityText: (ERROR OR FATAL)` |
 | Service filter | `serviceName: bff` |
 | With trace | `traceId: * AND NOT traceId: ""` |
@@ -105,7 +118,7 @@ Index patterns (Discover or raw queries):
 
 | Pattern | Time field | Key fields |
 |---------|------------|------------|
-| `otel-v1-apm-logs*` | `observedTimestamp` | `serviceName`, `traceId`, `spanId`, `body`, `severityText` |
+| `otel-v1-apm-logs*` | `observedTimestamp` | `log.attributes.event_category`, `serviceName`, `instrumentationScope.name`, `traceId`, `body`, `severityText` |
 | `otel-v1-apm-metrics*` | `time` | `serviceName`, `name`, `value` |
 | `otel-v1-apm-span-*` | `startTime` | `traceId`, `spanId`, `serviceName`, `name` |
 

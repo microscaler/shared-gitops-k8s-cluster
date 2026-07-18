@@ -47,14 +47,48 @@ def test_ndjson_bundle_exists_and_parses() -> None:
     assert any(item["type"] == "visualization" and item["id"] == "logs-explore-histogram" for item in parsed)
 
 
-def test_log_stream_uses_discover_columns() -> None:
-    assert definitions.LOG_STREAM_COLUMNS == [
-        "observedTimestamp",
-        "serviceName",
-        "severityText",
-        "traceId",
-        "body",
-    ]
+def test_log_stream_uses_structured_sidebar_columns() -> None:
+    assert definitions.LOG_EVENT_CATEGORY_FIELD in definitions.LOG_STREAM_COLUMNS
+    assert definitions.LOG_SCOPE_FIELD in definitions.LOG_STREAM_COLUMNS
+    assert "serviceName" in definitions.LOG_STREAM_COLUMNS
+    assert "body" in definitions.LOG_STREAM_COLUMNS
+
+
+def test_default_noise_exclusion_uses_structured_fields() -> None:
+    query = definitions.LOG_NOISE_EXCLUSION_LUCENE
+    assert definitions.LOG_EVENT_CATEGORY_FIELD in query
+    assert definitions.LOG_EPOLL_TARGET in query
+    assert definitions.LOG_MEMORY_SCOPE in query
+    filters = definitions.log_noise_filters()
+    assert len(filters) == 3
+    assert all(item["meta"]["negate"] is True for item in filters)
+
+
+def test_saved_search_and_dashboard_apply_noise_filters() -> None:
+    objects = definitions.all_dashboard_objects()
+    saved_search = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "search" and object_id == "logs-explore-stream"
+    )
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "logs-explore"
+    )
+    for payload in (saved_search, dashboard):
+        source = json.loads(
+            payload["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"]
+        )
+        assert definitions.LOG_NOISE_EXCLUSION_LUCENE in source["query"]["query"]
+        assert len(source["filter"]) == 3
+
+
+def test_discover_default_route_matches_noise_query() -> None:
+    assert definitions.LOGS_DISCOVER_DEFAULT_ROUTE.startswith(
+        "/app/data-explorer/discover/"
+    )
+    assert "event_category" in definitions.LOGS_DISCOVER_DEFAULT_ROUTE
 
 
 def test_dashboard_defaults_to_fifteen_minute_window() -> None:

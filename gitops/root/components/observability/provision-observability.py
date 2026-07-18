@@ -244,6 +244,10 @@ def logs_index_template(pattern: str) -> dict[str, Any]:
                 "properties": {
                     LOGS_TIME_FIELD: date_mapping,
                     "observedTime": date_mapping,
+                    "log.attributes.event_category": {
+                        "type": "keyword",
+                        "ignore_above": 256,
+                    },
                 }
             },
         },
