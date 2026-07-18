@@ -87,6 +87,9 @@ def test_signal_and_runtime_noise_queries_are_complements() -> None:
         assert category in definitions.LOG_SIGNAL_LUCENE
     assert "brrtrouter::dispatcher::core" in definitions.LOG_RUNTIME_NOISE_LUCENE
     assert "may::config" in definitions.LOG_RUNTIME_NOISE_LUCENE
+    # Signal Lucene must stay short enough for Discover (no nested body OR lists).
+    assert "Handler registered" not in definitions.LOG_SIGNAL_LUCENE
+    assert len(definitions.LOG_SIGNAL_LUCENE) < 400
     filters = definitions.log_signal_filters()
     assert len(filters) == 2
     assert all(item["meta"]["negate"] is True for item in filters)

@@ -36,14 +36,6 @@ LOG_FRAMEWORK_LIFECYCLE_SCOPES = (
 
 _NOISE_CATEGORY_OR = " OR ".join(f'"{c}"' for c in LOG_NOISE_CATEGORIES)
 _FRAMEWORK_SCOPE_OR = " OR ".join(LOG_FRAMEWORK_LIFECYCLE_SCOPES)
-# Untagged legacy fallbacks (pre-classifier docs still in the index).
-_LEGACY_NOISE_BODY = (
-    'body: (*epoll select*) OR body: "Memory statistics" OR '
-    'body: ("Handler registered successfully" OR "Replaced existing handler*" OR '
-    '"Schema validator*" OR "Initializing JSON Schema*" OR "Precompiled schemas*" OR '
-    '"Routing table loaded*" OR "Pre-registering paths*" OR '
-    '"set stack size=*" OR "set workers=*")'
-)
 
 # Sidebar + table: namespace → application → time → class → signal fields.
 LOG_STREAM_COLUMNS = [
@@ -68,20 +60,20 @@ LOG_SIDEBAR_FILTER_FIELDS = [
     "traceId",
 ]
 
-# Signal = application logs. Runtime noise stays indexed for explicit selection.
+# Signal = application logs. Keep Lucene short — long nested body ORs break
+# Discover URL state (rison) and can 400 the search API. Collector tagging is
+# the source of truth; body/target/scope clauses cover high-volume legacy only.
 LOG_SIGNAL_LUCENE = (
     f"({LOG_EVENT_CLASS_FIELD}:application) OR "
     f"(NOT {LOG_EVENT_CLASS_FIELD}:* AND NOT "
     f"{LOG_EVENT_CATEGORY_FIELD}: ({_NOISE_CATEGORY_OR}) AND NOT "
-    f"({_LEGACY_NOISE_BODY}) AND NOT "
-    f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_RUNTIME_CONFIG_TARGET}" AND NOT '
-    f"{LOG_SCOPE_FIELD}: ({_FRAMEWORK_SCOPE_OR}))"
+    f'body: (*epoll select*) AND NOT body: "Memory statistics")'
 )
 
 LOG_RUNTIME_NOISE_LUCENE = (
     f"({LOG_EVENT_CLASS_FIELD}:runtime_noise) OR "
     f"{LOG_EVENT_CATEGORY_FIELD}: ({_NOISE_CATEGORY_OR}) OR "
-    f"({_LEGACY_NOISE_BODY}) OR "
+    'body: (*epoll select*) OR body: "Memory statistics" OR '
     f'{LOG_EPOLL_TARGET_FIELD}: "{LOG_RUNTIME_CONFIG_TARGET}" OR '
     f"{LOG_SCOPE_FIELD}: ({_FRAMEWORK_SCOPE_OR})"
 )
