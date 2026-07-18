@@ -74,7 +74,8 @@ config:
                   platform_component: postgres
             metric_relabel_configs:
               - source_labels: [__name__]
-                regex: pg_stat_activity_count|pg_stat_database_numbackends|pg_settings_max_connections
+                # Connections + HA replication slots (masters/replicas lag).
+                regex: pg_stat_activity_count|pg_stat_database_numbackends|pg_settings_max_connections|pg_replication_slots_active|pg_replication_slots_pg_wal_lsn_diff
                 action: keep
               - source_labels: [datname]
                 regex: hauliage

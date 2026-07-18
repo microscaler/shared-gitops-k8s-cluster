@@ -19,8 +19,8 @@ sys.modules[spec.name] = definitions
 spec.loader.exec_module(definitions)
 
 
-def test_single_logs_dashboard_bundle() -> None:
-    assert set(definitions.DASHBOARD_BUNDLES) == {"logs-explore"}
+def test_dashboard_bundles() -> None:
+    assert set(definitions.DASHBOARD_BUNDLES) == {"logs-explore", "data-persistence"}
 
 
 def test_dashboard_references_are_complete_and_stable() -> None:
@@ -51,6 +51,60 @@ def test_ndjson_bundle_exists_and_parses() -> None:
         item["type"] == "visualization" and item["id"] == "logs-http-top-paths"
         for item in parsed
     )
+
+
+def test_data_persistence_ndjson_and_panels() -> None:
+    path = DASHBOARDS / "data-persistence.ndjson"
+    assert path.is_file()
+    parsed = [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(
+        item["type"] == "dashboard" and item["id"] == "data-persistence" for item in parsed
+    )
+    assert any(
+        item["type"] == "visualization" and item["id"] == "data-persistence-nodes-roles"
+        for item in parsed
+    )
+    assert any(
+        item["type"] == "search" and item["id"] == "data-persistence-redis" for item in parsed
+    )
+
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "data-persistence"
+    )
+    assert dashboard["attributes"]["title"] == "DataPersistence"
+    assert dashboard["attributes"]["timeFrom"] == "now-1h"
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "data-persistence-guide",
+        "data-persistence-nodes-roles",
+        "data-persistence-replication-delay",
+        "data-persistence-pg-backends",
+        "data-persistence-pgpool-frontend-line",
+        "data-persistence-redis-memory-line",
+        "data-persistence-metrics",
+    }.issubset(ref_ids)
+
+    nodes = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization" and object_id == "data-persistence-nodes-roles"
+    )
+    vis_state = json.loads(nodes["attributes"]["visState"])
+    assert vis_state["type"] == "vega"
+    spec = vis_state["params"]["spec"]
+    assert "pgpool2_pool_nodes_status" in spec
+    assert "pgpool2_pool_nodes_replication_delay" in spec
+    # OSD rejects %context%/%timefield% when body.query is set.
+    assert "%context%" not in spec
+    assert "%timefield%" not in spec
+    assert "%timefilter%" in spec
 
 
 def test_discover_is_canonical_field_sidebar_surface() -> None:
@@ -161,9 +215,24 @@ def test_dashboard_includes_http_triage_panels() -> None:
         "logs-explore-histogram",
         "logs-http-top-paths",
         "logs-http-status-codes",
+        "logs-http-status-codes-pie",
         "logs-http-avg-duration",
         "logs-explore-stream",
     }.issubset(ref_ids)
+
+
+def test_status_codes_pie_shows_percentages() -> None:
+    pie = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "visualization" and object_id == "logs-http-status-codes-pie"
+    )
+    vis_state = json.loads(pie["attributes"]["visState"])
+    assert vis_state["type"] == "pie"
+    assert vis_state["params"]["labels"]["values"] is True
+    assert vis_state["params"]["labels"]["percentDecimals"] == 1
+    segment = next(agg for agg in vis_state["aggs"] if agg["schema"] == "segment")
+    assert segment["params"]["field"] == definitions.LOG_STATUS_FIELD
 
 
 def test_top_paths_includes_rps_and_pslo() -> None:

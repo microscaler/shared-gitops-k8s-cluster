@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-18 (HTTP triage verified)
+Updated: 2026-07-18 (DataPersistence dashboard)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
@@ -10,9 +10,19 @@ Updated: 2026-07-18 (HTTP triage verified)
 - BRRTRouter `d0b931a` promotes Request completed to INFO + status (needs service rebuild/rollout to take effect in images).
 - Discover Signal columns include method/path/status/duration_ms.
 
-## HTTP triage (done — `c13d9be`)
+## Managed dashboards
+- **Logs** (`logs-explore`) — HTTP triage, volume, top paths / status / duration, signal stream.
+- **DataPersistence** (`data-persistence`) — Postgres / Pgpool masters&replicas / Redis metrics + Discover saved searches.
+  - URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/data-persistence`
+  - Source: `dashboard_definitions.py` → `dashboards/data-persistence.ndjson`
+  - Metrics index: `shared-observability-metrics` (`otel-v1-apm-metrics*`), time field `time`, value `value`
+  - Postgres scrape keep-list includes `pg_replication_slots_active` + `pg_replication_slots_pg_wal_lsn_diff` (otel helm values)
+  - Vega rule: never combine `%context%`/`%timefield%` with `body.query`; use `range.time.%timefilter%` + term filter instead (`_metrics_vega_url`).
+
+## HTTP triage (done — `c13d9be` + status pie)
 - Saved search **Logs / HTTP** (`logs-http`): Lucene `event_class:application AND event_category:http`.
-- Logs dashboard: guide → volume → Top paths / Status codes / Avg duration → Signal stream (6 panels).
+- Logs dashboard: guide → volume → Top paths / Status table + Status % pie / Avg duration → Signal stream (7 panels).
+- Pie viz `logs-http-status-codes-pie` stacked under status table (percent labels).
 - Banner notes collector drops + HTTP deep-link; verified in OSD after hard reload.
 - Provision: `just observability-provision-now` (ms02); generator: `tooling/generate_observability_dashboards.py`.
 

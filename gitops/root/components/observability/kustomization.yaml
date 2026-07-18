@@ -24,3 +24,4 @@ configMapGenerator:
   - name: observability-dashboards
     files:
       - dashboards/logs-explore.ndjson
+      - dashboards/data-persistence.ndjson

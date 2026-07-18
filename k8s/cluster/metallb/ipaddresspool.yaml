@@ -1,0 +1,17 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: multipass-l2
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.177.76.220-10.177.76.239
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: multipass-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - multipass-l2

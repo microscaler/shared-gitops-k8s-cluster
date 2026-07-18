@@ -297,6 +297,7 @@ def _visualization(
     data_view: str,
     vis_state: dict[str, Any],
     query: str,
+    filters: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
     return {
@@ -306,7 +307,9 @@ def _visualization(
             "visState": compact(vis_state),
             "uiStateJSON": "{}",
             "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(search_source(source_ref, query))
+                "searchSourceJSON": compact(
+                    search_source(source_ref, query, filters=filters)
+                )
             },
         },
         "references": [{"name": source_ref, "type": "index-pattern", "id": data_view}],
@@ -443,6 +446,67 @@ def log_terms_table_visualization(
                 "enabled": True,
                 "type": "terms",
                 "schema": "bucket",
+                "params": bucket_params,
+            },
+        ],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_terms_pie_visualization(
+    *,
+    title: str,
+    data_view: str,
+    field: str,
+    query: str,
+    size: int = 10,
+    field_label: str | None = None,
+) -> dict[str, Any]:
+    """Terms pie with slice percentages (status codes, …)."""
+    bucket_params: dict[str, Any] = {
+        "field": field,
+        "size": size,
+        "order": "desc",
+        "orderBy": "1",
+        "otherBucket": False,
+        "otherBucketLabel": "Other",
+        "missingBucket": False,
+        "missingBucketLabel": "Missing",
+    }
+    if field_label:
+        bucket_params["customLabel"] = field_label
+    vis_state = {
+        "title": title,
+        "type": "pie",
+        "params": {
+            "type": "pie",
+            "addTooltip": True,
+            "addLegend": True,
+            "legendPosition": "right",
+            "isDonut": True,
+            "labels": {
+                "show": True,
+                "values": True,
+                "last_level": True,
+                "truncate": 100,
+                "percentDecimals": 1,
+            },
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "count",
+                "schema": "metric",
+                "params": {},
+            },
+            {
+                "id": "2",
+                "enabled": True,
+                "type": "terms",
+                "schema": "segment",
                 "params": bucket_params,
             },
         ],
@@ -861,6 +925,8 @@ def assemble_dashboard(
     panel_ref_prefix: str,
     time_from: str = "now-15m",
     refresh_ms: int = 30000,
+    query: str = LOG_SIGNAL_LUCENE,
+    filters: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     panel_json: list[dict[str, Any]] = []
     references: list[dict[str, str]] = []
@@ -883,6 +949,9 @@ def assemble_dashboard(
             }
         )
         references.append({"name": panel_ref, "type": object_type, "id": object_id})
+    dash_filters = (
+        log_signal_filters() if filters is None else filters
+    )
     return (
         "dashboard",
         dashboard_id,
@@ -909,10 +978,10 @@ def assemble_dashboard(
                     "searchSourceJSON": compact(
                         {
                             "query": {
-                                "query": LOG_SIGNAL_LUCENE,
+                                "query": query,
                                 "language": "lucene",
                             },
-                            "filter": log_signal_filters(),
+                            "filter": dash_filters,
                         }
                     )
                 },
@@ -1001,6 +1070,18 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
+            "logs-http-status-codes-pie",
+            log_terms_pie_visualization(
+                title="Status codes % (HTTP)",
+                data_view=LOGS_VIEW,
+                field=LOG_STATUS_FIELD,
+                query=LOG_HTTP_LUCENE,
+                size=10,
+                field_label="status",
+            ),
+        ),
+        (
+            "visualization",
             "logs-http-avg-duration",
             log_avg_metric_visualization(
                 title="Avg duration_ms (HTTP)",
@@ -1027,17 +1108,19 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             dashboard_id="logs-explore",
             title="Logs",
             description=(
-                "Companion overview with HTTP triage (top paths, status, avg "
-                "latency). Open Discover for the field sidebar and saved searches "
-                "(Signal / HTTP / Errors / Auth / BFF / Runtime noise). Epoll and "
-                "memory are dropped at the collector; rare lifecycle/config noise "
-                f"is selectable via Runtime noise. Managed by {MANAGED_BY}"
+                "Companion overview with HTTP triage (top paths, status table + "
+                "pie, avg latency). Open Discover for the field sidebar and saved "
+                "searches (Signal / HTTP / Errors / Auth / BFF / Runtime noise). "
+                "Epoll and memory are dropped at the collector; rare "
+                "lifecycle/config noise is selectable via Runtime noise. "
+                f"Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "logs-explore-discover-guide", 0, 0, 48, 7),
                 ("visualization", "logs-explore-histogram", 0, 7, 48, 10),
                 ("visualization", "logs-http-top-paths", 0, 17, 28, 14),
-                ("visualization", "logs-http-status-codes", 28, 17, 10, 14),
+                ("visualization", "logs-http-status-codes", 28, 17, 10, 7),
+                ("visualization", "logs-http-status-codes-pie", 28, 24, 10, 7),
                 ("visualization", "logs-http-avg-duration", 38, 17, 10, 14),
                 ("search", "logs-explore-stream", 0, 31, 48, 24),
             ],
@@ -1049,8 +1132,931 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     return objects
 
 
+# ---------------------------------------------------------------------------
+# DataPersistence — Postgres HA / Pgpool / Redis (metrics index)
+# ---------------------------------------------------------------------------
+
+METRICS_VIEW = "shared-observability-metrics"
+METRICS_TIME_FIELD = "time"
+METRICS_VALUE_FIELD = "value"
+METRICS_NAME_KEYWORD = "name.keyword"
+METRICS_HOSTNAME_KEYWORD = "metric.attributes.hostname.keyword"
+METRICS_ROLE_KEYWORD = "metric.attributes.role.keyword"
+METRICS_DATNAME_KEYWORD = "metric.attributes.datname.keyword"
+METRICS_CONSUMER_NS_KEYWORD = "metric.attributes.consumer_namespace.keyword"
+METRICS_SLOT_KEYWORD = "metric.attributes.slot_name.keyword"
+
+METRICS_COLUMNS = [
+    "time",
+    "name",
+    "value",
+    "serviceName",
+    "metric.attributes.platform_component",
+    "metric.attributes.hostname",
+    "metric.attributes.role",
+    "metric.attributes.datname",
+    "metric.attributes.consumer_namespace",
+]
+
+PG_CONNECTIONS_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: ("pg_stat_database_numbackends" OR '
+    f'"pg_settings_max_connections" OR "pg_stat_activity_count")'
+)
+PG_REPLICATION_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: ("pg_replication_slots_active" OR '
+    f'"pg_replication_slots_pg_wal_lsn_diff")'
+)
+PGPOOL_LUCENE = f"{METRICS_NAME_KEYWORD}: pgpool2_*"
+PGPOOL_NODES_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: ("pgpool2_pool_nodes_status" OR '
+    f'"pgpool2_pool_nodes_replication_delay" OR '
+    f'"pgpool2_pool_backend_stats_status")'
+)
+REDIS_LUCENE = f"{METRICS_NAME_KEYWORD}: redis_*"
+DATA_PLATFORM_LUCENE = (
+    f"({PG_CONNECTIONS_LUCENE}) OR ({PGPOOL_LUCENE}) OR ({REDIS_LUCENE})"
+)
+DB_PRESSURE_LOGS_LUCENE = (
+    "body: (*connection* OR *pool* OR *postgres* OR *redis* OR *timeout* OR *Pgpool*)"
+)
+
+
+def _metrics_discover_route(query: str) -> str:
+    return (
+        "/app/data-explorer/discover/#/?"
+        "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
+        "&_a=(discover:(columns:!("
+        + ",".join(METRICS_COLUMNS)
+        + f"),interval:auto,sort:!(!({METRICS_TIME_FIELD},desc))),"
+        "metadata:(indexPattern:shared-observability-metrics,view:discover))"
+        "&_q=(filters:!(),query:(language:lucene,query:'"
+        + _url_encode_lucene(query)
+        + "'))"
+    )
+
+
+def data_persistence_guide_markdown() -> dict[str, Any]:
+    """Banner: Discover scopes for Postgres / Pgpool / Redis metrics."""
+    markdown = (
+        "## DataPersistence — Postgres HA, Pgpool, Redis\n\n"
+        f"[**Open metrics (all)**]({_metrics_discover_route(DATA_PLATFORM_LUCENE)}) — "
+        "Postgres + Pgpool + Redis gauges.\n"
+        f"[**Open nodes / replication**]({_metrics_discover_route(PGPOOL_NODES_LUCENE)}) — "
+        "primary vs standby + replication delay.\n"
+        f"[**Open Redis**]({_metrics_discover_route(REDIS_LUCENE)}) — "
+        "clients, memory, keyspace.\n\n"
+        "### What to watch\n"
+        "1. **Pgpool nodes** — `role:primary` / `role:standby` status = 1 (up)\n"
+        "2. **Replication delay** — `pgpool2_pool_nodes_replication_delay` near 0\n"
+        "3. **Frontend slots** — `pgpool2_frontend_used` vs `pgpool2_frontend_total` (64)\n"
+        "4. **DB backends** — `pg_stat_database_numbackends` by `datname` "
+        "(hauliage / sesame_idam / rerp)\n"
+        "5. **Redis** — connected clients + memory used\n\n"
+        "### Saved searches (Discover → Open)\n"
+        "- **DataPersistence / Platform metrics**\n"
+        "- **DataPersistence / Postgres connections**\n"
+        "- **DataPersistence / Nodes & replication**\n"
+        "- **DataPersistence / Redis**\n"
+        "- **DataPersistence / DB pressure logs** (log index)\n\n"
+        "Scraped via OTel `prometheus/data` → Data Prepper → "
+        "`otel-v1-apm-metrics*`. Managed by shared-gitops-k8s-cluster."
+    )
+    vis_state = {
+        "title": "DataPersistence guide",
+        "type": "markdown",
+        "params": {
+            "fontSize": 12,
+            "openLinksInNewTab": False,
+            "markdown": markdown,
+        },
+        "aggs": [],
+    }
+    return {
+        "attributes": {
+            "title": "DataPersistence guide",
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(
+                    {"query": {"query": "", "language": "lucene"}, "filter": []}
+                )
+            },
+        },
+        "references": [],
+    }
+
+
+def metrics_value_metric_visualization(
+    *,
+    title: str,
+    query: str,
+    agg: str = "avg",
+    custom_label: str | None = None,
+) -> dict[str, Any]:
+    """Single-number gauge from metric `value` (avg/max/sum)."""
+    vis_state = {
+        "title": title,
+        "type": "metric",
+        "params": {
+            "addTooltip": True,
+            "addLegend": False,
+            "type": "metric",
+            "metric": {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [{"from": 0, "to": 10000}],
+                "labels": {"show": True},
+                "invertColors": False,
+                "style": {
+                    "bgFill": 0.0,
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": 40,
+                },
+            },
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": agg,
+                "schema": "metric",
+                "params": {
+                    "field": METRICS_VALUE_FIELD,
+                    "customLabel": custom_label or title,
+                },
+            }
+        ],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query=query,
+        filters=[],
+    )
+
+
+def metrics_line_visualization(
+    *,
+    title: str,
+    query: str,
+    split_field: str | None = None,
+    split_size: int = 8,
+    y_label: str = "value",
+) -> dict[str, Any]:
+    """Time series of avg(value), optionally split by a keyword attribute."""
+    aggs: list[dict[str, Any]] = [
+        {
+            "id": "1",
+            "enabled": True,
+            "type": "avg",
+            "schema": "metric",
+            "params": {"field": METRICS_VALUE_FIELD, "customLabel": y_label},
+        },
+        {
+            "id": "2",
+            "enabled": True,
+            "type": "date_histogram",
+            "schema": "segment",
+            "params": {
+                "field": METRICS_TIME_FIELD,
+                "interval": "auto",
+                "min_doc_count": 1,
+                "extended_bounds": {},
+            },
+        },
+    ]
+    if split_field:
+        aggs.append(
+            {
+                "id": "3",
+                "enabled": True,
+                "type": "terms",
+                "schema": "group",
+                "params": {
+                    "field": split_field,
+                    "size": split_size,
+                    "order": "desc",
+                    "orderBy": "1",
+                    "otherBucket": False,
+                    "otherBucketLabel": "Other",
+                    "missingBucket": False,
+                    "missingBucketLabel": "Missing",
+                },
+            }
+        )
+    vis_state = {
+        "title": title,
+        "type": "line",
+        "params": {
+            "type": "line",
+            "grid": {"categoryLines": False},
+            "categoryAxes": [
+                {
+                    "id": "CategoryAxis-1",
+                    "type": "category",
+                    "position": "bottom",
+                    "show": True,
+                    "style": {},
+                    "scale": {"type": "linear"},
+                    "labels": {"show": True, "truncate": 100},
+                    "title": {},
+                }
+            ],
+            "valueAxes": [
+                {
+                    "id": "ValueAxis-1",
+                    "name": "LeftAxis-1",
+                    "type": "value",
+                    "position": "left",
+                    "show": True,
+                    "style": {},
+                    "scale": {"type": "linear", "mode": "normal"},
+                    "labels": {
+                        "show": True,
+                        "rotate": 0,
+                        "filter": False,
+                        "truncate": 100,
+                    },
+                    "title": {"text": y_label},
+                }
+            ],
+            "seriesParams": [
+                {
+                    "show": True,
+                    "type": "line",
+                    "mode": "normal",
+                    "data": {"label": y_label, "id": "1"},
+                    "valueAxis": "ValueAxis-1",
+                    "drawLinesBetweenPoints": True,
+                    "showCircles": True,
+                    "interpolate": "linear",
+                }
+            ],
+            "addTooltip": True,
+            "addLegend": bool(split_field),
+            "legendPosition": "right",
+            "times": [],
+            "addTimeMarker": False,
+        },
+        "aggs": aggs,
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query=query,
+        filters=[],
+    )
+
+
+def metrics_terms_table_visualization(
+    *,
+    title: str,
+    query: str,
+    field: str,
+    size: int = 10,
+    field_label: str | None = None,
+) -> dict[str, Any]:
+    """Latest-window avg(value) by terms bucket (nodes, databases, …)."""
+    bucket_params: dict[str, Any] = {
+        "field": field,
+        "size": size,
+        "order": "desc",
+        "orderBy": "1",
+        "otherBucket": False,
+        "otherBucketLabel": "Other",
+        "missingBucket": False,
+        "missingBucketLabel": "Missing",
+    }
+    if field_label:
+        bucket_params["customLabel"] = field_label
+    vis_state = {
+        "title": title,
+        "type": "table",
+        "params": {
+            "perPage": size,
+            "showPartialRows": False,
+            "showMeticsAtAllLevels": False,
+            "sort": {"columnIndex": None, "direction": None},
+            "showTotal": False,
+            "showToolbar": False,
+            "totalFunc": "sum",
+            "percentageCol": "",
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "avg",
+                "schema": "metric",
+                "params": {
+                    "field": METRICS_VALUE_FIELD,
+                    "customLabel": "avg value",
+                },
+            },
+            {
+                "id": "2",
+                "enabled": True,
+                "type": "terms",
+                "schema": "bucket",
+                "params": bucket_params,
+            },
+        ],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query=query,
+        filters=[],
+    )
+
+
+def _metrics_vega_url(*, metric_name: str, aggs: dict[str, Any]) -> dict[str, Any]:
+    """Vega ES data URL with an explicit metric filter.
+
+    OSD forbids ``%context%`` / ``%timefield%`` when ``body.query`` is set.
+    Use ``%timefilter%`` on the metrics time field instead.
+    """
+    return {
+        "index": "otel-v1-apm-metrics*",
+        "body": {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {
+                            "range": {
+                                METRICS_TIME_FIELD: {"%timefilter%": True}
+                            }
+                        },
+                        {"term": {METRICS_NAME_KEYWORD: metric_name}},
+                    ]
+                }
+            },
+            "aggs": aggs,
+        },
+    }
+
+
+def metrics_nodes_roles_vega(
+    *,
+    title: str = "Postgres nodes — role + status + replication delay",
+) -> dict[str, Any]:
+    """Composite table: hostname × role with status and replication delay."""
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 8,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "status",
+                "url": _metrics_vega_url(
+                    metric_name="pgpool2_pool_nodes_status",
+                    aggs={
+                        "hosts": {
+                            "terms": {
+                                "field": METRICS_HOSTNAME_KEYWORD,
+                                "size": 10,
+                            },
+                            "aggs": {
+                                "role": {
+                                    "terms": {
+                                        "field": METRICS_ROLE_KEYWORD,
+                                        "size": 4,
+                                    },
+                                    "aggs": {
+                                        "status": {
+                                            "avg": {"field": METRICS_VALUE_FIELD}
+                                        }
+                                    },
+                                }
+                            },
+                        }
+                    },
+                ),
+                "format": {"property": "aggregations.hosts.buckets"},
+                "transform": [
+                    {"type": "flatten", "fields": ["role.buckets"], "as": ["roleBucket"]},
+                    {
+                        "type": "formula",
+                        "as": "role",
+                        "expr": "datum.roleBucket.key",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "status",
+                        "expr": "datum.roleBucket.status.value",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "hostShort",
+                        "expr": "split(datum.key, '.')[0]",
+                    },
+                ],
+            },
+            {
+                "name": "delay",
+                "url": _metrics_vega_url(
+                    metric_name="pgpool2_pool_nodes_replication_delay",
+                    aggs={
+                        "hosts": {
+                            "terms": {
+                                "field": METRICS_HOSTNAME_KEYWORD,
+                                "size": 10,
+                            },
+                            "aggs": {
+                                "delay": {"avg": {"field": METRICS_VALUE_FIELD}}
+                            },
+                        }
+                    },
+                ),
+                "format": {"property": "aggregations.hosts.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "hostShort",
+                        "expr": "split(datum.key, '.')[0]",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "delay",
+                        "expr": "datum.delay.value",
+                    },
+                ],
+            },
+            {
+                "name": "joined",
+                "source": "status",
+                "transform": [
+                    {
+                        "type": "lookup",
+                        "from": "delay",
+                        "key": "key",
+                        "fields": ["key"],
+                        "values": ["delay"],
+                    },
+                    {
+                        "type": "window",
+                        "ops": ["row_number"],
+                        "as": ["row"],
+                        "sort": [
+                            {"field": "role", "order": "ascending"},
+                            {"field": "hostShort", "order": "ascending"},
+                        ],
+                    },
+                ],
+            },
+            {
+                "name": "header",
+                "values": [
+                    {
+                        "hostShort": "pod",
+                        "role": "role",
+                        "status": "status",
+                        "delay": "repl delay",
+                        "row": 0,
+                    }
+                ],
+            },
+        ],
+        "scales": [
+            {
+                "name": "y",
+                "type": "band",
+                "domain": {"data": "joined", "field": "row"},
+                "range": {"step": 24},
+                "padding": 0.1,
+            }
+        ],
+        "marks": [
+            {
+                "type": "group",
+                "encode": {
+                    "update": {
+                        "x": {"value": 0},
+                        "y": {"value": 0},
+                        "width": {"signal": "width"},
+                        "height": {"value": 22},
+                    }
+                },
+                "marks": [
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"value": 0},
+                                "y": {"value": 14},
+                                "text": {"field": "hostShort"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.42"},
+                                "y": {"value": 14},
+                                "text": {"field": "role"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.68"},
+                                "y": {"value": 14},
+                                "text": {"field": "status"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "header"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width"},
+                                "y": {"value": 14},
+                                "text": {"field": "delay"},
+                                "align": {"value": "right"},
+                                "fontWeight": {"value": "bold"},
+                                "fontSize": {"value": 11},
+                                "fill": {"value": "#333"},
+                            }
+                        },
+                    },
+                ],
+            },
+            {
+                "type": "text",
+                "from": {"data": "joined"},
+                "encode": {
+                    "update": {
+                        "x": {"value": 0},
+                        "y": {"scale": "y", "field": "row", "band": 0.5},
+                        "text": {"field": "hostShort"},
+                        "fontSize": {"value": 12},
+                        "fill": {"value": "#111"},
+                    }
+                },
+            },
+            {
+                "type": "text",
+                "from": {"data": "joined"},
+                "encode": {
+                    "update": {
+                        "x": {"signal": "width * 0.42"},
+                        "y": {"scale": "y", "field": "row", "band": 0.5},
+                        "text": {"field": "role"},
+                        "fontSize": {"value": 12},
+                        "fontWeight": {"value": "bold"},
+                        "fill": {
+                            "signal": (
+                                "datum.role === 'primary' ? '#0a5bd3' : '#555'"
+                            )
+                        },
+                    }
+                },
+            },
+            {
+                "type": "text",
+                "from": {"data": "joined"},
+                "encode": {
+                    "update": {
+                        "x": {"signal": "width * 0.68"},
+                        "y": {"scale": "y", "field": "row", "band": 0.5},
+                        "text": {
+                            "signal": "datum.status >= 1 ? 'up' : 'down'"
+                        },
+                        "fontSize": {"value": 12},
+                        "fontWeight": {"value": "bold"},
+                        "fill": {
+                            "signal": (
+                                "datum.status >= 1 ? '#0a7a28' : '#b00020'"
+                            )
+                        },
+                    }
+                },
+            },
+            {
+                "type": "text",
+                "from": {"data": "joined"},
+                "encode": {
+                    "update": {
+                        "x": {"signal": "width"},
+                        "y": {"scale": "y", "field": "row", "band": 0.5},
+                        "text": {
+                            "signal": (
+                                "datum.delay == null ? '—' : "
+                                "format(datum.delay, ',.0f')"
+                            )
+                        },
+                        "align": {"value": "right"},
+                        "fontSize": {"value": 12},
+                        "fill": {
+                            "signal": (
+                                "datum.delay > 0 ? '#b00020' : '#0a7a28'"
+                            )
+                        },
+                    }
+                },
+            },
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query=PGPOOL_NODES_LUCENE,
+        filters=[],
+    )
+
+
+def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    """Postgres HA + Pgpool masters/replicas + Redis overview."""
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        ("visualization", "data-persistence-guide", data_persistence_guide_markdown()),
+        (
+            "visualization",
+            "data-persistence-pg-max-connections",
+            metrics_value_metric_visualization(
+                title="Postgres max_connections",
+                query=f'{METRICS_NAME_KEYWORD}: "pg_settings_max_connections"',
+                agg="max",
+                custom_label="max_connections",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-pgpool-frontend-used",
+            metrics_value_metric_visualization(
+                title="Pgpool frontend used",
+                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_frontend_used"',
+                agg="avg",
+                custom_label="frontend used",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-pgpool-frontend-total",
+            metrics_value_metric_visualization(
+                title="Pgpool frontend total",
+                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_frontend_total"',
+                agg="max",
+                custom_label="frontend total",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-redis-clients",
+            metrics_value_metric_visualization(
+                title="Redis connected clients",
+                query=f'{METRICS_NAME_KEYWORD}: "redis_connected_clients"',
+                agg="avg",
+                custom_label="clients",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-redis-memory",
+            metrics_value_metric_visualization(
+                title="Redis memory used (bytes)",
+                query=f'{METRICS_NAME_KEYWORD}: "redis_memory_used_bytes"',
+                agg="avg",
+                custom_label="memory bytes",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-nodes-roles",
+            metrics_nodes_roles_vega(),
+        ),
+        (
+            "visualization",
+            "data-persistence-replication-delay",
+            metrics_line_visualization(
+                title="Replication delay by node (Pgpool)",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "pgpool2_pool_nodes_replication_delay"'
+                ),
+                split_field=METRICS_HOSTNAME_KEYWORD,
+                y_label="delay",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-pg-backends",
+            metrics_line_visualization(
+                title="Postgres backends by database",
+                query=f'{METRICS_NAME_KEYWORD}: "pg_stat_database_numbackends"',
+                split_field=METRICS_DATNAME_KEYWORD,
+                y_label="backends",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-pg-activity",
+            metrics_line_visualization(
+                title="Postgres activity (idle+active client backends)",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "pg_stat_activity_count" AND '
+                    'metric.attributes.backend_type: "client backend" AND '
+                    '(metric.attributes.state: "idle" OR '
+                    'metric.attributes.state: "active")'
+                ),
+                split_field=METRICS_DATNAME_KEYWORD,
+                y_label="sessions",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-pgpool-frontend-line",
+            metrics_line_visualization(
+                title="Pgpool frontend used (time series)",
+                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_frontend_used"',
+                y_label="frontend used",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-pgpool-backend-used",
+            metrics_line_visualization(
+                title="Pgpool backend used",
+                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_backend_used"',
+                y_label="backend used",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-redis-memory-line",
+            metrics_line_visualization(
+                title="Redis memory used",
+                query=f'{METRICS_NAME_KEYWORD}: "redis_memory_used_bytes"',
+                y_label="bytes",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-redis-clients-line",
+            metrics_line_visualization(
+                title="Redis connected clients",
+                query=f'{METRICS_NAME_KEYWORD}: "redis_connected_clients"',
+                y_label="clients",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-redis-keyspace",
+            metrics_line_visualization(
+                title="Redis keyspace hits vs misses",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: ("redis_keyspace_hits_total" OR '
+                    f'"redis_keyspace_misses_total")'
+                ),
+                split_field=METRICS_NAME_KEYWORD,
+                y_label="count",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-backends-table",
+            metrics_terms_table_visualization(
+                title="Backends by database (avg)",
+                query=f'{METRICS_NAME_KEYWORD}: "pg_stat_database_numbackends"',
+                field=METRICS_DATNAME_KEYWORD,
+                size=12,
+                field_label="datname",
+            ),
+        ),
+        (
+            "search",
+            "data-persistence-metrics",
+            saved_search(
+                title="DataPersistence / Platform metrics",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS,
+                query=DATA_PLATFORM_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "data-persistence-postgres",
+            saved_search(
+                title="DataPersistence / Postgres connections",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS,
+                query=PG_CONNECTIONS_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "data-persistence-nodes",
+            saved_search(
+                title="DataPersistence / Nodes & replication",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS,
+                query=PGPOOL_NODES_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "data-persistence-redis",
+            saved_search(
+                title="DataPersistence / Redis",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS,
+                query=REDIS_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "data-persistence-db-pressure-logs",
+            saved_search(
+                title="DataPersistence / DB pressure logs",
+                data_view=LOGS_VIEW,
+                time_field=LOGS_TIME_FIELD,
+                columns=LOG_STREAM_COLUMNS,
+                query=DB_PRESSURE_LOGS_LUCENE,
+                filters=[],
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id="data-persistence",
+            title="DataPersistence",
+            description=(
+                "Postgres HA connections, Pgpool frontend/backend slots, "
+                "primary vs standby node health, replication delay, and Redis "
+                "clients/memory/keyspace. Open Discover saved searches for "
+                "field sidebar triage. Managed by "
+                f"{MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "data-persistence-guide", 0, 0, 48, 8),
+                ("visualization", "data-persistence-pg-max-connections", 0, 8, 9, 6),
+                ("visualization", "data-persistence-pgpool-frontend-used", 9, 8, 10, 6),
+                ("visualization", "data-persistence-pgpool-frontend-total", 19, 8, 9, 6),
+                ("visualization", "data-persistence-redis-clients", 28, 8, 10, 6),
+                ("visualization", "data-persistence-redis-memory", 38, 8, 10, 6),
+                ("visualization", "data-persistence-nodes-roles", 0, 14, 28, 12),
+                ("visualization", "data-persistence-backends-table", 28, 14, 20, 12),
+                ("visualization", "data-persistence-replication-delay", 0, 26, 24, 12),
+                ("visualization", "data-persistence-pg-backends", 24, 26, 24, 12),
+                ("visualization", "data-persistence-pg-activity", 0, 38, 24, 12),
+                ("visualization", "data-persistence-pgpool-frontend-line", 24, 38, 24, 12),
+                ("visualization", "data-persistence-pgpool-backend-used", 0, 50, 24, 12),
+                ("visualization", "data-persistence-redis-memory-line", 24, 50, 24, 12),
+                ("visualization", "data-persistence-redis-clients-line", 0, 62, 24, 12),
+                ("visualization", "data-persistence-redis-keyspace", 24, 62, 24, 12),
+                ("search", "data-persistence-metrics", 0, 74, 48, 18),
+            ],
+            panel_ref_prefix="data_persistence",
+            time_from="now-1h",
+            refresh_ms=30000,
+            query=DATA_PLATFORM_LUCENE,
+            filters=[],
+        )
+    )
+    return objects
+
+
 DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "logs-explore": _logs_explore_bundle(),
+    "data-persistence": _data_persistence_bundle(),
 }
 
 DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [

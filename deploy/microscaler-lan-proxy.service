@@ -1,0 +1,18 @@
+[Unit]
+Description=Microscaler LAN proxy (Mac → MetalLB on mpqemubr0)
+Documentation=file:///home/casibbald/Workspace/microscaler/shared-k8s-cluster/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/casibbald
+Environment=KUBECONFIG=/home/casibbald/Workspace/microscaler/shared-k8s-cluster/kubeconfig/shared-k8s.yaml
+ExecStartPre=-/usr/bin/python3 /home/casibbald/Workspace/microscaler/shared-k8s-cluster/tools/sync_haproxy_tls.py sync
+ExecStartPre=/usr/bin/python3 /home/casibbald/Workspace/microscaler/shared-k8s-cluster/tools/configure_lan_proxy.py render
+ExecStart=/usr/sbin/haproxy -W -db -f /home/casibbald/Workspace/microscaler/shared-k8s-cluster/deploy/generated/haproxy.cfg
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

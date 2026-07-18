@@ -112,7 +112,20 @@ Primary log exploration is GitOps-managed:
 2. Expand **serviceName** → values are now scoped to that namespace
 3. Adjust **time** last; optionally filter `event_category` / `has_trace`
 
-Source: `gitops/root/components/observability/dashboards/logs-explore.ndjson`.
+### DataPersistence (Postgres / Pgpool / Redis)
+
+Companion metrics dashboard for the shared data plane:
+
+- **KPIs** — `max_connections`, Pgpool frontend used/total, Redis clients + memory
+- **Masters & replicas** — Pgpool node role (`primary` / `standby`), up/down status, replication delay
+- **Postgres** — backends by `datname`, client-backend activity
+- **Pgpool** — frontend/backend slot time series
+- **Redis** — memory, clients, keyspace hits vs misses
+- **Discover saved searches** — Platform metrics / Postgres / Nodes & replication / Redis / DB pressure logs
+
+Source: `gitops/root/components/observability/dashboards/data-persistence.ndjson`.
+
+Sources: `gitops/root/components/observability/dashboards/{logs-explore,data-persistence}.ndjson`.
 Regenerate after editing `dashboard_definitions.py`:
 
 ```bash
@@ -124,7 +137,8 @@ Direct URLs:
 | View | URL |
 |------|-----|
 | **Discover (field sidebar)** | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
-| Dashboard | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
+| Dashboard (Logs) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
+| Dashboard (DataPersistence) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/data-persistence` |
 
 **Example Lucene queries** (search bar):
 
@@ -176,7 +190,7 @@ just observability-provision-now
 Expected terminal line:
 
 ```text
-observability provisioning passed: retention=7d monitors=9 dashboard_bundles=1 saved_objects=3
+observability provisioning passed: retention=7d monitors=9 dashboard_bundles=2 saved_objects=…
 ```
 
 Cluster health may show **yellow** on a single-node dev cluster because

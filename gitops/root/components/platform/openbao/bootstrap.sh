@@ -26,9 +26,12 @@ kexec() { kubectl -n "$NS" exec "$POD" -- "$@"; }
 
 echo ">> Waiting for OpenBao pod to be Running..."
 kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Running "pod/$POD" --timeout=180s
-# Chart uses OnDelete + sealed-aware probes; wait until bao answers at all
+# Chart uses OnDelete + sealed-aware probes; wait until bao answers at all.
+# `bao status` exits 0 (unsealed) or 2 (sealed) once the server responds — a
+# sealed/uninitialized server never exits 0, so break on status *output*, not
+# exit code (the old exit-0 check dead-looped the full 60s).
 for _ in $(seq 1 30); do
-  if kexec bao status -format=json >/dev/null 2>&1 || kexec bao status >/dev/null 2>&1; then
+  if kexec bao status 2>/dev/null | grep -qiE 'Initialized|Sealed'; then
     break
   fi
   sleep 2

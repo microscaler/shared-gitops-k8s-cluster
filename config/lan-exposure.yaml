@@ -1,0 +1,133 @@
+# LAN exposure on ms02 for Mac / 192.168.1.x clients.
+# Binds MS02_LAN_IP (default 192.168.1.189) and forwards to MetalLB Service IPs.
+# Replaces Kind extraPortMappings (shared-kind-cluster/kind-config.yaml).
+#
+# Apply on ms02: just lan-proxy-install && just lan-proxy-up
+
+ms02_lan_ip: "192.168.1.189"
+
+proxies:
+  # --- Observability (Kind hostPorts) ---
+  - name: grafana
+    lan_port: 3000
+    lb_ip_env: GRAFANA_LB_IP
+    target_port: 3000
+    protocol: tcp
+  - name: loki
+    lan_port: 3100
+    lb_ip_env: LOKI_LB_IP
+    target_port: 3100
+    protocol: tcp
+  - name: prometheus
+    lan_port: 9090
+    lb_ip_env: PROMETHEUS_LB_IP
+    target_port: 9090
+    protocol: tcp
+  - name: jaeger-ui
+    lan_port: 16686
+    lb_ip_env: JAEGER_LB_IP
+    target_port: 16686
+    protocol: tcp
+  - name: otel-grpc
+    lan_port: 4317
+    lb_ip_env: OTEL_LB_IP
+    target_port: 4317
+    protocol: tcp
+  - name: otel-http
+    lan_port: 4318
+    lb_ip_env: OTEL_LB_IP
+    target_port: 4318
+    protocol: tcp
+
+  # --- Platform data ---
+  - name: postgres
+    lan_port: 5433
+    lb_ip_env: POSTGRES_LB_IP
+    target_port: 5432
+    protocol: tcp
+  - name: redis
+    lan_port: 6390
+    lb_ip_env: REDIS_LB_IP
+    target_port: 6379
+    protocol: tcp
+  - name: minio-api
+    lan_port: 9000
+    lb_ip_env: MINIO_LB_IP
+    target_port: 9000
+    protocol: tcp
+  - name: minio-console
+    lan_port: 9001
+    lb_ip_env: MINIO_LB_IP
+    target_port: 9001
+    protocol: tcp
+  - name: pact-broker
+    lan_port: 9292
+    lb_ip_env: PACT_BROKER_LB_IP
+    target_port: 9292
+    protocol: tcp
+  - name: mailpit-smtp
+    lan_port: 1025
+    lb_ip_env: MAILPIT_LB_IP
+    target_port: 1025
+    protocol: tcp
+  - name: mailpit-web
+    lan_port: 8025
+    lb_ip_env: MAILPIT_LB_IP
+    target_port: 8025
+    protocol: tcp
+  - name: mailhog-smtp
+    lan_port: 1026
+    lb_ip_env: MAILHOG_LB_IP
+    target_port: 1025
+    protocol: tcp
+  - name: mailhog-web
+    lan_port: 8026
+    lb_ip_env: MAILHOG_LB_IP
+    target_port: 8025
+    protocol: tcp
+
+  # --- Scheduling ---
+  - name: faktory
+    lan_port: 7419
+    lb_ip_env: FAKTORY_LB_IP
+    target_port: 7419
+    protocol: tcp
+  - name: faktory-dashboard
+    lan_port: 7420
+    lb_ip_env: FAKTORY_LB_IP
+    target_port: 7420
+    protocol: tcp
+
+  # --- Cylon infra ---
+  - name: routellm
+    lan_port: 4000
+    lb_ip_env: ROUTELLM_LB_IP
+    target_port: 4000
+    protocol: tcp
+  - name: squid
+    lan_port: 3128
+    lb_ip_env: SQUID_LB_IP
+    target_port: 3128
+    protocol: tcp
+  - name: resurrection-hub
+    lan_port: 14000
+    lb_ip_env: RESURRECTION_HUB_LB_IP
+    target_port: 14000
+    protocol: tcp
+  - name: freeradius-auth
+    lan_port: 1812
+    lb_ip_env: FREERADIUS_LB_IP
+    target_port: 1812
+    protocol: udp
+  - name: freeradius-acct
+    lan_port: 1813
+    lb_ip_env: FREERADIUS_LB_IP
+    target_port: 1813
+    protocol: udp
+
+  # --- Registry (Kind docker push parity: localhost:5001 on ms02; LAN for Mac builds) ---
+  - name: registry
+    lan_port: 5001
+    lb_ip_env: REGISTRY_LB_IP
+    target_port: 5000
+    protocol: tcp

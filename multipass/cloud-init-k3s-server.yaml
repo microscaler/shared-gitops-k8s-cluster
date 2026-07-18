@@ -1,0 +1,32 @@
+#cloud-config
+# k3s node base — packages and registry mirror config (IP from Multipass DHCP).
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - curl
+  - jq
+  - open-iscsi
+  - nfs-common
+
+write_files:
+  - path: /etc/rancher/k3s/registries.yaml
+    permissions: "0644"
+    content: |
+      mirrors:
+        "{{REGISTRY_HOST_ALIAS}}":
+          endpoint:
+            - "http://{{REGISTRY_LB_IP}}:5000"
+        "registry.shared-k8s.local:5000":
+          endpoint:
+            - "http://{{REGISTRY_LB_IP}}:5000"
+      configs:
+        "{{REGISTRY_LB_IP}}:5000":
+          tls:
+            insecure_skip_verify: true
+
+runcmd:
+  - modprobe br_netfilter
+  - echo br_netfilter > /etc/modules-load.d/br_netfilter.conf
+  - sysctl -w net.ipv4.ip_forward=1
