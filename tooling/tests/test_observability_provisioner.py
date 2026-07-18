@@ -65,6 +65,10 @@ def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
         "RERP API metrics stale",
         "Postgres metrics stale",
         "Redis metrics stale",
+        "Loadlinker P0 error burst",
+        "Sesame auth error logs",
+        "Loadlinker P0 traces stale",
+        "Sesame auth traces stale",
     }
     assert all(monitor["enabled"] for monitor in monitors.values())
     assert all(

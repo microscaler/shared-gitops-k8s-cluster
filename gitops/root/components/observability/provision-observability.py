@@ -371,6 +371,92 @@ def desired_monitors() -> list[dict[str, Any]]:
             }
         },
     }
+    loadlinker_p0_errors = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"observedTime": {"gte": "now-5m", "lte": "now"}}},
+                    {"terms": {"severityText.keyword": ["ERROR", "FATAL"]}},
+                    {
+                        "terms": {
+                            "serviceName.keyword": [
+                                "bff",
+                                "bidding",
+                                "consignments",
+                                "notifications",
+                            ]
+                        }
+                    },
+                ]
+            }
+        },
+    }
+    sesame_auth_errors = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"observedTime": {"gte": "now-5m", "lte": "now"}}},
+                    {"terms": {"severityText.keyword": ["ERROR", "FATAL"]}},
+                    {
+                        "terms": {
+                            "serviceName.keyword": [
+                                "identity-login-service",
+                                "identity-session-service",
+                                "authz-core",
+                            ]
+                        }
+                    },
+                ]
+            }
+        },
+    }
+    loadlinker_p0_spans = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"startTime": {"gte": "now-10m", "lte": "now"}}},
+                    {"term": {"name.keyword": "http_request"}},
+                    {
+                        "terms": {
+                            "serviceName.keyword": [
+                                "bff",
+                                "bidding",
+                                "consignments",
+                                "notifications",
+                            ]
+                        }
+                    },
+                ]
+            }
+        },
+    }
+    sesame_auth_spans = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"startTime": {"gte": "now-10m", "lte": "now"}}},
+                    {"term": {"name.keyword": "http_request"}},
+                    {
+                        "terms": {
+                            "serviceName.keyword": [
+                                "identity-login-service",
+                                "identity-session-service",
+                                "authz-core",
+                            ]
+                        }
+                    },
+                ]
+            }
+        },
+    }
     return [
         monitor_payload(
             name="Telemetry metrics stale",
@@ -415,6 +501,34 @@ def desired_monitors() -> list[dict[str, Any]]:
                     }
                 },
             },
+            condition="ctx.results[0].hits.total.value == 0",
+            severity="1",
+        ),
+        monitor_payload(
+            name="Loadlinker P0 error burst",
+            indices=[LOGS_PATTERN],
+            query=loadlinker_p0_errors,
+            condition="ctx.results[0].hits.total.value > 5",
+            severity="2",
+        ),
+        monitor_payload(
+            name="Sesame auth error logs",
+            indices=[LOGS_PATTERN],
+            query=sesame_auth_errors,
+            condition="ctx.results[0].hits.total.value > 0",
+            severity="2",
+        ),
+        monitor_payload(
+            name="Loadlinker P0 traces stale",
+            indices=[TRACES_PATTERN],
+            query=loadlinker_p0_spans,
+            condition="ctx.results[0].hits.total.value == 0",
+            severity="1",
+        ),
+        monitor_payload(
+            name="Sesame auth traces stale",
+            indices=[TRACES_PATTERN],
+            query=sesame_auth_spans,
             condition="ctx.results[0].hits.total.value == 0",
             severity="1",
         ),
