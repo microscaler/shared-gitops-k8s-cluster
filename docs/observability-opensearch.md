@@ -82,16 +82,28 @@ python3 tooling/generate_observability_dashboards.py
 ```
 
 The provisioner imports NDJSON bundles, reconciles index patterns dynamically,
-and deletes deprecated `shared-*` dashboard IDs from earlier iterations.
+and deletes deprecated saved objects from earlier iterations.
+
+### Dashboard tiers
+
+| Tier | Purpose |
+|------|---------|
+| **Log hubs** | Unified log triage — errors, WARN, trace-correlated, DB pressure |
+| **Health / SLO** | Traces and metrics only; link out to log hubs |
+| **War room** | Cross-signal pivot by traceId (incident response) |
+| **Platform** | Postgres, Pgpool, Redis infrastructure |
 
 | Dashboard ID | Purpose |
 |--------------|---------|
+| **platform-logs-explore** | All services — ERROR, WARN, trace-correlated logs |
+| **loadlinker-logs-explore** | Loadlinker P0 + P1 log triage |
+| **sesame-logs-explore** | All six Sesame-IDAM services |
 | **platform-postgres-connections** | Postgres/Pgpool saturation split by `loadlinker` / `sesame-idam` |
 | **platform-data-namespace** | Shared `data` namespace Postgres, Pgpool, Redis |
 | **platform-apm-correlation** | Incident war room: traceId pivot across logs, spans, DB |
 | **loadlinker-health** | P0 RED: `bff`, `bidding`, `consignments`, `notifications` |
-| **loadlinker-bff-edge** | BFF routes, errors, SLO p95 target 500 ms |
-| **loadlinker-sesame-auth** | BFF → Sesame auth dependency |
+| **loadlinker-bff-edge** | BFF routes, SLO p95 target 500 ms |
+| **loadlinker-sesame-auth** | BFF → Sesame auth dependency (traces) |
 | **sesame-platform-health** | All six Sesame-IDAM services |
 | **sesame-auth-critical-path** | Login, session, authz-core (authz SLO p95 50 ms) |
 

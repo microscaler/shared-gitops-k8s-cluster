@@ -16,6 +16,10 @@ LOADLINKER_P0_QUERY = (
 LOADLINKER_P1_QUERY = (
     "serviceName: (fleet OR customs OR company OR locations OR identity OR inbox)"
 )
+LOADLINKER_ALL_QUERY = (
+    "serviceName: (bff OR bidding OR consignments OR notifications OR "
+    "fleet OR customs OR company OR locations OR identity OR inbox)"
+)
 SESAME_SERVICES_QUERY = (
     "serviceName: (identity-login-service OR identity-session-service OR "
     "identity-user-mgmt-service OR authz-core OR api-keys OR org-mgmt)"
@@ -50,6 +54,16 @@ HTTP_SPANS_BFF_QUERY = f'{HTTP_SPANS_QUERY} AND serviceName: "bff"'
 HTTP_SPANS_SESAME_AUTH_QUERY = f"{HTTP_SPANS_QUERY} AND {SESAME_AUTH_HOT_QUERY}"
 
 ERROR_LOGS_QUERY = 'severityText: ("ERROR" or "FATAL")'
+WARN_LOGS_QUERY = 'severityText: "WARN"'
+
+STANDARD_LOG_COLUMNS = [
+    "observedTime",
+    "severityText",
+    "serviceName",
+    "traceId",
+    "spanId",
+    "body",
+]
 ERROR_LOGS_P0_QUERY = f"{ERROR_LOGS_QUERY} AND {LOADLINKER_P0_QUERY}"
 ERROR_LOGS_SESAME_QUERY = f"{ERROR_LOGS_QUERY} AND {SESAME_SERVICES_QUERY}"
 ERROR_LOGS_WITH_TRACE_QUERY = (
@@ -387,6 +401,135 @@ def saved_search(
     }
 
 
+def _scoped_query(scope_query: str, base_query: str) -> str:
+    if not scope_query:
+        return base_query
+    if not base_query:
+        return scope_query
+    return f"{base_query} AND {scope_query}"
+
+
+def logs_link_markdown(*, title: str, log_hub_id: str, log_hub_title: str) -> dict[str, Any]:
+    markdown = (
+        f"**Logs:** [{log_hub_title}](/app/dashboards#/view/{log_hub_id})\n\n"
+        "Use **traceId** to pivot into "
+        "[Platform — incident war room](/app/dashboards#/view/platform-apm-correlation)."
+    )
+    return markdown_visualization(title=title, markdown=markdown)
+
+
+def _logs_explore_bundle(
+    *,
+    dashboard_id: str,
+    title: str,
+    description: str,
+    scope_query: str,
+    db_pressure_query: str,
+    panel_ref_prefix: str,
+    guide_markdown: str,
+) -> list[tuple[str, str, dict[str, Any]]]:
+    prefix = dashboard_id.replace("-", "_")
+    error_query = _scoped_query(scope_query, ERROR_LOGS_QUERY)
+    warn_query = _scoped_query(scope_query, WARN_LOGS_QUERY)
+    trace_query = _scoped_query(scope_query, CORRELATED_LOGS_QUERY)
+    volume_query = scope_query
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            f"{prefix}-guide",
+            markdown_visualization(title="Log investigation guide", markdown=guide_markdown),
+        ),
+        (
+            "visualization",
+            f"{prefix}-volume-by-severity",
+            line_visualization(
+                title="Log volume by severity",
+                data_view=LOGS_VIEW,
+                time_field="observedTime",
+                group_field="severityText.keyword",
+                query=volume_query,
+                y_title="Log lines",
+            ),
+        ),
+        (
+            "visualization",
+            f"{prefix}-errors-by-service",
+            line_visualization(
+                title="ERROR/FATAL rate by service",
+                data_view=LOGS_VIEW,
+                time_field="observedTime",
+                group_field="serviceName.keyword",
+                query=error_query,
+                y_title="Errors",
+            ),
+        ),
+        (
+            "search",
+            f"{prefix}-recent-errors",
+            saved_search(
+                title="Recent ERROR/FATAL logs",
+                data_view=LOGS_VIEW,
+                time_field="observedTime",
+                columns=STANDARD_LOG_COLUMNS,
+                query=error_query,
+            ),
+        ),
+        (
+            "search",
+            f"{prefix}-warn-logs",
+            saved_search(
+                title="Recent WARN logs",
+                data_view=LOGS_VIEW,
+                time_field="observedTime",
+                columns=STANDARD_LOG_COLUMNS,
+                query=warn_query,
+            ),
+        ),
+        (
+            "search",
+            f"{prefix}-trace-logs",
+            saved_search(
+                title="Logs with trace context",
+                data_view=LOGS_VIEW,
+                time_field="observedTime",
+                columns=STANDARD_LOG_COLUMNS,
+                query=trace_query,
+            ),
+        ),
+        (
+            "search",
+            f"{prefix}-db-pressure",
+            saved_search(
+                title="Database / pool / timeout logs",
+                data_view=LOGS_VIEW,
+                time_field="observedTime",
+                columns=STANDARD_LOG_COLUMNS,
+                query=db_pressure_query,
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id=dashboard_id,
+            title=title,
+            description=description,
+            panels=[
+                ("visualization", f"{prefix}-guide", 0, 0, 48, 6),
+                ("visualization", f"{prefix}-volume-by-severity", 0, 6, 24, 10),
+                ("visualization", f"{prefix}-errors-by-service", 24, 6, 24, 10),
+                ("search", f"{prefix}-recent-errors", 0, 16, 48, 14),
+                ("search", f"{prefix}-warn-logs", 0, 30, 24, 12),
+                ("search", f"{prefix}-trace-logs", 24, 30, 24, 12),
+                ("search", f"{prefix}-db-pressure", 0, 42, 48, 12),
+            ],
+            panel_ref_prefix=panel_ref_prefix,
+            time_from="now-1h",
+            refresh_ms=30000,
+        )
+    )
+    return objects
+
+
 def markdown_visualization(*, title: str, markdown: str) -> dict[str, Any]:
     vis_state = {
         "title": title,
@@ -692,54 +835,12 @@ def _platform_correlation_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "search",
-            "correlation-logs-by-trace",
-            saved_search(
-                title="Logs with trace context",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "spanId",
-                    "body",
-                ],
-                query=CORRELATED_LOGS_QUERY,
-            ),
-        ),
-        (
-            "search",
-            "correlation-errors-with-trace",
-            saved_search(
-                title="Errors with trace context",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "spanId",
-                    "body",
-                ],
-                query=ERROR_LOGS_WITH_TRACE_QUERY,
-            ),
-        ),
-        (
-            "search",
             "correlation-db-pressure-logs",
             saved_search(
                 title="Database / pool pressure logs",
                 data_view=LOGS_VIEW,
                 time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "body",
-                ],
+                columns=STANDARD_LOG_COLUMNS,
                 query=DB_PRESSURE_LOGS_QUERY,
             ),
         ),
@@ -759,6 +860,15 @@ def _platform_correlation_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                     "metric.attributes.usename",
                 ],
                 query=POSTGRES_ACTIVITY_QUERY,
+            ),
+        ),
+        (
+            "visualization",
+            "correlation-logs-link",
+            logs_link_markdown(
+                title="Log triage",
+                log_hub_id="platform-logs-explore",
+                log_hub_title="Platform — logs explore",
             ),
         ),
     ]
@@ -781,11 +891,10 @@ def _platform_correlation_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                     24,
                     10,
                 ),
-                ("search", "correlation-http-spans", 0, 10, 24, 14),
-                ("search", "correlation-logs-by-trace", 24, 10, 24, 14),
-                ("search", "correlation-errors-with-trace", 0, 24, 24, 12),
-                ("search", "correlation-db-pressure-logs", 24, 24, 24, 12),
-                ("search", "correlation-postgres-at-time", 0, 36, 48, 12),
+                ("search", "correlation-http-spans", 0, 10, 48, 14),
+                ("search", "correlation-db-pressure-logs", 0, 24, 24, 12),
+                ("search", "correlation-postgres-at-time", 24, 24, 24, 12),
+                ("visualization", "correlation-logs-link", 0, 36, 48, 6),
             ],
             panel_ref_prefix="platform_corr",
             time_from="now-1h",
@@ -823,14 +932,11 @@ def _loadlinker_health_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "loadlinker-p0-error-logs",
-            line_visualization(
-                title="P0 error logs",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-                query=ERROR_LOGS_P0_QUERY,
-                y_title="Errors",
+            "loadlinker-health-logs-link",
+            logs_link_markdown(
+                title="Loadlinker logs",
+                log_hub_id="loadlinker-logs-explore",
+                log_hub_title="Loadlinker — logs explore",
             ),
         ),
         (
@@ -876,23 +982,6 @@ def _loadlinker_health_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 query=HTTP_SPANS_P0_QUERY,
             ),
         ),
-        (
-            "search",
-            "loadlinker-p0-errors",
-            saved_search(
-                title="P0 recent errors",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "body",
-                ],
-                query=ERROR_LOGS_P0_QUERY,
-            ),
-        ),
     ]
     objects.append(
         assemble_dashboard(
@@ -900,16 +989,16 @@ def _loadlinker_health_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="Loadlinker — service health",
             description=(
                 "P0 services: bff, bidding, consignments, notifications. "
+                "Traces and metrics only — logs live in Loadlinker — logs explore. "
                 f"Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "loadlinker-slo-notes", 0, 0, 12, 8),
                 ("visualization", "loadlinker-p0-http-spans", 12, 0, 36, 8),
-                ("visualization", "loadlinker-p0-error-logs", 0, 8, 24, 10),
+                ("visualization", "loadlinker-health-logs-link", 0, 8, 24, 8),
                 ("visualization", "loadlinker-postgres-pressure", 24, 8, 24, 10),
                 ("visualization", "loadlinker-p1-http-spans", 0, 18, 24, 10),
                 ("search", "loadlinker-p0-http-snapshot", 24, 18, 24, 10),
-                ("search", "loadlinker-p0-errors", 0, 28, 48, 12),
             ],
             panel_ref_prefix="loadlinker_health",
             time_from="now-6h",
@@ -934,14 +1023,11 @@ def _loadlinker_bff_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "loadlinker-bff-error-logs",
-            line_visualization(
-                title="BFF error logs",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-                query=f'{ERROR_LOGS_QUERY} AND serviceName: "bff"',
-                y_title="Errors",
+            "loadlinker-bff-logs-link",
+            logs_link_markdown(
+                title="BFF logs",
+                log_hub_id="loadlinker-logs-explore",
+                log_hub_title="Loadlinker — logs explore",
             ),
         ),
         (
@@ -962,36 +1048,20 @@ def _loadlinker_bff_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 query=HTTP_SPANS_BFF_QUERY,
             ),
         ),
-        (
-            "search",
-            "loadlinker-bff-errors",
-            saved_search(
-                title="BFF errors",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "severityText",
-                    "traceId",
-                    "body",
-                ],
-                query=f'{ERROR_LOGS_QUERY} AND serviceName: "bff"',
-            ),
-        ),
     ]
     objects.append(
         assemble_dashboard(
             dashboard_id="loadlinker-bff-edge",
             title="Loadlinker — BFF edge",
             description=(
-                f"User-facing edge latency and errors. SLO p95 target {SLO_BFF_P95_MS} ms. "
+                f"User-facing edge latency (SLO p95 target {SLO_BFF_P95_MS} ms). "
+                "Logs live in Loadlinker — logs explore. "
                 f"Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "loadlinker-bff-request-rate", 0, 0, 36, 12),
-                ("visualization", "loadlinker-bff-error-logs", 36, 0, 12, 12),
-                ("search", "loadlinker-bff-slow-spans", 0, 12, 24, 14),
-                ("search", "loadlinker-bff-errors", 24, 12, 24, 14),
+                ("visualization", "loadlinker-bff-logs-link", 0, 0, 12, 6),
+                ("visualization", "loadlinker-bff-request-rate", 12, 0, 36, 12),
+                ("search", "loadlinker-bff-slow-spans", 0, 12, 48, 16),
             ],
             panel_ref_prefix="loadlinker_bff",
             time_from="now-3h",
@@ -1020,31 +1090,11 @@ def _loadlinker_sesame_auth_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "loadlinker-sesame-auth-errors",
-            line_visualization(
-                title="Auth errors (BFF + Sesame)",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-                query=AUTH_FAILURE_LOGS_QUERY,
-                y_title="Errors",
-            ),
-        ),
-        (
-            "search",
-            "loadlinker-bff-sesame-auth-logs",
-            saved_search(
-                title="BFF logs mentioning Sesame/auth",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "body",
-                ],
-                query=BFF_SESAME_AUTH_LOGS_QUERY,
+            "loadlinker-sesame-auth-logs-link",
+            logs_link_markdown(
+                title="Auth logs",
+                log_hub_id="platform-logs-explore",
+                log_hub_title="Platform — logs explore",
             ),
         ),
         (
@@ -1071,13 +1121,13 @@ def _loadlinker_sesame_auth_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="Loadlinker → Sesame auth dependency",
             description=(
                 "BFF calls into Sesame-IDAM for identity/auth. Use traceId to correlate "
-                f"failures across namespaces. Managed by {MANAGED_BY}"
+                "failures across namespaces. Logs: Platform — logs explore. "
+                f"Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "loadlinker-bff-auth-spans", 0, 0, 36, 12),
-                ("visualization", "loadlinker-sesame-auth-errors", 36, 0, 12, 12),
-                ("search", "loadlinker-bff-sesame-auth-logs", 0, 12, 24, 14),
-                ("search", "loadlinker-sesame-auth-spans", 24, 12, 24, 14),
+                ("visualization", "loadlinker-sesame-auth-logs-link", 0, 0, 12, 6),
+                ("visualization", "loadlinker-bff-auth-spans", 12, 0, 36, 12),
+                ("search", "loadlinker-sesame-auth-spans", 0, 12, 48, 16),
             ],
             panel_ref_prefix="loadlinker_sesame",
             time_from="now-3h",
@@ -1102,14 +1152,11 @@ def _sesame_platform_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "sesame-error-logs",
-            line_visualization(
-                title="Sesame error logs",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-                query=ERROR_LOGS_SESAME_QUERY,
-                y_title="Errors",
+            "sesame-platform-logs-link",
+            logs_link_markdown(
+                title="Sesame logs",
+                log_hub_id="sesame-logs-explore",
+                log_hub_title="Sesame-IDAM — logs explore",
             ),
         ),
         (
@@ -1148,11 +1195,12 @@ def _sesame_platform_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="Sesame-IDAM — platform health",
             description=(
                 "All six identity services. authz-core dominates traffic in production. "
+                "Logs live in Sesame-IDAM — logs explore. "
                 f"Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "sesame-http-spans", 0, 0, 36, 12),
-                ("visualization", "sesame-error-logs", 36, 0, 12, 12),
+                ("visualization", "sesame-platform-logs-link", 0, 0, 12, 6),
+                ("visualization", "sesame-http-spans", 12, 0, 36, 12),
                 ("visualization", "sesame-postgres-pressure", 0, 12, 24, 10),
                 ("search", "sesame-service-snapshot", 24, 12, 24, 10),
             ],
@@ -1190,14 +1238,11 @@ def _sesame_auth_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "sesame-auth-error-logs",
-            line_visualization(
-                title="Auth hot-path errors",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                group_field="serviceName.keyword",
-                query=f"{ERROR_LOGS_QUERY} AND {SESAME_AUTH_HOT_QUERY}",
-                y_title="Errors",
+            "sesame-auth-logs-link",
+            logs_link_markdown(
+                title="Sesame auth logs",
+                log_hub_id="sesame-logs-explore",
+                log_hub_title="Sesame-IDAM — logs explore",
             ),
         ),
         (
@@ -1218,23 +1263,6 @@ def _sesame_auth_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 query=HTTP_SPANS_SESAME_AUTH_QUERY,
             ),
         ),
-        (
-            "search",
-            "sesame-auth-db-pressure",
-            saved_search(
-                title="Sesame DB / pool pressure logs",
-                data_view=LOGS_VIEW,
-                time_field="observedTime",
-                columns=[
-                    "observedTime",
-                    "serviceName",
-                    "severityText",
-                    "traceId",
-                    "body",
-                ],
-                query=DB_PRESSURE_SESAME_QUERY,
-            ),
-        ),
     ]
     objects.append(
         assemble_dashboard(
@@ -1242,14 +1270,14 @@ def _sesame_auth_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="Sesame-IDAM — auth critical path",
             description=(
                 "Login → session → authz-core hot path. "
+                "Logs live in Sesame-IDAM — logs explore. "
                 f"Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "sesame-auth-slo-notes", 0, 0, 12, 8),
                 ("visualization", "sesame-auth-hot-spans", 12, 0, 36, 8),
-                ("visualization", "sesame-auth-error-logs", 0, 8, 24, 10),
+                ("visualization", "sesame-auth-logs-link", 0, 8, 24, 8),
                 ("search", "sesame-auth-spans-snapshot", 24, 8, 24, 10),
-                ("search", "sesame-auth-db-pressure", 0, 18, 48, 14),
             ],
             panel_ref_prefix="sesame_auth",
             time_from="now-3h",
@@ -1259,13 +1287,82 @@ def _sesame_auth_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     return objects
 
 
+def _platform_logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    guide = (
+        "## Platform log triage\n\n"
+        "1. Scan **Recent ERROR/FATAL** and **WARN** panels below.\n"
+        "2. Copy a **traceId** into "
+        "[Platform — incident war room](/app/dashboards#/view/platform-apm-correlation).\n"
+        "3. Pin filters on **serviceName** or **severityText** to narrow results.\n"
+        "4. Default window is **1 hour** with 30s refresh for live troubleshooting."
+    )
+    return _logs_explore_bundle(
+        dashboard_id="platform-logs-explore",
+        title="Platform — logs explore",
+        description=(
+            "Unified log triage across all services. Managed by "
+            f"{MANAGED_BY}"
+        ),
+        scope_query="",
+        db_pressure_query=DB_PRESSURE_LOGS_QUERY,
+        panel_ref_prefix="platform_logs",
+        guide_markdown=guide,
+    )
+
+
+def _loadlinker_logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    guide = (
+        "## Loadlinker log triage\n\n"
+        "Covers P0 (`bff`, `bidding`, `consignments`, `notifications`) and "
+        "P1 services. For RED/SLO metrics see "
+        "[Loadlinker — service health](/app/dashboards#/view/loadlinker-health).\n\n"
+        "Filter by **serviceName** or paste **traceId** into the war room dashboard."
+    )
+    return _logs_explore_bundle(
+        dashboard_id="loadlinker-logs-explore",
+        title="Loadlinker — logs explore",
+        description=(
+            "Unified Loadlinker log triage (P0 + P1). "
+            f"Managed by {MANAGED_BY}"
+        ),
+        scope_query=LOADLINKER_ALL_QUERY,
+        db_pressure_query=DB_PRESSURE_LOADLINKER_QUERY,
+        panel_ref_prefix="loadlinker_logs",
+        guide_markdown=guide,
+    )
+
+
+def _sesame_logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    guide = (
+        "## Sesame-IDAM log triage\n\n"
+        "All six identity services. For auth hot-path traces see "
+        "[Sesame-IDAM — auth critical path](/app/dashboards#/view/sesame-auth-critical-path).\n\n"
+        "Standard columns: time, severity, service, traceId, spanId, body."
+    )
+    return _logs_explore_bundle(
+        dashboard_id="sesame-logs-explore",
+        title="Sesame-IDAM — logs explore",
+        description=(
+            "Unified Sesame-IDAM log triage. "
+            f"Managed by {MANAGED_BY}"
+        ),
+        scope_query=SESAME_SERVICES_QUERY,
+        db_pressure_query=DB_PRESSURE_SESAME_QUERY,
+        panel_ref_prefix="sesame_logs",
+        guide_markdown=guide,
+    )
+
+
 DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "platform-postgres-connections": _platform_postgres_bundle(),
     "platform-data-namespace": _platform_data_bundle(),
     "platform-apm-correlation": _platform_correlation_bundle(),
+    "platform-logs-explore": _platform_logs_explore_bundle(),
+    "loadlinker-logs-explore": _loadlinker_logs_explore_bundle(),
     "loadlinker-health": _loadlinker_health_bundle(),
     "loadlinker-bff-edge": _loadlinker_bff_bundle(),
     "loadlinker-sesame-auth": _loadlinker_sesame_auth_bundle(),
+    "sesame-logs-explore": _sesame_logs_explore_bundle(),
     "sesame-platform-health": _sesame_platform_bundle(),
     "sesame-auth-critical-path": _sesame_auth_bundle(),
 }
@@ -1286,6 +1383,17 @@ DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [
     ("search", "shared-error-logs"),
     ("search", "rerp-api-metrics"),
     ("visualization", "postgres-connections-by-database"),
+    ("visualization", "loadlinker-p0-error-logs"),
+    ("search", "loadlinker-p0-errors"),
+    ("visualization", "loadlinker-bff-error-logs"),
+    ("search", "loadlinker-bff-errors"),
+    ("visualization", "loadlinker-sesame-auth-errors"),
+    ("search", "loadlinker-bff-sesame-auth-logs"),
+    ("visualization", "sesame-error-logs"),
+    ("visualization", "sesame-auth-error-logs"),
+    ("search", "sesame-auth-db-pressure"),
+    ("search", "correlation-logs-by-trace"),
+    ("search", "correlation-errors-with-trace"),
 ]
 
 

@@ -24,9 +24,12 @@ def test_dashboard_bundles_cover_products() -> None:
         "platform-postgres-connections",
         "platform-data-namespace",
         "platform-apm-correlation",
+        "platform-logs-explore",
+        "loadlinker-logs-explore",
         "loadlinker-health",
         "loadlinker-bff-edge",
         "loadlinker-sesame-auth",
+        "sesame-logs-explore",
         "sesame-platform-health",
         "sesame-auth-critical-path",
     }
@@ -60,6 +63,20 @@ def test_ndjson_bundles_exist_and_parse() -> None:
 def test_loadlinker_p0_query_present() -> None:
     assert "bff" in definitions.LOADLINKER_P0_QUERY
     assert "bidding" in definitions.LOADLINKER_P0_QUERY
+
+
+def test_standard_log_columns_defined() -> None:
+    assert "traceId" in definitions.STANDARD_LOG_COLUMNS
+    assert "severityText" in definitions.STANDARD_LOG_COLUMNS
+
+
+def test_log_hub_bundles_exist() -> None:
+    for bundle_id in (
+        "platform-logs-explore",
+        "loadlinker-logs-explore",
+        "sesame-logs-explore",
+    ):
+        assert bundle_id in definitions.DASHBOARD_BUNDLES
 
 
 def test_slo_targets_are_positive() -> None:
