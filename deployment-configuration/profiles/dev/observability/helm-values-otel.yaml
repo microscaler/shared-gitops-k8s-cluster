@@ -132,6 +132,12 @@ config:
       logs:
         log_record:
           - 'IsMatch(severity_text, "^(DEBUG|TRACE)$") and not IsMatch(body, "(?i)^Request (completed|received)$")'
+    # K8s probes flood Request received/completed; keep real traffic only.
+    filter/drop-health-probes:
+      error_mode: ignore
+      logs:
+        log_record:
+          - 'IsMatch(attributes["path"], "^/(health|readyz|livez|healthz)$") and IsMatch(body, "(?i)^Request (completed|received)$")'
     # High-churn runtime I/O / metrics drown application signal. Drop at the
     # collector (source reader) before classify/export. Lifecycle/config noise
     # stays indexed for explicit selection via Logs / Runtime noise.
@@ -220,6 +226,6 @@ config:
         receivers: [otlp]
         # k8sattributes is injected by presets.kubernetesAttributes before this list
         # is merged; transform overwrites service.namespace from k8s.namespace.name.
-        # Drop epoll before classify so volume never reaches OpenSearch.
-        processors: [memory_limiter, filter/drop-epoll-io, transform/classify-log-signal, filter/drop-low-severity, batch]
+        # Drop epoll/memory/probes before classify so volume never reaches OpenSearch.
+        processors: [memory_limiter, filter/drop-epoll-io, filter/drop-health-probes, transform/classify-log-signal, filter/drop-low-severity, batch]
         exporters: [otlp/logs]
