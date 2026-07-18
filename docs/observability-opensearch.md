@@ -90,12 +90,11 @@ Primary log exploration is GitOps-managed:
 - **Filter hierarchy** — **namespace** → **application** → **time** → **event_class** / **event_category**
 - **Selected / Popular fields** — `k8s.namespace.name`, `serviceName`, `severityText`, `event_class`, `event_category`, `has_trace`
 - **Namespaces** — real cluster namespaces (`loadlinker`, `sesame-idam`, `rerp`). No `microscaler` ns
-- **Epoll drop (collector)** — may `add/del/mod fd … epoll select` is dropped by `filter/drop-epoll-io` before export (was ~99% of volume)
+- **Collector drop** — `filter/drop-epoll-io` strips may `epoll select` and BRRTRouter `Memory statistics` before OpenSearch (was ~99% of volume)
 - **Runtime noise tagging** — Collector sets `event_class:runtime_noise` with `event_category`:
-  - `runtime_metrics` — BRRTRouter memory stats
   - `runtime_config` — may `set workers=` / `set stack size=`
   - `framework_lifecycle` — BRRTRouter handler registration, validator cache, routing table, metrics path pre-register
-  These stay indexed; open **Logs / Runtime noise** to select them. Epoll is not indexed.
+  These stay indexed; open **Logs / Runtime noise** to select them. Epoll/memory are not indexed.
 - **Landing page** — Discover saved searches (Signal); provisioner sets `defaultIndex` to logs. Do not set `opensearchDashboards.defaultRoute` in helm values (OSD 2.19 rejects it)
 
 ### Saved searches (Discover → Open)

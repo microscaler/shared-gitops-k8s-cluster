@@ -130,15 +130,17 @@ config:
       logs:
         log_record:
           - 'IsMatch(severity_text, "^(DEBUG|TRACE)$")'
-    # may add/del/mod fd epoll select is ~99% of log volume and drowns application
-    # signal. Drop at the collector (source reader) before classify/export.
-    # Memory stats and other runtime_noise stay indexed for explicit selection.
+    # High-churn runtime I/O / metrics drown application signal. Drop at the
+    # collector (source reader) before classify/export. Lifecycle/config noise
+    # stays indexed for explicit selection via Logs / Runtime noise.
     filter/drop-epoll-io:
       error_mode: ignore
       logs:
         log_record:
           - 'attributes["log.target"] == "may::io::sys::select"'
           - 'IsMatch(body, "(?i).*epoll select.*")'
+          - 'instrumentation_scope.name == "brrtrouter::middleware::memory"'
+          - 'IsMatch(body, "(?i)^Memory statistics$")'
     # Prometheus staleness markers are OTLP datapoints with
     # DATA_POINT_FLAGS_NO_RECORDED_VALUE (currently bit value 1). Data Prepper
     # cannot index a gauge without a value, so discard the marker, not a real
@@ -148,8 +150,8 @@ config:
       metrics:
         datapoint:
           - flags == 1
-    # Tag remaining logs with event_class + event_category. Epoll is dropped
-    # upstream; other runtime_noise stays selectable via Logs / Runtime noise.
+    # Tag remaining logs with event_class + event_category. Epoll/memory are
+    # dropped upstream; lifecycle/config runtime_noise stays selectable.
     # Prefer k8s namespace over app defaults.
     transform/classify-log-signal:
       error_mode: ignore
@@ -159,18 +161,14 @@ config:
             - set(attributes["service.namespace"], attributes["k8s.namespace.name"]) where attributes["k8s.namespace.name"] != nil
         - context: log
           statements:
-            # --- Runtime noise (epoll already dropped by filter/drop-epoll-io) ---
-            # BRRTRouter periodic memory stats
-            - set(attributes["event_category"], "runtime_metrics") where instrumentation_scope.name == "brrtrouter::middleware::memory"
-            - set(attributes["event_category"], "runtime_metrics") where attributes["event_category"] == nil and attributes["rss_mb"] != nil
-            - set(attributes["event_category"], "runtime_metrics") where attributes["event_category"] == nil and IsMatch(body, "(?i)^Memory statistics$")
+            # --- Runtime noise (epoll/memory already dropped by filter/drop-epoll-io) ---
             # may runtime knobs (workers / stack size)
             - set(attributes["event_category"], "runtime_config") where attributes["log.target"] == "may::config"
             - set(attributes["event_category"], "runtime_config") where attributes["event_category"] == nil and IsMatch(body, "(?i)^set (workers|stack size)=")
             # BRRTRouter bootstrap / hot-reload lifecycle (not request-path signal)
             - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i)^brrtrouter::(dispatcher::core|validator_cache|router::core|server::service)$")
             - set(attributes["event_category"], "framework_lifecycle") where attributes["event_category"] == nil and IsMatch(body, "(?i)^(Handler registered successfully|Replaced existing handler|Schema validator|Initializing JSON Schema|Precompiled schemas|Routing table loaded|Pre-registering paths)")
-            - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "runtime_metrics" or attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
+            - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
             # --- Application signal categories ---
             - set(attributes["event_category"], "auth") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i).*(jwks|login|session|authz|api.keys|org.mgmt|user.mgmt).*")
             - set(attributes["event_category"], "application") where attributes["event_category"] == nil
