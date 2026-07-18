@@ -3,7 +3,7 @@
 Updated: 2026-07-18
 
 ## Status
-- OTEL  drops may epoll select AND BRRTRouter Memory statistics before OpenSearch.
-- Verified: last 2m after epoll-only drop had 0 epoll; remaining was memory+JWKS. Memory drop added next.
-- Signal: .
-- Unrelated dirty: openbao/bootstrap.sh — leave unstaged.
+- OTEL `filter/drop-epoll-io` drops may epoll select AND BRRTRouter Memory statistics before OpenSearch.
+- Verified last 60s: only JWKS (auth); epoll=0, memory=0.
+- Signal query: `log.attributes.event_class:application`.
+- Unrelated dirty: `gitops/root/components/platform/openbao/bootstrap.sh` — leave unstaged.
