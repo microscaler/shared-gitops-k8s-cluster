@@ -114,6 +114,8 @@ def test_data_persistence_ndjson_and_panels() -> None:
     assert "%context%" not in spec
     assert "%timefield%" not in spec
     assert "%timefilter%" in spec
+    # Body rows must sit below the header (band scale alone starts at y=0).
+    assert '"y":{"value":24}' in spec.replace(" ", "")
 
 
 def test_discover_is_canonical_field_sidebar_surface() -> None:

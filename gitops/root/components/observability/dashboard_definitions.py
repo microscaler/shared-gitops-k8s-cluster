@@ -1677,72 +1677,87 @@ def metrics_streaming_replicas_vega(
                     },
                 ],
             },
+            # Offset body below the header row (same pattern as logs top-paths).
+            # Without this, band scale row 1 starts at y=0 and overlaps the header.
             {
-                "type": "text",
-                "from": {"data": "replicas"},
+                "type": "group",
                 "encode": {
                     "update": {
-                        "x": {"value": 0},
-                        "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {"field": "client"},
-                        "fontSize": {"value": 12},
-                        "fill": {"value": "#111"},
+                        "y": {"value": 24},
+                        "width": {"signal": "width"},
+                        "height": {"signal": "height - 24"},
                     }
                 },
-            },
-            {
-                "type": "text",
-                "from": {"data": "replicas"},
-                "encode": {
-                    "update": {
-                        "x": {"signal": "width * 0.38"},
-                        "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {"field": "state"},
-                        "fontSize": {"value": 12},
-                        "fontWeight": {"value": "bold"},
-                        "fill": {
-                            "signal": (
-                                "datum.state === 'streaming' ? '#0a7a28' : '#b00020'"
-                            )
+                "marks": [
+                    {
+                        "type": "text",
+                        "from": {"data": "replicas"},
+                        "encode": {
+                            "update": {
+                                "x": {"value": 0},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"field": "client"},
+                                "fontSize": {"value": 12},
+                                "fill": {"value": "#111"},
+                            }
                         },
-                    }
-                },
-            },
-            {
-                "type": "text",
-                "from": {"data": "replicas"},
-                "encode": {
-                    "update": {
-                        "x": {"signal": "width * 0.58"},
-                        "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {"field": "slot"},
-                        "fontSize": {"value": 12},
-                        "fill": {"value": "#555"},
-                    }
-                },
-            },
-            {
-                "type": "text",
-                "from": {"data": "replicas"},
-                "encode": {
-                    "update": {
-                        "x": {"signal": "width"},
-                        "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {
-                            "signal": (
-                                "datum.lag == null ? '—' : "
-                                "format(datum.lag, ',.0f')"
-                            )
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "replicas"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.38"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"field": "state"},
+                                "fontSize": {"value": 12},
+                                "fontWeight": {"value": "bold"},
+                                "fill": {
+                                    "signal": (
+                                        "datum.state === 'streaming' "
+                                        "? '#0a7a28' : '#b00020'"
+                                    )
+                                },
+                            }
                         },
-                        "align": {"value": "right"},
-                        "fontSize": {"value": 12},
-                        "fill": {
-                            "signal": (
-                                "datum.lag > 0 ? '#b00020' : '#0a7a28'"
-                            )
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "replicas"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width * 0.58"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {"field": "slot"},
+                                "fontSize": {"value": 12},
+                                "fill": {"value": "#555"},
+                            }
                         },
-                    }
-                },
+                    },
+                    {
+                        "type": "text",
+                        "from": {"data": "replicas"},
+                        "encode": {
+                            "update": {
+                                "x": {"signal": "width"},
+                                "y": {"scale": "y", "field": "row", "band": 0.5},
+                                "text": {
+                                    "signal": (
+                                        "datum.lag == null ? '—' : "
+                                        "format(datum.lag, ',.0f')"
+                                    )
+                                },
+                                "align": {"value": "right"},
+                                "fontSize": {"value": 12},
+                                "fill": {
+                                    "signal": (
+                                        "datum.lag > 0 ? '#b00020' : '#0a7a28'"
+                                    )
+                                },
+                            }
+                        },
+                    },
+                ],
             },
         ],
     }
