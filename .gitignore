@@ -29,3 +29,5 @@ dist/
 
 # Agent local
 .agent/memory-bank/*.local.md
+deploy/generated/
+.cluster/

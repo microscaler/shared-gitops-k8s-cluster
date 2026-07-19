@@ -1,9 +1,6 @@
 # MetalLB LoadBalancer inventory (dev / Multipass bridge 10.177.76.0/24).
-# Host LAN proxy (shared-k8s-cluster) should consume this file — do not fork a second table.
+# Keep aligned with config/loadbalancer-ips.env + config/lan-exposure.yaml.
 # Check drift: just check-metallb-inventory
-# Future clusters override via clusters/<id>/inventory/metallb-services.yaml.
-#
-# status: unused → reserved IP, no component annotation expected yet
 
 services:
   - name: registry
@@ -75,7 +72,6 @@ services:
         protocol: TCP
     lan_port: 9000
 
-  # Historical Grafana IP — now OpenSearch Dashboards LB (port 5601)
   - name: opensearch-dashboards-lb
     namespace: observability
     lb_ip: 10.177.76.227
@@ -85,35 +81,30 @@ services:
         protocol: TCP
     lan_port: 5601
 
-  - name: prometheus
-    namespace: observability
+  - name: fluvio-sc-public
+    namespace: pipeline
     lb_ip: 10.177.76.228
-    status: unused
     ports:
-      - name: http
-        port: 9090
+      - name: public
+        port: 9003
         protocol: TCP
-    lan_port: 9090
+    lan_port: 9003
 
-  - name: loki
-    namespace: observability
+  - name: fluvio-spu-default-0
+    namespace: pipeline
     lb_ip: 10.177.76.229
-    status: unused
     ports:
-      - name: http
-        port: 3100
+      - name: public
+        port: 9005
         protocol: TCP
-    lan_port: 3100
 
-  - name: jaeger
-    namespace: observability
+  - name: fluvio-spu-default-1
+    namespace: pipeline
     lb_ip: 10.177.76.230
-    status: unused
     ports:
-      - name: ui
-        port: 16686
+      - name: public
+        port: 9005
         protocol: TCP
-    lan_port: 16686
 
   - name: otel-collector
     namespace: observability
@@ -148,7 +139,21 @@ services:
         protocol: TCP
     lan_port: 7420
 
-  # MailHog retired (2026-07-16) — use mailpit .235
+  # Envoy Gateway data-plane Service (name is controller-generated; inventory tracks VIP).
+  - name: envoy-microscaler-dev
+    namespace: envoy-gateway-system
+    lb_ip: 10.177.76.234
+    ports:
+      - name: http
+        port: 80
+        protocol: TCP
+      - name: https
+        port: 443
+        protocol: TCP
+    lan_port: 80
+    lan_ports:
+      - {name: http, lan_port: 80, target_port: 80}
+      - {name: https, lan_port: 443, target_port: 443}
 
   - name: mailpit
     namespace: data
@@ -168,9 +173,17 @@ services:
   - name: resurrection-hub
     namespace: cylon
     lb_ip: 10.177.76.236
-    status: unused
     ports:
       - name: http
         port: 14000
         protocol: TCP
     lan_port: 14000
+
+  - name: frontend
+    namespace: loadlinker
+    lb_ip: 10.177.76.237
+    ports:
+      - name: http
+        port: 8080
+        protocol: TCP
+    lan_port: 8080

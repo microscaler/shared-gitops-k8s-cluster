@@ -1,6 +1,6 @@
 ---
-# Install + enable microscaler-lan-proxy. Config *content* still rendered by
-# shared-k8s-cluster tools/configure_lan_proxy.py (exposure YAML + TLS sync).
+# Install + enable microscaler-lan-proxy. Config rendered by this repo's
+# tools/configure_lan_proxy.py (exposure YAML + TLS sync).
 
 lan_proxy_enabled: true
 lan_proxy_unit_name: microscaler-lan-proxy.service

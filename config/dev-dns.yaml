@@ -2,17 +2,15 @@
 #
 # LAN zone (Mac / 192.168.1.x): *.dev.microscaler.local → MS02_LAN_IP (haproxy :80/:443).
 # MetalLB zone (ms02 / Multipass bridge): *.metallb.dev → fixed LoadBalancer IPs.
-#
-# Mac clients: copy deploy/mac-resolver/dev.microscaler.local → /etc/resolver/dev.microscaler.local
 
 lan_zone: dev.microscaler.local
 metallb_zone: metallb.dev
 
-# Hostnames not yet in lan-exposure.yaml (same LAN IP; ports via Tilt / future ingress).
 extra_lan_hostnames:
   - hauliage
   - sesame-idam
   - cylon
   - tilt-hauliage
   - tilt-sesame
-  - tilt-platform
+  - opensearch
+  - grafana

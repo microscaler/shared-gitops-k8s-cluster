@@ -3,37 +3,50 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys
-
 sys.path.insert(0, str(ROOT / "tools"))
 
-from configure_lan_proxy import ProxyEntry, load_env, load_proxies, render_haproxy  # noqa: E402
+from configure_lan_proxy import ProxyEntry, load_env, load_http_vhosts, load_proxies, render_haproxy  # noqa: E402
 
 
 class LanProxyRenderTest(unittest.TestCase):
-    def test_render_contains_grafana_frontend(self) -> None:
+    def test_render_contains_opensearch_dashboards(self) -> None:
         env = load_env()
         entries = load_proxies(env)
-        grafana = next(e for e in entries if e.name == "grafana")
+        osd = next(e for e in entries if e.name == "opensearch-dashboards")
         cfg = render_haproxy(entries, [], {})
-        self.assertIn(f"bind {grafana.bind_ip}:3000", cfg)
-        self.assertIn(f"server metallb {grafana.target_ip}:3000", cfg)
+        self.assertIn(f"bind {osd.bind_ip}:5601", cfg)
+        self.assertIn(f"server metallb {osd.target_ip}:5601", cfg)
 
-    def test_render_http_vhost_hauliage(self) -> None:
-        from configure_lan_proxy import HttpVhost, load_http_vhosts
+    def test_render_contains_kubernetes_api(self) -> None:
+        env = load_env()
+        entries = load_proxies(env)
+        api = next(e for e in entries if e.name == "k8s-api")
+        self.assertEqual(api.lan_port, 6443)
+        self.assertEqual(api.target_port, 6443)
 
+    def test_render_envoy_edge_passthrough(self) -> None:
+        env = load_env()
+        entries = load_proxies(env)
+        http = next(e for e in entries if e.name == "envoy-http")
+        https = next(e for e in entries if e.name == "envoy-https")
+        self.assertEqual(http.lan_port, 80)
+        self.assertEqual(https.lan_port, 443)
+        self.assertEqual(http.target_ip, env["ENVOY_GATEWAY_LB_IP"])
+        cfg = render_haproxy(entries, [], {})
+        self.assertIn(f"bind {http.bind_ip}:80", cfg)
+        self.assertIn(f"server metallb {http.target_ip}:80", cfg)
+        self.assertIn(f"server metallb {https.target_ip}:443", cfg)
+
+    def test_http_vhosts_retired_empty(self) -> None:
         env = load_env()
         vhosts, raw = load_http_vhosts(env)
-        hauliage = next(v for v in vhosts if v.host == "hauliage.dev.microscaler.local")
-        cfg = render_haproxy([], vhosts, raw)
-        self.assertIn("frontend http_dev_vhosts", cfg)
-        self.assertIn(f"bind {hauliage.bind_ip}:80", cfg)
-        self.assertIn("hdr(host) -i hauliage.dev.microscaler.local", cfg)
-        self.assertIn(f"server metallb {hauliage.target_ip}:8080", cfg)
+        self.assertEqual(vhosts, [])
+        self.assertEqual(raw.get("vhosts"), [])
 
     def test_postgres_lan_port_matches_kind(self) -> None:
         env = load_env()

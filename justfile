@@ -2,7 +2,7 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
 repo_root := justfile_directory()
-day0_kubeconfig := repo_root + "/../shared-k8s-cluster/kubeconfig/shared-k8s.yaml"
+day0_kubeconfig := repo_root + "/kubeconfig/shared-k8s.yaml"
 ansible_dir := repo_root + "/ansible"
 
 default:
@@ -37,9 +37,57 @@ cluster-edge-check *tags:
 	  ansible-playbook playbooks/ms02_cluster_edge.yml --check --diff
 	fi
 
-# Install/refresh ~/.config/systemd/user/tilt-*.service (replaces shared-k8s just install-systemd)
+# Install/refresh ~/.config/systemd/user/tilt-*.service
 tilt-units-apply:
 	just cluster-edge-apply tilt_units
+
+# ── Day-0 Multipass/k3s (day0.justfile) ────────────────────────────────────
+# VMs + kubeconfig + MetalLB/registry seed. Platform after that is Flux.
+
+cluster-create:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" cluster-create
+
+cluster-delete:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" cluster-delete
+
+cluster-recreate:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" cluster-recreate
+
+cluster-fetch-kubeconfig:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" cluster-fetch-kubeconfig
+
+check-ready:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" check-ready
+
+infra-up:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" infra-up
+
+status:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" status
+
+lan-proxy-up:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" lan-proxy-up
+
+lan-proxy-down:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" lan-proxy-down
+
+lan-proxy-status:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" lan-proxy-status
+
+tilt-remote-trigger app resource:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" tilt-remote-trigger {{app}} {{resource}}
+
+tilt-remote-wait app resource timeout="300s":
+	just --justfile day0.justfile --working-directory "{{repo_root}}" tilt-remote-wait {{app}} {{resource}} {{timeout}}
+
+tilt-remote-logs app resource tail="50":
+	just --justfile day0.justfile --working-directory "{{repo_root}}" tilt-remote-logs {{app}} {{resource}} {{tail}}
+
+tilt-remote-cycle app resource:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" tilt-remote-cycle {{app}} {{resource}}
+
+restart-tilt-apps:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" restart-tilt-apps
 
 # Schema-check inventory YAML (+ generated stacks.yaml drift)
 validate-inventory:

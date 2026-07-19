@@ -1,9 +1,9 @@
-# HTTP(S) host routing on ms02 LAN IP — replaces per-app :8081-style TCP proxies for web UIs.
+# RETIRED — HTTP host routing for *.dev.microscaler.local is Envoy Gateway + HTTPRoute
+# (gitops/root/components/envoy-gateway/). Lan-proxy only TCP-forwards :80/:443 to
+# ENVOY_GATEWAY_LB_IP (see config/lan-exposure.yaml).
 #
-# Mac clients: http://hauliage.dev.microscaler.local/ (port 80)
-#              https://hauliage.dev.microscaler.local/ (port 443, cert-manager dev CA)
-#
-# TLS secret is synced to ms02 by tools/sync_haproxy_tls.py (systemd ExecStartPre).
+# Keep this file so tools/configure_lan_proxy.py and sync_haproxy_tls.py stay stable
+# with an empty vhost list (no host-based haproxy frontends).
 
 http_port: 80
 https_port: 443
@@ -11,36 +11,7 @@ https_port: 443
 tls:
   namespace: cert-manager
   secret_name: dev-microscaler-local-tls
-  # Rendered on ms02 by sync_haproxy_tls.py (install creates dir via lan-proxy-install).
   sync_dir: /etc/microscaler/haproxy/certs
-  # Combined PEM basename haproxy expects under sync_dir (wildcard covers all vhosts below).
   pem_file: dev.microscaler.local.pem
 
-vhosts:
-  - host: hauliage.dev.microscaler.local
-    name: hauliage-frontend
-    lb_ip_env: HAULIAGE_FRONTEND_LB_IP
-    target_port: 8080
-
-  # Tilt UIs on ms02 (systemd user units bind 0.0.0.0 — see deploy/APPS.md).
-  # Mac: http://tilt-hauliage.dev.microscaler.local/ (split DNS → haproxy :80).
-  - host: tilt-hauliage.dev.microscaler.local
-    name: tilt-hauliage
-    target_host: 127.0.0.1
-    target_port: 10352
-
-  - host: tilt-sesame.dev.microscaler.local
-    name: tilt-sesame-idam
-    target_host: 127.0.0.1
-    target_port: 10351
-
-  - host: tilt-platform.dev.microscaler.local
-    name: tilt-shared-k8s
-    target_host: 127.0.0.1
-    target_port: 10349
-
-  # Optional: migrate observability off legacy :3000/:9090 TCP proxies when convenient.
-  - host: grafana.dev.microscaler.local
-    name: grafana
-    lb_ip_env: GRAFANA_LB_IP
-    target_port: 3000
+vhosts: []

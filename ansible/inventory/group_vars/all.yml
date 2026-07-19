@@ -1,6 +1,8 @@
 ---
 # Paths relative to ms02 filesystem (NFS-synced Workspace).
-shared_k8s_root: /home/casibbald/Workspace/microscaler/shared-k8s-cluster
+# Canonical home for kubeconfig, host-edge tools, lan-proxy, and Tilt units
+# is shared-gitops-k8s-cluster (shared-k8s-cluster is retired).
+shared_k8s_root: /home/casibbald/Workspace/microscaler/shared-gitops-k8s-cluster
 shared_k8s_cluster_env: "{{ shared_k8s_root }}/config/cluster.env"
 shared_k8s_runtime_env: "{{ shared_k8s_root }}/.cluster/runtime.env"
 shared_k8s_kubeconfig: "{{ shared_k8s_root }}/kubeconfig/shared-k8s.yaml"

@@ -27,6 +27,13 @@ stacks:
   depends:
   - name: stack-namespaces
   - name: profile-config-democratic-csi
+- name: envoy-gateway
+  path: ./gitops/root/components/envoy-gateway
+  description: Envoy Gateway edge for *.dev.microscaler.local (MetalLB .234); HTTPRoutes
+    are GitOps
+  depends:
+  - name: stack-namespaces
+  - name: stack-platform-dev-tls
 - name: imgproxy
   path: ./gitops/root/components/imgproxy
   description: Imgproxy over MinIO PVC

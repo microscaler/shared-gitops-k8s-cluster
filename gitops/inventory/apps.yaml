@@ -10,8 +10,8 @@ defaults:
 apps:
   - id: platform
     port: 10349
-    repo: shared-k8s-cluster
-    aliases: [platform, shared-k8s, shared-k8s-cluster]
+    repo: shared-gitops-k8s-cluster
+    aliases: [platform, shared-k8s, shared-gitops-k8s-cluster]
   - id: sesame
     port: 10351
     repo: sesame-idam

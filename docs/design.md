@@ -3,7 +3,7 @@
 - **Status**: `active` (Phase 1 scaffold)
 - **Date**: 2026-07-15
 - **Repo**: this repository (Day 1+ GitOps)
-- **Day 0**: [`shared-k8s-cluster`](../../shared-k8s-cluster/) (Multipass / k3s / LAN proxy)
+- **Day 0**: [`shared-gitops-k8s-cluster`](../../shared-gitops-k8s-cluster/) (Multipass / k3s / LAN proxy)
 - **References**: [`metro/sam-fluxcd`](../../metro/sam-fluxcd/), [`weaveworks/gitopssets-controller`](../../weaveworks/gitopssets-controller/)
 
 ---
@@ -38,7 +38,7 @@ HelmRelease values in `gitops/root/controllers/gitopssets/helm-release.yaml` pin
 
 ```mermaid
 flowchart TB
-  subgraph day0 ["Day 0 — shared-k8s-cluster"]
+  subgraph day0 ["Day 0 — shared-gitops-k8s-cluster"]
     MP[Multipass VMs + k3s]
     MLB[MetalLB CRDs / pool]
     LAN[haproxy + dnsmasq]
@@ -131,9 +131,9 @@ Details: [`deployment-configuration/README.md`](../deployment-configuration/READ
 
 ## Bootstrap checklist (dev)
 
-1. Day 0: `shared-k8s-cluster` → `just cluster-create`
+1. Day 0: `shared-gitops-k8s-cluster` → `just cluster-create`
 2. Create GitHub repo + push this tree
-3. `export KUBECONFIG=…/shared-k8s-cluster/kubeconfig/shared-k8s.yaml`
+3. `export KUBECONFIG=…/shared-gitops-k8s-cluster/kubeconfig/shared-k8s.yaml`
 4. `just create-git-secret keyfile=…` (or HTTPS token secret)
 5. `just bootstrap-dev`
 6. `flux get ks -A` → expect `cluster-control`, then `stack-namespaces`
@@ -146,4 +146,4 @@ Details: [`deployment-configuration/README.md`](../deployment-configuration/READ
 
 > **Open:** Whether MetalLB *operator* stays Day-0-only (recommended) while Services move to GitOps.
 
-> **Open:** Point shared-k8s-cluster LAN proxy tooling at `gitops/inventory/metallb-services.yaml` in this repo (symlink or path config).
+> **Open:** Point shared-gitops-k8s-cluster LAN proxy tooling at `gitops/inventory/metallb-services.yaml` in this repo (symlink or path config).

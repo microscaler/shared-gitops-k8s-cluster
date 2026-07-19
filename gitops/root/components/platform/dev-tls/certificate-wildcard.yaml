@@ -1,4 +1,6 @@
-# Wildcard cert for *.dev.microscaler.local — synced to ms02 haproxy by sync_haproxy_tls.py.
+# Wildcard cert for *.dev.microscaler.local — referenced by Envoy Gateway
+# (gitops/root/components/envoy-gateway/gateway.yaml). Optional haproxy sync is unused
+# once lan-proxy only TCP-forwards :443 to the Envoy VIP.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

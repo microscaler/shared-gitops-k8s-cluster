@@ -109,3 +109,8 @@ stacks:
     path: ./gitops/root/components/platform-dev-tls
     description: cert-manager bootstrapped dev CA + wildcard
     depends_on: [namespaces]
+
+  - name: envoy-gateway
+    path: ./gitops/root/components/envoy-gateway
+    description: Envoy Gateway edge for *.dev.microscaler.local (MetalLB .234); HTTPRoutes are GitOps
+    depends_on: [namespaces, platform-dev-tls]

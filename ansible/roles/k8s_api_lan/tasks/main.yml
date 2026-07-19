@@ -110,11 +110,11 @@
         path: "{{ k8s_api_lan_kubeconfig }}"
       register: k8s_api_lan_kc_stat
 
-    - name: Fail if shared-k8s.yaml missing (run shared-k8s just cluster-fetch-kubeconfig first)
+    - name: Fail if shared-k8s.yaml missing
       ansible.builtin.fail:
         msg: >-
-          Missing {{ k8s_api_lan_kubeconfig }}. On ms02:
-          cd {{ k8s_api_lan_shared_k8s_root }} && just cluster-fetch-kubeconfig
+          Missing {{ k8s_api_lan_kubeconfig }}. On ms02 ensure kubeconfig exists under
+          shared-gitops-k8s-cluster/kubeconfig/ (fetch from the control-plane node if needed).
       when: not k8s_api_lan_kc_stat.stat.exists
 
     - name: Write Mac kubeconfig (server → https://LAN_IP:6443)

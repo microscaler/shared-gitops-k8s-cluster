@@ -1,6 +1,6 @@
 # shared-gitops-k8s-cluster — agent rules
 
-> **What this repository is** — FluxCD + GitOpsSets source of truth for Microscaler **platform** clusters. Day-0 Multipass/k3s **VM bootstrap** remains in [`../shared-k8s-cluster`](../shared-k8s-cluster/). **Cluster-adjacent host edge** (CSI UFW, lan-proxy unit, k8s API LAN/tls-san/mac kubeconfig) is thin Ansible under [`ansible/`](./ansible/) — see [`docs/day0-host-edge-ansible.md`](./docs/day0-host-edge-ansible.md).
+> **What this repository is** — FluxCD + GitOpsSets source of truth for Microscaler **platform** clusters, plus Day-0 host edge (kubeconfig, lan-proxy, Multipass cloud-init, Tilt systemd units). The former [`shared-gitops-k8s-cluster`](../shared-gitops-k8s-cluster/) repo is **retired** — do not point new paths at it. Host edge Ansible: [`docs/day0-host-edge-ansible.md`](./docs/day0-host-edge-ansible.md).
 
 Desktop topology (Mac resolver, L3 route, split DNS): [`cylon-local-infra`](https://github.com/microscaler/cylon-local-infra/blob/main/docs/desktop-dev-environment.md). **Run flux/kubectl and thin Ansible on ms02** (`just cluster-edge-apply`, `just tilt-units-apply`). From Mac: `ssh ms02 'cd ~/Workspace/microscaler/shared-gitops-k8s-cluster && just …'`.
 
@@ -8,13 +8,13 @@ Desktop topology (Mac resolver, L3 route, split DNS): [`cylon-local-infra`](http
 
 1. Read [`docs/design.md`](./docs/design.md).
 2. Read [`README.md`](./README.md).
-3. For Multipass node IPs / LAN proxy, read [`../shared-k8s-cluster/docs/llmwiki/topics/cluster-topology.md`](../shared-k8s-cluster/docs/llmwiki/topics/cluster-topology.md).
+3. For Multipass / MetalLB topology, read [`docs/`](./docs/) and `config/loadbalancer-ips.env`.
 
 ## Core rules
 
 ### 1. `dev` = Multipass shared-k8s
 
-Bootstrap target context is **`shared-k8s`** (`shared-k8s-cluster/kubeconfig/shared-k8s.yaml`). Do not apply `clusters/dev` to Kind or a random context.
+Bootstrap target context is **`shared-k8s`** (`kubeconfig/shared-k8s.yaml` in this repo). Do not apply `clusters/dev` to Kind or a random context.
 
 ### 2. Inventories are the source of truth
 

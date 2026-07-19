@@ -1,0 +1,30 @@
+# Hauliage frontend — hostname owned via GitOps annotation + HTTPRoute.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hauliage-frontend
+  namespace: loadlinker
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: hauliage.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - hauliage.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: frontend
+          port: 8080

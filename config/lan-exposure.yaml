@@ -1,32 +1,39 @@
 # LAN exposure on ms02 for Mac / 192.168.1.x clients.
 # Binds MS02_LAN_IP (default 192.168.1.189) and forwards to MetalLB Service IPs.
-# Replaces Kind extraPortMappings (shared-kind-cluster/kind-config.yaml).
+# Keep in sync with config/loadbalancer-ips.env + gitops/inventory/metallb-services.yaml.
 #
-# Apply on ms02: just lan-proxy-install && just lan-proxy-up
+# HTTP host routing for *.dev.microscaler.local is Envoy Gateway (GitOps HTTPRoute).
+# Lan-proxy only TCP-forwards :80/:443 to ENVOY_GATEWAY_LB_IP.
+#
+# Apply on ms02: just lan-proxy-up  (or just cluster-edge-apply lan_proxy)
 
 ms02_lan_ip: "192.168.1.189"
 
 proxies:
-  # --- Observability (Kind hostPorts) ---
-  - name: grafana
-    lan_port: 3000
-    lb_ip_env: GRAFANA_LB_IP
-    target_port: 3000
+  # --- Kubernetes API (Multipass CP on mpqemubr0; IP from config/cluster.env) ---
+  - name: k8s-api
+    lan_port: 6443
+    lb_ip_env: K8S_CP_IP
+    target_port: 6443
     protocol: tcp
-  - name: loki
-    lan_port: 3100
-    lb_ip_env: LOKI_LB_IP
-    target_port: 3100
+
+  # --- Edge: thin TCP passthrough → Envoy Gateway ---
+  - name: envoy-http
+    lan_port: 80
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 80
     protocol: tcp
-  - name: prometheus
-    lan_port: 9090
-    lb_ip_env: PROMETHEUS_LB_IP
-    target_port: 9090
+  - name: envoy-https
+    lan_port: 443
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 443
     protocol: tcp
-  - name: jaeger-ui
-    lan_port: 16686
-    lb_ip_env: JAEGER_LB_IP
-    target_port: 16686
+
+  # --- Observability (OpenSearch stack; no Grafana/Loki/Prom/Jaeger) ---
+  - name: opensearch-dashboards
+    lan_port: 5601
+    lb_ip_env: OPENSEARCH_DASHBOARDS_LB_IP
+    target_port: 5601
     protocol: tcp
   - name: otel-grpc
     lan_port: 4317
@@ -75,16 +82,6 @@ proxies:
     lb_ip_env: MAILPIT_LB_IP
     target_port: 8025
     protocol: tcp
-  - name: mailhog-smtp
-    lan_port: 1026
-    lb_ip_env: MAILHOG_LB_IP
-    target_port: 1025
-    protocol: tcp
-  - name: mailhog-web
-    lan_port: 8026
-    lb_ip_env: MAILHOG_LB_IP
-    target_port: 8025
-    protocol: tcp
 
   # --- Scheduling ---
   - name: faktory
@@ -96,6 +93,13 @@ proxies:
     lan_port: 7420
     lb_ip_env: FAKTORY_LB_IP
     target_port: 7420
+    protocol: tcp
+
+  # --- Pipeline ---
+  - name: fluvio-sc
+    lan_port: 9003
+    lb_ip_env: FLUVIO_SC_LB_IP
+    target_port: 9003
     protocol: tcp
 
   # --- Cylon infra ---
@@ -125,7 +129,7 @@ proxies:
     target_port: 1813
     protocol: udp
 
-  # --- Registry (Kind docker push parity: localhost:5001 on ms02; LAN for Mac builds) ---
+  # --- Registry ---
   - name: registry
     lan_port: 5001
     lb_ip_env: REGISTRY_LB_IP

@@ -119,6 +119,24 @@
       loop_control:
         label: "{{ item.unit }}"
 
+    - name: Disable retired / opted-out Tilt app user units
+      become: true
+      become_user: "{{ tilt_user_units_operator }}"
+      ansible.builtin.systemd:
+        name: "{{ item.unit }}.service"
+        scope: user
+        enabled: false
+        state: stopped
+        daemon_reload: true
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ tilt_user_units_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ tilt_user_units_uid }}/bus"
+      loop: "{{ tilt_user_units_apps }}"
+      when: not (item.enable | default(true) | bool)
+      loop_control:
+        label: "{{ item.unit }}"
+      failed_when: false
+
     - name: Start Tilt app user units (optional)
       become: true
       become_user: "{{ tilt_user_units_operator }}"

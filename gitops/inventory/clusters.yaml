@@ -10,8 +10,8 @@ clusters:
     role: development
     status: active
     bootstrap:
-      day0_repo: shared-k8s-cluster
-      kubeconfig_hint: ../shared-k8s-cluster/kubeconfig/shared-k8s.yaml
+      day0_repo: shared-gitops-k8s-cluster
+      kubeconfig_hint: kubeconfig/shared-k8s.yaml
       context: shared-k8s
     git:
       # Patch after the GitHub remote exists (also clusters/dev/patches/git-url.patch.yaml)

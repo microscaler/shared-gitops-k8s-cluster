@@ -1,7 +1,8 @@
 ---
-# systemd --user Tilt units for ms02 (was shared-k8s just install-systemd).
+# systemd --user Tilt units for ms02.
+# Paths live under shared-gitops-k8s-cluster (shared-k8s-cluster is retired).
 # HTTP vhosts tilt-*.dev.microscaler.local are rendered by lan_proxy from
-# shared-k8s tooling/tilt-apps.yaml — keep ports in sync with that file.
+# config/lan-http-vhosts.yaml — keep ports in sync with that file.
 
 tilt_user_units_enabled: true
 tilt_user_units_operator: casibbald
@@ -9,7 +10,8 @@ tilt_user_units_home: "/home/{{ tilt_user_units_operator }}"
 tilt_user_units_dir: "{{ tilt_user_units_home }}/.config/systemd/user"
 tilt_user_units_microscaler_cfg: "{{ tilt_user_units_home }}/.config/microscaler"
 tilt_user_units_workspace: "{{ tilt_user_units_home }}/Workspace/microscaler"
-tilt_user_units_shared_k8s: "{{ tilt_user_units_workspace }}/shared-k8s-cluster"
+# Legacy var name — points at shared-gitops-k8s-cluster (group_vars shared_k8s_root).
+tilt_user_units_shared_k8s: "{{ shared_k8s_root | default(tilt_user_units_workspace + '/shared-gitops-k8s-cluster') }}"
 tilt_user_units_cluster_env_src: "{{ tilt_user_units_shared_k8s }}/config/tilt-cluster.env"
 tilt_user_units_preflight: "{{ tilt_user_units_shared_k8s }}/deploy/tilt-preflight.sh"
 tilt_user_units_kubeconfig: "{{ tilt_user_units_shared_k8s }}/kubeconfig/shared-k8s.yaml"
@@ -17,20 +19,21 @@ tilt_user_units_kubeconfig: "{{ tilt_user_units_shared_k8s }}/kubeconfig/shared-
 # Enable linger so user units survive logout
 tilt_user_units_linger: true
 
-# Install + enable microscaler-shared-k8s-infra oneshot
+# Install + enable microscaler-shared-k8s-infra oneshot (API readiness gate)
 tilt_user_units_infra: true
 
 # When true, systemctl --user enable --now each unit with enable: true
 tilt_user_units_start: false
 
-# App Tilts (ports must match tooling/.../tilt-apps.yaml + lan-proxy vhosts)
+# App Tilts (ports must match config/lan-http-vhosts.yaml + lan-proxy)
 tilt_user_units_apps:
+  # Platform workloads are Flux-owned; no Tiltfile in this repo yet.
   - unit: tilt-shared-k8s
-    description: Shared k3s platform Tilt (port 10349)
+    description: Shared platform Tilt (retired — Flux owns platform; port 10349 reserved)
     port: 10349
-    workdir: shared-k8s-cluster
+    workdir: shared-gitops-k8s-cluster
     after_tilt_shared: false
-    enable: true
+    enable: false
 
   - unit: tilt-hauliage
     description: Hauliage Tilt (port 10352, shared-k8s)
@@ -97,7 +100,7 @@ tilt_user_units_apps:
     workdir: opengroupware
     enable: true
 
-# Legacy Kind units to remove
+# Legacy Kind / retired platform-Tilt units to remove
 tilt_user_units_legacy_remove:
   - microscaler-shared-kind-infra.service
   - tilt-shared-kind.service

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Render and manage ms02 LAN → MetalLB proxy (haproxy, systemd-controlled).
 
-TCP mode: legacy per-port forwards (Grafana :3000, Postgres :5433, …).
-HTTP mode: host-based routing on LAN :80 / :443 for *.dev.microscaler.local
-(see config/lan-http-vhosts.yaml). TLS certs come from cert-manager and are
-synced by tools/sync_haproxy_tls.py before haproxy starts.
+TCP mode: per-port forwards (Postgres :5433, OpenSearch Dashboards :5601, …)
+plus thin :80/:443 passthrough to Envoy Gateway (ENVOY_GATEWAY_LB_IP).
+
+HTTP host routing for *.dev.microscaler.local is GitOps (Envoy Gateway HTTPRoute),
+not haproxy vhosts. config/lan-http-vhosts.yaml is kept with an empty vhosts list
+for tool compatibility; do not add manual vhosts there.
+
+Observability UI is OpenSearch Dashboards only — no Grafana/Loki/Prometheus/Jaeger.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -168,18 +173,13 @@ def render_haproxy(entries: list[ProxyEntry], vhosts: list[HttpVhost], raw_vhost
         "",
     ]
     skipped_udp = 0
-    skipped_bind = 0
     for entry in entries:
         if entry.protocol != "tcp":
             skipped_udp += 1
             continue
-        if not _port_available(entry.bind_ip, entry.lan_port):
-            skipped_bind += 1
-            print(
-                f"skip TCP {entry.name}: {entry.bind_ip}:{entry.lan_port} in use",
-                file=sys.stderr,
-            )
-            continue
+        # Always emit TCP frontends. Do not skip when the port is in use — that
+        # strips binds during systemd ExecStartPre=render while the old process
+        # still holds :80/:443 (Envoy edge passthrough would disappear).
         fe = _slug(entry.name)
         lines.extend(
             [
@@ -256,20 +256,33 @@ def render_haproxy(entries: list[ProxyEntry], vhosts: list[HttpVhost], raw_vhost
         elif _tls_pem_ready(raw_vhosts):
             print(f"skip HTTPS :{https_port}: port in use", file=sys.stderr)
 
-    if skipped_udp or skipped_bind:
-        lines.insert(
-            1,
-            f"# Skipped {skipped_udp} UDP, {skipped_bind} TCP (port conflict or UDP unsupported).",
-        )
+    if skipped_udp:
+        lines.insert(1, f"# Skipped {skipped_udp} UDP proxies (UDP unsupported in this haproxy path).")
     return "\n".join(lines)
+
+
+def _write_haproxy_cfg(text: str) -> None:
+    """Write generated cfg; use sudo when the path is root-owned (prior lan-proxy runs)."""
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        HAPROXY_CFG.write_text(text)
+        return
+    except PermissionError:
+        pass
+    tmp = GENERATED_DIR / "haproxy.cfg.tmp"
+    tmp.write_text(text)
+    subprocess.run(
+        ["sudo", "install", "-m", "0644", "-o", os.getenv("USER", "root"), str(tmp), str(HAPROXY_CFG)],
+        check=True,
+    )
+    tmp.unlink(missing_ok=True)
 
 
 def cmd_render(_: argparse.Namespace) -> int:
     env = load_env()
     entries = load_proxies(env)
     vhosts, raw_vhosts = load_http_vhosts(env)
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-    HAPROXY_CFG.write_text(render_haproxy(entries, vhosts, raw_vhosts))
+    _write_haproxy_cfg(render_haproxy(entries, vhosts, raw_vhosts))
     print(
         f"Wrote {HAPROXY_CFG} ({len(entries)} TCP proxies, {len(vhosts)} HTTP vhosts, "
         f"TLS={'yes' if _tls_pem_ready(raw_vhosts) else 'pending'})"
@@ -334,6 +347,9 @@ def cmd_up(_: argparse.Namespace) -> int:
     _ensure_lan_firewall(env)
     # Stop before render so bind-probe sees ports free (avoid skip :80/:443 on restart).
     subprocess.run(["sudo", "systemctl", "stop", "microscaler-lan-proxy.service"], check=False)
+    subprocess.run(["sudo", "systemctl", "stop", "haproxy.service"], check=False)
+    # Brief settle — stale LISTEN after stop races the port probe.
+    time.sleep(0.5)
     cmd_render(_)
     _require_haproxy()
     _disable_distro_haproxy()
@@ -399,15 +415,24 @@ def cmd_verify(_: argparse.Namespace) -> int:
 def cmd_urls(_: argparse.Namespace) -> int:
     env = load_env()
     entries = load_proxies(env)
-    vhosts, raw_vhosts = load_http_vhosts(env)
+    vhosts, _raw_vhosts = load_http_vhosts(env)
     lan_ip = entries[0].bind_ip if entries else env.get("MS02_LAN_IP", "192.168.1.189")
     print(f"# Reach from Mac via ms02 LAN ({lan_ip})")
-    for vh in vhosts:
-        print(f"{vh.name:22} http://{vh.host}/")
-        if _tls_pem_ready(raw_vhosts):
-            print(f"{'':22} https://{vh.host}/")
-    print("# Legacy TCP ports (non-HTTP services)")
+    print("# HTTP hosts: Envoy Gateway HTTPRoutes (gitops/root/components/envoy-gateway/)")
+    print("  https://hauliage.dev.microscaler.local/")
+    print("  https://opensearch.dev.microscaler.local/")
+    print("  https://grafana.dev.microscaler.local/   # alias → OpenSearch Dashboards")
+    print("  https://tilt-sesame.dev.microscaler.local/")
+    print("  https://tilt-hauliage.dev.microscaler.local/")
+    if vhosts:
+        print("# Legacy haproxy vhosts (should be empty)")
+        for vh in vhosts:
+            print(f"{vh.name:22} http://{vh.host}/")
+    print("# TCP ports (non-HTTP services + Envoy edge passthrough)")
     for entry in entries:
+        if entry.name in ("envoy-http", "envoy-https"):
+            print(f"{entry.name:22} {lan_ip}:{entry.lan_port} -> Envoy {entry.target_ip}:{entry.target_port}")
+            continue
         scheme = "http" if entry.protocol == "tcp" and entry.lan_port not in (5433, 6390, 5001) else entry.protocol
         if scheme == "http":
             print(f"{entry.name:22} http://{lan_ip}:{entry.lan_port}/")

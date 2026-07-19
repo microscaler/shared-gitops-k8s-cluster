@@ -1,0 +1,31 @@
+# OpenSearch Dashboards (+ grafana.dev bookmark alias).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: opensearch-dashboards
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: opensearch.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - opensearch.dev.microscaler.local
+    - grafana.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: opensearch-dashboards
+          port: 5601

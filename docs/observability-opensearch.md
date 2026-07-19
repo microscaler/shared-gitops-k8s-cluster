@@ -20,9 +20,10 @@ Data Prepper
 OpenSearch 2.19.x ── OpenSearch Dashboards 2.19.x
 ```
 
-The Collector also scrapes Postgres HA, Pgpool, and Redis Prometheus exporters in
-the `data` namespace. Dev Dashboards runs with `data_source.enabled: false` so
-GitOps-provisioned index patterns register without a separate data-source object.
+The Collector scrapes Lifeguard Postgres + Redis exporters in the `data`
+namespace (Prometheus *exporters* only — no Prometheus/Grafana/Loki servers).
+Dev Dashboards runs with `data_source.enabled: false` so GitOps-provisioned
+index patterns register without a separate data-source object.
 
 | Component | Dev delivery |
 |-----------|--------------|
@@ -37,8 +38,9 @@ LAN entrypoints:
 
 | URL | Purpose |
 |-----|---------|
-| `http://opensearch.dev.microscaler.local/` | OpenSearch Dashboards (preferred) |
-| `http://192.168.1.189:5601/` | Legacy LAN proxy |
+| `http://opensearch.dev.microscaler.local/` | OpenSearch Dashboards |
+| `http://grafana.dev.microscaler.local/` | Alias → same Dashboards backend |
+| `http://192.168.1.189:5601/` | Direct LAN TCP proxy |
 | `http://10.177.76.227:5601/` | MetalLB (ms02 / in-cluster) |
 | `192.168.1.189:4317` / `10.177.76.231:4317` | OTLP gRPC ingest |
 
@@ -177,7 +179,7 @@ that later integration.
 Run cluster commands on ms02 with the shared-k8s kubeconfig:
 
 ```bash
-export KUBECONFIG=~/Workspace/microscaler/shared-k8s-cluster/kubeconfig/shared-k8s.yaml
+export KUBECONFIG=~/Workspace/microscaler/shared-gitops-k8s-cluster/kubeconfig/shared-k8s.yaml
 
 flux reconcile kustomization profile-config-observability --with-source
 flux reconcile kustomization stack-observability --with-source
