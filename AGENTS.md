@@ -1,6 +1,6 @@
 # shared-gitops-k8s-cluster — agent rules
 
-> **What this repository is** — FluxCD + GitOpsSets source of truth for Microscaler **platform** clusters, plus Day-0 host edge (kubeconfig, lan-proxy, Multipass cloud-init, Tilt systemd units). The former [`shared-gitops-k8s-cluster`](../shared-gitops-k8s-cluster/) repo is **retired** — do not point new paths at it. Host edge Ansible: [`docs/day0-host-edge-ansible.md`](./docs/day0-host-edge-ansible.md).
+> **What this repository is** — FluxCD + GitOpsSets source of truth for Microscaler **platform** clusters, plus Day-0 host edge (kubeconfig, lan-proxy, Multipass cloud-init, Tilt systemd units). The former [`shared-k8s-cluster`](../shared-k8s-cluster/) repo is **retired** — do not point new paths at it. Host edge Ansible: [`docs/day0-host-edge-ansible.md`](./docs/day0-host-edge-ansible.md). Edge topology: [`docs/edge-envoy-vs-metallb.md`](./docs/edge-envoy-vs-metallb.md).
 
 Desktop topology (Mac resolver, L3 route, split DNS): [`cylon-local-infra`](https://github.com/microscaler/cylon-local-infra/blob/main/docs/desktop-dev-environment.md). **Run flux/kubectl and thin Ansible on ms02** (`just cluster-edge-apply`, `just tilt-units-apply`). From Mac: `ssh ms02 'cd ~/Workspace/microscaler/shared-gitops-k8s-cluster && just …'`.
 

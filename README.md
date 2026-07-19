@@ -2,7 +2,7 @@
 
 FluxCD GitOps + [gitopssets-controller](https://github.com/weaveworks/gitopssets-controller) for Microscaler platform clusters — **and** Day-0 Multipass/k3s host edge.
 
-The former `shared-gitops-k8s-cluster` repo is **retired**. Kubeconfig, lan-proxy, Multipass cloud-init, Tilt systemd units, and platform reconcile all live here.
+The former `shared-k8s-cluster` repo is **retired**. Kubeconfig, lan-proxy, Multipass cloud-init, Tilt systemd units, and platform reconcile all live here. Edge: [`docs/edge-envoy-vs-metallb.md`](./docs/edge-envoy-vs-metallb.md).
 
 | Layer | Home |
 |-------|------|

@@ -28,7 +28,7 @@ index patterns register without a separate data-source object.
 | Component | Dev delivery |
 |-----------|--------------|
 | OpenSearch | HelmRelease `opensearch`, single node, `zfs-iscsi` 30 GiB PVC |
-| Dashboards | HelmRelease `opensearch-dashboards`, MetalLB `.227:5601` |
+| Dashboards | HelmRelease `opensearch-dashboards`; UI via Envoy `opensearch.dev` (optional MetalLB `.227` bridge-only) |
 | Data Prepper | HelmRelease `data-prepper`, image 2.11, OTLP pipelines |
 | OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231`, Prometheus scrape |
 | Postgres exporter | Deployment `postgres-exporter` in `data`, `:9187` (Lifeguard primary) |
@@ -38,11 +38,10 @@ LAN entrypoints:
 
 | URL | Purpose |
 |-----|---------|
-| `http://opensearch.dev.microscaler.local/` | OpenSearch Dashboards |
-| `http://grafana.dev.microscaler.local/` | Alias → same Dashboards backend |
-| `http://192.168.1.189:5601/` | Direct LAN TCP proxy |
-| `http://10.177.76.227:5601/` | MetalLB (ms02 / in-cluster) |
-| `192.168.1.189:4317` / `10.177.76.231:4317` | OTLP gRPC ingest |
+| `https://opensearch.dev.microscaler.local/` | OpenSearch Dashboards (Envoy HTTPRoute) |
+| `https://grafana.dev.microscaler.local/` | Alias → same Dashboards (not Grafana stack) |
+| `192.168.1.189:4317` → Envoy → OTel | OTLP gRPC ingest |
+| `10.177.76.227:5601` | Optional MetalLB (bridge only; prefer hostname) |
 
 ## Dev retention and volume control
 

@@ -7,7 +7,7 @@ resources:
   - gatewayclass.yaml
   - gateway.yaml
   - referencegrant-tls.yaml
-  - httproutes/hauliage.yaml
+  # loadlinker/hauliage hosts: product HTTPRoute (hauliage/k8s/frontend/httproute.yaml)
   - httproutes/opensearch.yaml
   - httproutes/platform-uis.yaml
   # Tilt UIs stay on ms02 haproxy (outside Envoy) — see config/lan-http-vhosts.yaml

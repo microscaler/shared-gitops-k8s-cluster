@@ -52,30 +52,28 @@ flowchart LR
 4. **Monitor** build output via `just tilt-remote-logs` (ssh); runtime via `kubectl logs`.
 5. **Verify** via `http://hauliage.dev.microscaler.local/` (not Vite) for BFF/nginx path.
 
-## DNS / Envoy Tilt endpoints
+## DNS / Tilt endpoints (outside Envoy)
 
-`*.dev.microscaler.local` is routed by **Envoy Gateway** (GitOps HTTPRoutes). Lan-proxy
-only TCP-forwards `:80/:443` to MetalLB `ENVOY_GATEWAY_LB_IP` (`.234`).
+Tilt is the **only** `*.dev` traffic that does not enter Envoy. haproxy terminates
+TLS and proxies to localhost (`config/lan-http-vhosts.yaml`).
 
 | Hostname | Tilt port | Repo |
 |----------|-----------|------|
 | `https://tilt-hauliage.dev.microscaler.local/` | 10352 | hauliage |
-| `https://tilt-sesame.dev.microscaler.local/` | 10351 | seasame-idam |
+| `https://tilt-sesame.dev.microscaler.local/` | 10351 | sesame-idam |
 
-Routes live in `gitops/root/components/envoy-gateway/httproutes/tilt-hosts.yaml`
-(Endpoints → Multipass host `10.177.76.1`). UFW must allow `10.177.76.0/24` → `:10351/:10352`
-(`tools/lan_firewall.py`).
+All other `*.dev` hosts → haproxy → Envoy HTTPRoute. See [`edge-envoy-vs-metallb.md`](./edge-envoy-vs-metallb.md).
 
 Apply on ms02:
 
 ```bash
 just dev-dns-up          # wildcard + extra hostnames
-just lan-proxy-up        # thin TCP → Envoy
+just lan-proxy-up        # haproxy: tilt local + default Envoy + L4→Envoy
 ```
 
 Mac: `just dev-dns-mac-install` (once).
 
-**Browser UI:** use `https://tilt-hauliage.dev.microscaler.local/` (haproxy → Envoy → Tilt).
+**Browser UI:** use `https://tilt-hauliage.dev.microscaler.local/` (haproxy → local Tilt).
 
 **CLI trigger/logs:** use ms02 LAN IP + Tilt port directly — the Tilt CLI against `:80` can mis-route (Host/SNI quirks). Prefer:
 

@@ -8,7 +8,7 @@ Flux cannot manage ms02 UFW, systemd units, or k3s TLS SANs. Those sit in a
 | Concern | Home | Why |
 |---|---|---|
 | Mac `/etc/resolver`, MetalLB static route, ms02 L3 forward, split-horizon DNS | **`cylon-local-infra`** | Desktop topology (picolino ↔ ms02) |
-| Multipass cloud-init, kubeconfig, haproxy render (`tools/`), lan-proxy unit, k8s API LAN, **Tilt user systemd units** | **`shared-gitops-k8s-cluster`** | Single Day-0 + GitOps home (`shared-gitops-k8s-cluster` retired) |
+| Multipass cloud-init, kubeconfig, haproxy render (`tools/`), lan-proxy unit, k8s API LAN, **Tilt user systemd units** | **`shared-gitops-k8s-cluster`** | Single Day-0 + GitOps home (`shared-k8s-cluster` retired) |
 | MetalLB Services, democratic-csi Helm, workloads | **Flux in this repo** | Continuous reconcile |
 
 ## Apply (on ms02)
@@ -37,11 +37,11 @@ Inventory uses `ansible_connection: local` — ansible-playbook must run on ms02
 |---|---|
 | `~/.config/systemd/user/tilt-*.service` | role **`tilt_user_units`** (`ansible/roles/tilt_user_units/defaults/main.yml`) |
 | `microscaler-shared-k8s-infra.service` | same role (`deploy/cluster-start.sh` readiness gate) |
-| `*.dev.microscaler.local` → Envoy → Services | GitOps stack **`envoy-gateway`** (HTTPRoute + annotations) |
-| lan-proxy `:80/:443` | TCP passthrough to `ENVOY_GATEWAY_LB_IP` (`.234`) — no manual vhosts |
+| `tilt-*.dev.microscaler.local` | **haproxy only** → `127.0.0.1` (`config/lan-http-vhosts.yaml`) — outside Envoy |
+| other `*.dev.microscaler.local` | haproxy TLS → Envoy `:80` → HTTPRoute (GitOps) |
+| L4 ports (`:5433`, …) | haproxy TCP → Envoy VIP → TCPRoute |
 
-`config/lan-http-vhosts.yaml` is retired (`vhosts: []`). Add hosts via HTTPRoute under
-`gitops/root/components/envoy-gateway/httproutes/` (see that component’s README).
+App hosts: add an HTTPRoute (not a lan-proxy vhost). See [`docs/edge-envoy-vs-metallb.md`](./edge-envoy-vs-metallb.md).
 
 ## Kubernetes API LAN path
 
