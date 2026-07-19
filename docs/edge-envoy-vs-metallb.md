@@ -56,5 +56,16 @@ haproxy 192.168.1.189
 
 ## Later cleanup (optional)
 
-- Demote per-app MetalLB Services to ClusterIP once nothing uses `.22x` IPs directly.
-- If every Mac has `10.177.76.0/24 via 192.168.1.189`, point DNS at Envoy VIP and drop haproxy L4 (keep haproxy only for tilt + `*.dev` if desired).
+UI MetalLBs still allocated but unused for browser entry (hostname = Envoy). Demote to ClusterIP when no script hits the VIP:
+
+| VIP | Service | Prefer |
+|---|---|---|
+| `.227` | `opensearch-dashboards-lb` | `opensearch.dev` |
+| `.237` | `loadlinker/frontend` | `loadlinker.dev` |
+| `.232` | `pact-broker` | `pact.dev` |
+| `.221` | `routellm` | `routellm.dev` (check `day0.justfile` first) |
+| `.236` | `resurrection-hub` | `resurrection.dev` |
+
+Also: sibling disk tree `shared-k8s-cluster/` if empty of unique state; hauliage `k8s/frontend/ingress.yaml` (inert on Multipass).
+
+If every Mac has `10.177.76.0/24 via 192.168.1.189`, DNS can point at Envoy VIP and haproxy L4 can shrink further.
