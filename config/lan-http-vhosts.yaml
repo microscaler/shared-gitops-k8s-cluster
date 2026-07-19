@@ -4,6 +4,7 @@
 # - everything else → Envoy :80 (HTTPRoute GitOps); haproxy terminates TLS on :443
 #
 # Do not add app vhosts here — add HTTPRoute under gitops/root/components/envoy-gateway/.
+# Ports must match ansible/roles/tilt_user_units/defaults/main.yml.
 
 http_port: 80
 https_port: 443
@@ -21,12 +22,52 @@ default_backend:
   target_port: 80
 
 vhosts:
-  - host: tilt-hauliage.dev.microscaler.local
-    name: tilt-hauliage
+  - host: tilt-rerp.dev.microscaler.local
+    name: tilt-rerp
     target_host: 127.0.0.1
-    target_port: 10352
+    target_port: 10350
 
   - host: tilt-sesame.dev.microscaler.local
     name: tilt-sesame-idam
     target_host: 127.0.0.1
     target_port: 10351
+
+  - host: tilt-hauliage.dev.microscaler.local
+    name: tilt-hauliage
+    target_host: 127.0.0.1
+    target_port: 10352
+
+  - host: tilt-brrtrouter.dev.microscaler.local
+    name: tilt-brrtrouter
+    target_host: 127.0.0.1
+    target_port: 10353
+
+  - host: tilt-dcops.dev.microscaler.local
+    name: tilt-dcops
+    target_host: 127.0.0.1
+    target_port: 10354
+
+  - host: tilt-lifeguard.dev.microscaler.local
+    name: tilt-lifeguard
+    target_host: 127.0.0.1
+    target_port: 10355
+
+  - host: tilt-cylon.dev.microscaler.local
+    name: tilt-cylon
+    target_host: 127.0.0.1
+    target_port: 10450
+
+  - host: tilt-fleetingdns.dev.microscaler.local
+    name: tilt-fleetingdns
+    target_host: 127.0.0.1
+    target_port: 10654
+
+  - host: tilt-aether.dev.microscaler.local
+    name: tilt-aether
+    target_host: 127.0.0.1
+    target_port: 10750
+
+  - host: tilt-opengroupware.dev.microscaler.local
+    name: tilt-opengroupware
+    target_host: 127.0.0.1
+    target_port: 10852

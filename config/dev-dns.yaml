@@ -21,9 +21,17 @@ extra_lan_hostnames:
   - faktory
   - routellm
   - resurrection
-  # Tilt
-  - tilt-hauliage
+  # Tilt (haproxy → localhost; ports in lan-http-vhosts.yaml)
+  - tilt-rerp
   - tilt-sesame
+  - tilt-hauliage
+  - tilt-brrtrouter
+  - tilt-dcops
+  - tilt-lifeguard
+  - tilt-cylon
+  - tilt-fleetingdns
+  - tilt-aether
+  - tilt-opengroupware
   # Reserved (no HTTPRoute yet — will 404 until product adds one)
   - sesame-idam
   - cylon

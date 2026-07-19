@@ -33,9 +33,7 @@ spec:
       name: cylon-infra-helm-values
       valuesKey: routellm.yaml
   values:
-    # MetalLB IPs: gitops/inventory/metallb-services.yaml
+    # UI via Envoy HTTPRoute (routellm.dev); L4 via Envoy TCP :4000 (guest VMs).
     service:
-      type: LoadBalancer
+      type: ClusterIP
       port: 4000
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "10.177.76.221"

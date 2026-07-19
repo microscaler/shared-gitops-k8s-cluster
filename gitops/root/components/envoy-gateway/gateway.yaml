@@ -125,6 +125,23 @@ spec:
           - kind: TCPRoute
         namespaces:
           from: All
+    # Multipass guest / bridge L4 (former dedicated MetalLB VIPs)
+    - name: tcp-routellm
+      port: 4000
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-resurrection
+      port: 14000
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
     - name: udp-radius-auth
       port: 1812
       protocol: UDP

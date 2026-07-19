@@ -1,7 +1,7 @@
 # MetalLB LoadBalancer inventory (dev / Multipass bridge 10.177.76.0/24).
 # lan_port = still forwarded by haproxy → Envoy VIP (config/lan-exposure.yaml).
-# UI-only Services: no lan_port (browser path is HTTPRoute / *.dev).
-# Keep aligned with config/loadbalancer-ips.env. Check drift: just check-metallb-inventory
+# Browser UIs use Envoy HTTPRoute (*.dev). Keep aligned with config/loadbalancer-ips.env.
+# Check drift: just check-metallb-inventory
 
 services:
   - name: registry
@@ -12,15 +12,6 @@ services:
         port: 5000
         protocol: TCP
     lan_port: 5001
-
-  # UI via Envoy (routellm.dev); LB optional for bridge/scripts.
-  - name: routellm
-    namespace: cylon
-    lb_ip: 10.177.76.221
-    ports:
-      - name: http
-        port: 4000
-        protocol: TCP
 
   - name: squid-proxy
     namespace: cylon
@@ -73,15 +64,6 @@ services:
         protocol: TCP
     lan_port: 9000  # S3 API via Envoy TCP; console UI via minio.dev
 
-  # UI via Envoy (opensearch.dev / grafana.dev alias). Demote to ClusterIP when unused.
-  - name: opensearch-dashboards-lb
-    namespace: observability
-    lb_ip: 10.177.76.227
-    ports:
-      - name: http
-        port: 5601
-        protocol: TCP
-
   - name: fluvio-sc-public
     namespace: pipeline
     lb_ip: 10.177.76.228
@@ -119,15 +101,6 @@ services:
         protocol: TCP
     lan_port: 4317
 
-  # UI via Envoy (pact.dev)
-  - name: pact-broker
-    namespace: data
-    lb_ip: 10.177.76.232
-    ports:
-      - name: http
-        port: 9292
-        protocol: TCP
-
   - name: faktory-server
     namespace: scheduling
     lb_ip: 10.177.76.233
@@ -140,7 +113,7 @@ services:
         protocol: TCP
     lan_port: 7419  # worker via Envoy TCP; UI via faktory.dev
 
-  # Envoy Gateway VIP — haproxy L4 targets this IP; *.dev HTTP is not listed in lan-exposure.
+  # Envoy Gateway VIP — haproxy L4 + guest bridge clients; *.dev HTTP via haproxy → :80.
   - name: envoy-microscaler-dev
     namespace: envoy-gateway-system
     lb_ip: 10.177.76.234
@@ -163,21 +136,3 @@ services:
         port: 8025
         protocol: TCP
     lan_port: 1025  # SMTP via Envoy TCP; UI via mailpit.dev
-
-  # UI via Envoy (resurrection.dev)
-  - name: resurrection-hub
-    namespace: cylon
-    lb_ip: 10.177.76.236
-    ports:
-      - name: http
-        port: 14000
-        protocol: TCP
-
-  # UI via Envoy (loadlinker.dev / hauliage.dev); product Service in hauliage repo.
-  - name: frontend
-    namespace: loadlinker
-    lb_ip: 10.177.76.237
-    ports:
-      - name: http
-        port: 8080
-        protocol: TCP

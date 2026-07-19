@@ -25,8 +25,11 @@ class LanProxyRenderTest(unittest.TestCase):
         env = load_env()
         vhosts, raw, default = load_http_vhosts(env)
         hosts = {v.host for v in vhosts}
+        self.assertGreaterEqual(len(vhosts), 10)
         self.assertIn("tilt-sesame.dev.microscaler.local", hosts)
         self.assertIn("tilt-hauliage.dev.microscaler.local", hosts)
+        self.assertIn("tilt-cylon.dev.microscaler.local", hosts)
+        self.assertIn("tilt-opengroupware.dev.microscaler.local", hosts)
         self.assertIsNotNone(default)
         assert default is not None
         self.assertEqual(default.target_ip, env["ENVOY_GATEWAY_LB_IP"])

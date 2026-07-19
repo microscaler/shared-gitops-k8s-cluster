@@ -31,8 +31,6 @@ spec:
       name: pact-helm-values
       valuesKey: values.yaml
   values:
-    # MetalLB IPs: gitops/inventory/metallb-services.yaml
+    # UI via Envoy HTTPRoute (pact.dev); no dedicated MetalLB VIP.
     service:
-      type: LoadBalancer
-      annotations:
-        metallb.universe.tf/loadBalancerIPs: "10.177.76.232"
+      type: ClusterIP

@@ -8,7 +8,7 @@ Mac / LAN
   ▼
 haproxy 192.168.1.189
   ├─ *.dev.microscaler.local :80/:443
-  │    ├─ tilt-*     → 127.0.0.1:10351/10352   ← ONLY outside Envoy
+  │    ├─ tilt-*     → 127.0.0.1:<tilt-port>  ← ONLY outside Envoy
   │    └─ everything → Envoy :80               ← HTTPRoute GitOps
   └─ L4 ports (:5433, :6390, …)
        └─ Envoy VIP :sameport                  ← TCPRoute/UDPRoute GitOps
@@ -22,21 +22,32 @@ haproxy 192.168.1.189
 
 | Piece | Owns | Removable? |
 |---|---|---|
-| **MetalLB** | Envoy VIP (and optional leftover per-app LBs) | **Keep** for Envoy VIP |
+| **MetalLB** | Envoy VIP + remaining true-L4 Services | **Keep** |
 | **haproxy** | LAN `*.dev` + L4 port bridge to Envoy VIP | **Keep thin** (Mac cannot reach `10.177.76.0/24` without a route) |
-| **Envoy Gateway** | All HTTP UIs + all L4 TCP/UDP into the cluster | GitOps manifests |
+| **Envoy Gateway** | All HTTP UIs + L4 TCP/UDP into the cluster | GitOps manifests |
 
 ## What is GitOps
 
 - `HTTPRoute` — browser UIs (`*.dev` except tilt)
-- `TCPRoute` / `UDPRoute` — Postgres, Redis, MinIO S3, SMTP, OTel, registry, …
+- `TCPRoute` / `UDPRoute` — Postgres, Redis, MinIO S3, SMTP, OTel, registry, routellm API, resurrection hub, …
 - `Gateway` listeners — HTTP/S + L4 ports
 
 ## What stays on haproxy (not Envoy)
 
-| Host / port | Why |
-|---|---|
-| `tilt-sesame.dev` / `tilt-hauliage.dev` | Tilt is a **host** process on ms02; Multipass pods cannot reach it without bridge firewall hacks. Keep local. |
+| Host | Port | Why |
+|---|---|---|
+| `tilt-rerp.dev` | 10350 | Tilt is a **host** process on ms02 |
+| `tilt-sesame.dev` | 10351 | same |
+| `tilt-hauliage.dev` | 10352 | same |
+| `tilt-brrtrouter.dev` | 10353 | same |
+| `tilt-dcops.dev` | 10354 | same |
+| `tilt-lifeguard.dev` | 10355 | same |
+| `tilt-cylon.dev` | 10450 | same |
+| `tilt-fleetingdns.dev` | 10654 | same |
+| `tilt-aether.dev` | 10750 | same |
+| `tilt-opengroupware.dev` | 10852 | same |
+
+Source: `config/lan-http-vhosts.yaml` + `ansible/roles/tilt_user_units/defaults/main.yml`.
 
 ## L4 port map (Mac → haproxy → Envoy → Service)
 
@@ -54,18 +65,21 @@ haproxy 192.168.1.189
 | 9003 | tcp-fluvio-sc | `pipeline/fluvio-sc-public:9003` |
 | 1812 / 1813 UDP | udp-radius-* | Envoy VIP directly (mpqemubr0 route) |
 
-## Later cleanup (optional)
+## Bridge / guest L4 (hit Envoy VIP directly)
 
-UI MetalLBs still allocated but unused for browser entry (hostname = Envoy). Demote to ClusterIP when no script hits the VIP:
+| Port | Envoy listener | Backend | Replaces VIP |
+|---|---|---|---|
+| 4000 | tcp-routellm | `cylon/routellm:4000` | was `.221` |
+| 14000 | tcp-resurrection | `cylon/resurrection-hub:14000` | was `.236` |
 
-| VIP | Service | Prefer |
+## Demoted UI MetalLBs (ClusterIP + HTTPRoute)
+
+| Former VIP | Service | Hostname |
 |---|---|---|
-| `.227` | `opensearch-dashboards-lb` | `opensearch.dev` |
-| `.237` | `loadlinker/frontend` | `loadlinker.dev` |
+| `.227` | `opensearch-dashboards-lb` (removed) | `opensearch.dev` / `grafana.dev` |
+| `.237` | `loadlinker/frontend` | `loadlinker.dev` / `hauliage.dev` |
 | `.232` | `pact-broker` | `pact.dev` |
-| `.221` | `routellm` | `routellm.dev` (check `day0.justfile` first) |
-| `.236` | `resurrection-hub` | `resurrection.dev` |
-
-Also: sibling disk tree `shared-k8s-cluster/` if empty of unique state; hauliage `k8s/frontend/ingress.yaml` (inert on Multipass).
+| `.221` | `routellm` | `routellm.dev` + Envoy TCP `:4000` |
+| `.236` | `resurrection-hub` | `resurrection.dev` + Envoy TCP `:14000` |
 
 If every Mac has `10.177.76.0/24 via 192.168.1.189`, DNS can point at Envoy VIP and haproxy L4 can shrink further.

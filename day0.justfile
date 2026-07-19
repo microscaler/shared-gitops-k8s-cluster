@@ -289,7 +289,8 @@ routellm-verify-vllm: context
     set -euo pipefail
     source config/cluster.env
     source config/loadbalancer-ips.env 2>/dev/null || true
-    base="http://${ROUTELLM_LB_IP:-10.177.76.221}:4000"
+    # Envoy TCP :4000 → routellm ClusterIP (or HTTPRoute routellm.dev)
+    base="http://${ROUTELLM_LB_IP:-${ENVOY_GATEWAY_LB_IP:-10.177.76.234}}:4000"
     model="${VLLM_DEFAULT_MODEL:-Qwen/Qwen3.6-35B-A3B-FP8}"
     vllm="${VLLM_API_BASE:-http://192.168.1.104:8000/v1}"
     echo "Checking vLLM direct: ${vllm}/models"
