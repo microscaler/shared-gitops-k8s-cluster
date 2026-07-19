@@ -1133,18 +1133,19 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
 
 
 # ---------------------------------------------------------------------------
-# DataPersistence — Postgres HA / Pgpool / Redis (metrics index)
+# DataPersistence — Lifeguard Postgres (primary + replicas) / Redis
 # ---------------------------------------------------------------------------
 
 METRICS_VIEW = "shared-observability-metrics"
 METRICS_TIME_FIELD = "time"
 METRICS_VALUE_FIELD = "value"
 METRICS_NAME_KEYWORD = "name.keyword"
-METRICS_HOSTNAME_KEYWORD = "metric.attributes.hostname.keyword"
-METRICS_ROLE_KEYWORD = "metric.attributes.role.keyword"
 METRICS_DATNAME_KEYWORD = "metric.attributes.datname.keyword"
 METRICS_CONSUMER_NS_KEYWORD = "metric.attributes.consumer_namespace.keyword"
 METRICS_SLOT_KEYWORD = "metric.attributes.slot_name.keyword"
+METRICS_CLIENT_ADDR_KEYWORD = "metric.attributes.client_addr.keyword"
+METRICS_STATE_KEYWORD = "metric.attributes.state.keyword"
+METRICS_SERVER_KEYWORD = "metric.attributes.server.keyword"
 
 METRICS_COLUMNS = [
     "time",
@@ -1152,8 +1153,10 @@ METRICS_COLUMNS = [
     "value",
     "serviceName",
     "metric.attributes.platform_component",
-    "metric.attributes.hostname",
-    "metric.attributes.role",
+    "metric.attributes.server",
+    "metric.attributes.client_addr",
+    "metric.attributes.slot_name",
+    "metric.attributes.state",
     "metric.attributes.datname",
     "metric.attributes.consumer_namespace",
 ]
@@ -1163,21 +1166,19 @@ PG_CONNECTIONS_LUCENE = (
     f'"pg_settings_max_connections" OR "pg_stat_activity_count")'
 )
 PG_REPLICATION_LUCENE = (
-    f'{METRICS_NAME_KEYWORD}: ("pg_replication_slots_active" OR '
-    f'"pg_replication_slots_pg_wal_lsn_diff")'
+    f'{METRICS_NAME_KEYWORD}: ("pg_up" OR "pg_replication_is_replica" OR '
+    f'"pg_replication_lag_seconds" OR '
+    f'"pg_stat_replication_pg_wal_lsn_diff")'
 )
-PGPOOL_LUCENE = f"{METRICS_NAME_KEYWORD}: pgpool2_*"
-PGPOOL_NODES_LUCENE = (
-    f'{METRICS_NAME_KEYWORD}: ("pgpool2_pool_nodes_status" OR '
-    f'"pgpool2_pool_nodes_replication_delay" OR '
-    f'"pgpool2_pool_backend_stats_status")'
-)
+PG_SIZE_LUCENE = f'{METRICS_NAME_KEYWORD}: "pg_database_size_bytes"'
 REDIS_LUCENE = f"{METRICS_NAME_KEYWORD}: redis_*"
 DATA_PLATFORM_LUCENE = (
-    f"({PG_CONNECTIONS_LUCENE}) OR ({PGPOOL_LUCENE}) OR ({REDIS_LUCENE})"
+    f"({PG_CONNECTIONS_LUCENE}) OR ({PG_REPLICATION_LUCENE}) OR "
+    f"({PG_SIZE_LUCENE}) OR ({REDIS_LUCENE})"
 )
 DB_PRESSURE_LOGS_LUCENE = (
-    "body: (*connection* OR *pool* OR *postgres* OR *redis* OR *timeout* OR *Pgpool*)"
+    "body: (*connection* OR *pool* OR *postgres* OR *redis* OR *timeout* OR "
+    "*replication* OR *replica*)"
 )
 
 
@@ -1196,30 +1197,34 @@ def _metrics_discover_route(query: str) -> str:
 
 
 def data_persistence_guide_markdown() -> dict[str, Any]:
-    """Banner: Discover scopes for Postgres / Pgpool / Redis metrics."""
+    """Banner: Discover scopes for Postgres primary/replicas + Redis."""
     markdown = (
-        "## DataPersistence — Postgres HA, Pgpool, Redis\n\n"
+        "## DataPersistence — Postgres primary + replicas, Redis\n\n"
+        "Topology: Lifeguard `postgres-primary` + `postgres-replica-{0,1}` "
+        "(no Pgpool). Exporter scrapes the primary Service; replica health is "
+        "visible via `pg_stat_replication_*` streaming rows.\n\n"
         f"[**Open metrics (all)**]({_metrics_discover_route(DATA_PLATFORM_LUCENE)}) — "
-        "Postgres + Pgpool + Redis gauges.\n"
-        f"[**Open nodes / replication**]({_metrics_discover_route(PGPOOL_NODES_LUCENE)}) — "
-        "primary vs standby + replication delay.\n"
+        "Postgres + Redis gauges.\n"
+        f"[**Open replication**]({_metrics_discover_route(PG_REPLICATION_LUCENE)}) — "
+        "`pg_up`, is_replica, WAL lag bytes per standby.\n"
         f"[**Open Redis**]({_metrics_discover_route(REDIS_LUCENE)}) — "
         "clients, memory, keyspace.\n\n"
         "### What to watch\n"
-        "1. **Pgpool nodes** — `role:primary` / `role:standby` status = 1 (up)\n"
-        "2. **Replication delay** — `pgpool2_pool_nodes_replication_delay` near 0\n"
-        "3. **Frontend slots** — `pgpool2_frontend_used` vs `pgpool2_frontend_total` (64)\n"
-        "4. **DB backends** — `pg_stat_database_numbackends` by `datname` "
-        "(hauliage / sesame_idam / rerp)\n"
+        "1. **`pg_up`** — exporter scrape of primary = 1\n"
+        "2. **`pg_replication_is_replica`** — primary scrape should stay **0**\n"
+        "3. **Streaming replicas** — two `client_addr` rows in "
+        "`pg_stat_replication_pg_wal_lsn_diff`, state `streaming`, lag ≈ 0\n"
+        "4. **DB backends** — `pg_stat_database_numbackends` by `datname`\n"
         "5. **Redis** — connected clients + memory used\n\n"
         "### Saved searches (Discover → Open)\n"
         "- **DataPersistence / Platform metrics**\n"
         "- **DataPersistence / Postgres connections**\n"
-        "- **DataPersistence / Nodes & replication**\n"
+        "- **DataPersistence / Replication**\n"
         "- **DataPersistence / Redis**\n"
         "- **DataPersistence / DB pressure logs** (log index)\n\n"
-        "Scraped via OTel `prometheus/data` → Data Prepper → "
-        "`otel-v1-apm-metrics*`. Managed by shared-gitops-k8s-cluster."
+        "Scraped via OTel `prometheus/data` → `postgres-exporter:9187` + "
+        "`redis-metrics` → Data Prepper → `otel-v1-apm-metrics*`. "
+        "Managed by shared-gitops-k8s-cluster."
     )
     vis_state = {
         "title": "DataPersistence guide",
@@ -1423,7 +1428,7 @@ def metrics_terms_table_visualization(
     size: int = 10,
     field_label: str | None = None,
 ) -> dict[str, Any]:
-    """Latest-window avg(value) by terms bucket (nodes, databases, …)."""
+    """Latest-window avg(value) by terms bucket (replicas, databases, …)."""
     bucket_params: dict[str, Any] = {
         "field": field,
         "size": size,
@@ -1505,111 +1510,77 @@ def _metrics_vega_url(*, metric_name: str, aggs: dict[str, Any]) -> dict[str, An
     }
 
 
-def metrics_nodes_roles_vega(
+def metrics_streaming_replicas_vega(
     *,
-    title: str = "Postgres nodes — role + status + replication delay",
+    title: str = "Streaming replicas — WAL lag by client_addr",
 ) -> dict[str, Any]:
-    """Composite table: hostname × role with status and replication delay."""
+    """Table of standby WAL receivers: client_addr × state × slot × lag bytes."""
     spec = {
         "$schema": "https://vega.github.io/schema/vega/v5.json",
         "padding": 8,
         "autosize": {"type": "fit", "contains": "padding"},
         "data": [
             {
-                "name": "status",
+                "name": "replicas",
                 "url": _metrics_vega_url(
-                    metric_name="pgpool2_pool_nodes_status",
+                    metric_name="pg_stat_replication_pg_wal_lsn_diff",
                     aggs={
-                        "hosts": {
+                        "clients": {
                             "terms": {
-                                "field": METRICS_HOSTNAME_KEYWORD,
+                                "field": METRICS_CLIENT_ADDR_KEYWORD,
                                 "size": 10,
                             },
                             "aggs": {
-                                "role": {
+                                "lag": {"avg": {"field": METRICS_VALUE_FIELD}},
+                                "state": {
                                     "terms": {
-                                        "field": METRICS_ROLE_KEYWORD,
-                                        "size": 4,
-                                    },
-                                    "aggs": {
-                                        "status": {
-                                            "avg": {"field": METRICS_VALUE_FIELD}
-                                        }
-                                    },
-                                }
+                                        "field": METRICS_STATE_KEYWORD,
+                                        "size": 1,
+                                    }
+                                },
+                                "slot": {
+                                    "terms": {
+                                        "field": METRICS_SLOT_KEYWORD,
+                                        "size": 1,
+                                    }
+                                },
                             },
                         }
                     },
                 ),
-                "format": {"property": "aggregations.hosts.buckets"},
-                "transform": [
-                    {"type": "flatten", "fields": ["role.buckets"], "as": ["roleBucket"]},
-                    {
-                        "type": "formula",
-                        "as": "role",
-                        "expr": "datum.roleBucket.key",
-                    },
-                    {
-                        "type": "formula",
-                        "as": "status",
-                        "expr": "datum.roleBucket.status.value",
-                    },
-                    {
-                        "type": "formula",
-                        "as": "hostShort",
-                        "expr": "split(datum.key, '.')[0]",
-                    },
-                ],
-            },
-            {
-                "name": "delay",
-                "url": _metrics_vega_url(
-                    metric_name="pgpool2_pool_nodes_replication_delay",
-                    aggs={
-                        "hosts": {
-                            "terms": {
-                                "field": METRICS_HOSTNAME_KEYWORD,
-                                "size": 10,
-                            },
-                            "aggs": {
-                                "delay": {"avg": {"field": METRICS_VALUE_FIELD}}
-                            },
-                        }
-                    },
-                ),
-                "format": {"property": "aggregations.hosts.buckets"},
+                "format": {"property": "aggregations.clients.buckets"},
                 "transform": [
                     {
                         "type": "formula",
-                        "as": "hostShort",
-                        "expr": "split(datum.key, '.')[0]",
+                        "as": "client",
+                        "expr": "datum.key",
                     },
                     {
                         "type": "formula",
-                        "as": "delay",
-                        "expr": "datum.delay.value",
+                        "as": "lag",
+                        "expr": "datum.lag.value",
                     },
-                ],
-            },
-            {
-                "name": "joined",
-                "source": "status",
-                "transform": [
                     {
-                        "type": "lookup",
-                        "from": "delay",
-                        "key": "key",
-                        "fields": ["key"],
-                        "values": ["delay"],
+                        "type": "formula",
+                        "as": "state",
+                        "expr": (
+                            "datum.state.buckets && length(datum.state.buckets) "
+                            "? datum.state.buckets[0].key : '—'"
+                        ),
+                    },
+                    {
+                        "type": "formula",
+                        "as": "slot",
+                        "expr": (
+                            "datum.slot.buckets && length(datum.slot.buckets) "
+                            "? datum.slot.buckets[0].key : '—'"
+                        ),
                     },
                     {
                         "type": "window",
                         "ops": ["row_number"],
                         "as": ["row"],
-                        "sort": [
-                            {"field": "role", "order": "ascending"},
-                            {"field": "hostShort", "order": "ascending"},
-                        ],
+                        "sort": [{"field": "client", "order": "ascending"}],
                     },
                 ],
             },
@@ -1617,10 +1588,10 @@ def metrics_nodes_roles_vega(
                 "name": "header",
                 "values": [
                     {
-                        "hostShort": "pod",
-                        "role": "role",
-                        "status": "status",
-                        "delay": "repl delay",
+                        "client": "client_addr",
+                        "state": "state",
+                        "slot": "slot",
+                        "lag": "WAL lag (bytes)",
                         "row": 0,
                     }
                 ],
@@ -1630,7 +1601,7 @@ def metrics_nodes_roles_vega(
             {
                 "name": "y",
                 "type": "band",
-                "domain": {"data": "joined", "field": "row"},
+                "domain": {"data": "replicas", "field": "row"},
                 "range": {"step": 24},
                 "padding": 0.1,
             }
@@ -1654,7 +1625,7 @@ def metrics_nodes_roles_vega(
                             "update": {
                                 "x": {"value": 0},
                                 "y": {"value": 14},
-                                "text": {"field": "hostShort"},
+                                "text": {"field": "client"},
                                 "fontWeight": {"value": "bold"},
                                 "fontSize": {"value": 11},
                                 "fill": {"value": "#333"},
@@ -1666,9 +1637,9 @@ def metrics_nodes_roles_vega(
                         "from": {"data": "header"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.42"},
+                                "x": {"signal": "width * 0.38"},
                                 "y": {"value": 14},
-                                "text": {"field": "role"},
+                                "text": {"field": "state"},
                                 "fontWeight": {"value": "bold"},
                                 "fontSize": {"value": 11},
                                 "fill": {"value": "#333"},
@@ -1680,9 +1651,9 @@ def metrics_nodes_roles_vega(
                         "from": {"data": "header"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.68"},
+                                "x": {"signal": "width * 0.58"},
                                 "y": {"value": 14},
-                                "text": {"field": "status"},
+                                "text": {"field": "slot"},
                                 "fontWeight": {"value": "bold"},
                                 "fontSize": {"value": 11},
                                 "fill": {"value": "#333"},
@@ -1696,7 +1667,7 @@ def metrics_nodes_roles_vega(
                             "update": {
                                 "x": {"signal": "width"},
                                 "y": {"value": 14},
-                                "text": {"field": "delay"},
+                                "text": {"field": "lag"},
                                 "align": {"value": "right"},
                                 "fontWeight": {"value": "bold"},
                                 "fontSize": {"value": 11},
@@ -1708,12 +1679,12 @@ def metrics_nodes_roles_vega(
             },
             {
                 "type": "text",
-                "from": {"data": "joined"},
+                "from": {"data": "replicas"},
                 "encode": {
                     "update": {
                         "x": {"value": 0},
                         "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {"field": "hostShort"},
+                        "text": {"field": "client"},
                         "fontSize": {"value": 12},
                         "fill": {"value": "#111"},
                     }
@@ -1721,17 +1692,17 @@ def metrics_nodes_roles_vega(
             },
             {
                 "type": "text",
-                "from": {"data": "joined"},
+                "from": {"data": "replicas"},
                 "encode": {
                     "update": {
-                        "x": {"signal": "width * 0.42"},
+                        "x": {"signal": "width * 0.38"},
                         "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {"field": "role"},
+                        "text": {"field": "state"},
                         "fontSize": {"value": 12},
                         "fontWeight": {"value": "bold"},
                         "fill": {
                             "signal": (
-                                "datum.role === 'primary' ? '#0a5bd3' : '#555'"
+                                "datum.state === 'streaming' ? '#0a7a28' : '#b00020'"
                             )
                         },
                     }
@@ -1739,42 +1710,35 @@ def metrics_nodes_roles_vega(
             },
             {
                 "type": "text",
-                "from": {"data": "joined"},
+                "from": {"data": "replicas"},
                 "encode": {
                     "update": {
-                        "x": {"signal": "width * 0.68"},
+                        "x": {"signal": "width * 0.58"},
                         "y": {"scale": "y", "field": "row", "band": 0.5},
-                        "text": {
-                            "signal": "datum.status >= 1 ? 'up' : 'down'"
-                        },
+                        "text": {"field": "slot"},
                         "fontSize": {"value": 12},
-                        "fontWeight": {"value": "bold"},
-                        "fill": {
-                            "signal": (
-                                "datum.status >= 1 ? '#0a7a28' : '#b00020'"
-                            )
-                        },
+                        "fill": {"value": "#555"},
                     }
                 },
             },
             {
                 "type": "text",
-                "from": {"data": "joined"},
+                "from": {"data": "replicas"},
                 "encode": {
                     "update": {
                         "x": {"signal": "width"},
                         "y": {"scale": "y", "field": "row", "band": 0.5},
                         "text": {
                             "signal": (
-                                "datum.delay == null ? '—' : "
-                                "format(datum.delay, ',.0f')"
+                                "datum.lag == null ? '—' : "
+                                "format(datum.lag, ',.0f')"
                             )
                         },
                         "align": {"value": "right"},
                         "fontSize": {"value": 12},
                         "fill": {
                             "signal": (
-                                "datum.delay > 0 ? '#b00020' : '#0a7a28'"
+                                "datum.lag > 0 ? '#b00020' : '#0a7a28'"
                             )
                         },
                     }
@@ -1792,15 +1756,25 @@ def metrics_nodes_roles_vega(
         title=title,
         data_view=METRICS_VIEW,
         vis_state=vis_state,
-        query=PGPOOL_NODES_LUCENE,
+        query=PG_REPLICATION_LUCENE,
         filters=[],
     )
 
 
 def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
-    """Postgres HA + Pgpool masters/replicas + Redis overview."""
+    """Lifeguard Postgres primary + streaming replicas + Redis overview."""
     objects: list[tuple[str, str, dict[str, Any]]] = [
         ("visualization", "data-persistence-guide", data_persistence_guide_markdown()),
+        (
+            "visualization",
+            "data-persistence-pg-up",
+            metrics_value_metric_visualization(
+                title="Postgres scrape up",
+                query=f'{METRICS_NAME_KEYWORD}: "pg_up"',
+                agg="max",
+                custom_label="pg_up",
+            ),
+        ),
         (
             "visualization",
             "data-persistence-pg-max-connections",
@@ -1813,22 +1787,12 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "data-persistence-pgpool-frontend-used",
+            "data-persistence-is-replica",
             metrics_value_metric_visualization(
-                title="Pgpool frontend used",
-                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_frontend_used"',
-                agg="avg",
-                custom_label="frontend used",
-            ),
-        ),
-        (
-            "visualization",
-            "data-persistence-pgpool-frontend-total",
-            metrics_value_metric_visualization(
-                title="Pgpool frontend total",
-                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_frontend_total"',
+                title="Is replica (0=primary)",
+                query=f'{METRICS_NAME_KEYWORD}: "pg_replication_is_replica"',
                 agg="max",
-                custom_label="frontend total",
+                custom_label="is_replica",
             ),
         ),
         (
@@ -1853,19 +1817,30 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "data-persistence-nodes-roles",
-            metrics_nodes_roles_vega(),
+            "data-persistence-streaming-replicas",
+            metrics_streaming_replicas_vega(),
         ),
         (
             "visualization",
-            "data-persistence-replication-delay",
+            "data-persistence-backends-table",
+            metrics_terms_table_visualization(
+                title="Backends by database (avg)",
+                query=f'{METRICS_NAME_KEYWORD}: "pg_stat_database_numbackends"',
+                field=METRICS_DATNAME_KEYWORD,
+                size=12,
+                field_label="datname",
+            ),
+        ),
+        (
+            "visualization",
+            "data-persistence-replication-lag",
             metrics_line_visualization(
-                title="Replication delay by node (Pgpool)",
+                title="Replica WAL lag bytes (by client_addr)",
                 query=(
-                    f'{METRICS_NAME_KEYWORD}: "pgpool2_pool_nodes_replication_delay"'
+                    f'{METRICS_NAME_KEYWORD}: "pg_stat_replication_pg_wal_lsn_diff"'
                 ),
-                split_field=METRICS_HOSTNAME_KEYWORD,
-                y_label="delay",
+                split_field=METRICS_CLIENT_ADDR_KEYWORD,
+                y_label="lag bytes",
             ),
         ),
         (
@@ -1882,10 +1857,9 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             "visualization",
             "data-persistence-pg-activity",
             metrics_line_visualization(
-                title="Postgres activity (idle+active client backends)",
+                title="Postgres activity (idle + active)",
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "pg_stat_activity_count" AND '
-                    'metric.attributes.backend_type: "client backend" AND '
                     '(metric.attributes.state: "idle" OR '
                     'metric.attributes.state: "active")'
                 ),
@@ -1895,20 +1869,12 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
-            "data-persistence-pgpool-frontend-line",
+            "data-persistence-pg-db-size",
             metrics_line_visualization(
-                title="Pgpool frontend used (time series)",
-                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_frontend_used"',
-                y_label="frontend used",
-            ),
-        ),
-        (
-            "visualization",
-            "data-persistence-pgpool-backend-used",
-            metrics_line_visualization(
-                title="Pgpool backend used",
-                query=f'{METRICS_NAME_KEYWORD}: "pgpool2_backend_used"',
-                y_label="backend used",
+                title="Database size bytes",
+                query=PG_SIZE_LUCENE,
+                split_field=METRICS_DATNAME_KEYWORD,
+                y_label="bytes",
             ),
         ),
         (
@@ -1943,17 +1909,6 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             ),
         ),
         (
-            "visualization",
-            "data-persistence-backends-table",
-            metrics_terms_table_visualization(
-                title="Backends by database (avg)",
-                query=f'{METRICS_NAME_KEYWORD}: "pg_stat_database_numbackends"',
-                field=METRICS_DATNAME_KEYWORD,
-                size=12,
-                field_label="datname",
-            ),
-        ),
-        (
             "search",
             "data-persistence-metrics",
             saved_search(
@@ -1979,13 +1934,13 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "search",
-            "data-persistence-nodes",
+            "data-persistence-replication",
             saved_search(
-                title="DataPersistence / Nodes & replication",
+                title="DataPersistence / Replication",
                 data_view=METRICS_VIEW,
                 time_field=METRICS_TIME_FIELD,
                 columns=METRICS_COLUMNS,
-                query=PGPOOL_NODES_LUCENE,
+                query=PG_REPLICATION_LUCENE,
                 filters=[],
             ),
         ),
@@ -2019,29 +1974,28 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             dashboard_id="data-persistence",
             title="DataPersistence",
             description=(
-                "Postgres HA connections, Pgpool frontend/backend slots, "
-                "primary vs standby node health, replication delay, and Redis "
-                "clients/memory/keyspace. Open Discover saved searches for "
-                "field sidebar triage. Managed by "
-                f"{MANAGED_BY}"
+                "Lifeguard Postgres primary + streaming replicas "
+                "(WAL lag via pg_stat_replication), connection pressure, "
+                "database size, and Redis clients/memory/keyspace. "
+                "Open Discover saved searches for field sidebar triage. "
+                f"Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "data-persistence-guide", 0, 0, 48, 8),
-                ("visualization", "data-persistence-pg-max-connections", 0, 8, 9, 6),
-                ("visualization", "data-persistence-pgpool-frontend-used", 9, 8, 10, 6),
-                ("visualization", "data-persistence-pgpool-frontend-total", 19, 8, 9, 6),
+                ("visualization", "data-persistence-pg-up", 0, 8, 8, 6),
+                ("visualization", "data-persistence-pg-max-connections", 8, 8, 10, 6),
+                ("visualization", "data-persistence-is-replica", 18, 8, 10, 6),
                 ("visualization", "data-persistence-redis-clients", 28, 8, 10, 6),
                 ("visualization", "data-persistence-redis-memory", 38, 8, 10, 6),
-                ("visualization", "data-persistence-nodes-roles", 0, 14, 28, 12),
+                ("visualization", "data-persistence-streaming-replicas", 0, 14, 28, 12),
                 ("visualization", "data-persistence-backends-table", 28, 14, 20, 12),
-                ("visualization", "data-persistence-replication-delay", 0, 26, 24, 12),
+                ("visualization", "data-persistence-replication-lag", 0, 26, 24, 12),
                 ("visualization", "data-persistence-pg-backends", 24, 26, 24, 12),
                 ("visualization", "data-persistence-pg-activity", 0, 38, 24, 12),
-                ("visualization", "data-persistence-pgpool-frontend-line", 24, 38, 24, 12),
-                ("visualization", "data-persistence-pgpool-backend-used", 0, 50, 24, 12),
-                ("visualization", "data-persistence-redis-memory-line", 24, 50, 24, 12),
-                ("visualization", "data-persistence-redis-clients-line", 0, 62, 24, 12),
-                ("visualization", "data-persistence-redis-keyspace", 24, 62, 24, 12),
+                ("visualization", "data-persistence-pg-db-size", 24, 38, 24, 12),
+                ("visualization", "data-persistence-redis-memory-line", 0, 50, 24, 12),
+                ("visualization", "data-persistence-redis-clients-line", 24, 50, 24, 12),
+                ("visualization", "data-persistence-redis-keyspace", 0, 62, 48, 12),
                 ("search", "data-persistence-metrics", 0, 74, 48, 18),
             ],
             panel_ref_prefix="data_persistence",
@@ -2090,6 +2044,14 @@ DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [
     ("visualization", "sesame-auth-error-logs"),
     ("search", "sesame-auth-db-pressure"),
     ("search", "correlation-logs-by-trace"),
+    # Pgpool-era DataPersistence panels (postgres-ha cutover).
+    ("visualization", "data-persistence-pgpool-frontend-used"),
+    ("visualization", "data-persistence-pgpool-frontend-total"),
+    ("visualization", "data-persistence-pgpool-frontend-line"),
+    ("visualization", "data-persistence-pgpool-backend-used"),
+    ("visualization", "data-persistence-nodes-roles"),
+    ("visualization", "data-persistence-replication-delay"),
+    ("search", "data-persistence-nodes"),
     ("search", "correlation-errors-with-trace"),
     ("search", "correlation-db-pressure-logs"),
     ("search", "correlation-http-spans"),

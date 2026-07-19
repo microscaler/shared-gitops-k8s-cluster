@@ -214,7 +214,16 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
         "scrape_configs"
     ]
     job_names = {job["job_name"] for job in data_scrape}
-    assert job_names == {"postgres-ha", "pgpool", "redis"}
+    assert job_names == {"postgres", "redis"}
+    postgres_job = next(job for job in data_scrape if job["job_name"] == "postgres")
+    assert (
+        "postgres-exporter.data.svc.cluster.local:9187"
+        in postgres_job["static_configs"][0]["targets"]
+    )
+    keep = postgres_job["metric_relabel_configs"][0]["regex"]
+    assert "pg_up" in keep
+    assert "pg_stat_replication_pg_wal_lsn_diff" in keep
+    assert "pgpool" not in keep
 
     pipelines = prepper["pipelineConfig"]["config"]
     metric_sink = pipelines["otel-metrics-pipeline"]["sink"][0]["opensearch"]

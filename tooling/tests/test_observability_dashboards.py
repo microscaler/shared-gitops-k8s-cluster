@@ -65,11 +65,16 @@ def test_data_persistence_ndjson_and_panels() -> None:
         item["type"] == "dashboard" and item["id"] == "data-persistence" for item in parsed
     )
     assert any(
-        item["type"] == "visualization" and item["id"] == "data-persistence-nodes-roles"
+        item["type"] == "visualization"
+        and item["id"] == "data-persistence-streaming-replicas"
         for item in parsed
     )
     assert any(
         item["type"] == "search" and item["id"] == "data-persistence-redis" for item in parsed
+    )
+    assert any(
+        item["type"] == "search" and item["id"] == "data-persistence-replication"
+        for item in parsed
     )
 
     objects = definitions.all_dashboard_objects()
@@ -80,27 +85,31 @@ def test_data_persistence_ndjson_and_panels() -> None:
     )
     assert dashboard["attributes"]["title"] == "DataPersistence"
     assert dashboard["attributes"]["timeFrom"] == "now-1h"
+    assert "Pgpool" not in dashboard["attributes"]["description"]
+    assert "streaming replicas" in dashboard["attributes"]["description"]
     ref_ids = {ref["id"] for ref in dashboard["references"]}
     assert {
         "data-persistence-guide",
-        "data-persistence-nodes-roles",
-        "data-persistence-replication-delay",
+        "data-persistence-pg-up",
+        "data-persistence-streaming-replicas",
+        "data-persistence-replication-lag",
         "data-persistence-pg-backends",
-        "data-persistence-pgpool-frontend-line",
         "data-persistence-redis-memory-line",
         "data-persistence-metrics",
     }.issubset(ref_ids)
+    assert "data-persistence-pgpool-frontend-used" not in ref_ids
 
     nodes = next(
         payload
         for object_type, object_id, payload in objects
-        if object_type == "visualization" and object_id == "data-persistence-nodes-roles"
+        if object_type == "visualization"
+        and object_id == "data-persistence-streaming-replicas"
     )
     vis_state = json.loads(nodes["attributes"]["visState"])
     assert vis_state["type"] == "vega"
     spec = vis_state["params"]["spec"]
-    assert "pgpool2_pool_nodes_status" in spec
-    assert "pgpool2_pool_nodes_replication_delay" in spec
+    assert "pg_stat_replication_pg_wal_lsn_diff" in spec
+    assert "pgpool2_" not in spec
     # OSD rejects %context%/%timefield% when body.query is set.
     assert "%context%" not in spec
     assert "%timefield%" not in spec

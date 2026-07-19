@@ -30,7 +30,7 @@ GitOps-provisioned index patterns register without a separate data-source object
 | Dashboards | HelmRelease `opensearch-dashboards`, MetalLB `.227:5601` |
 | Data Prepper | HelmRelease `data-prepper`, image 2.11, OTLP pipelines |
 | OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231`, Prometheus scrape |
-| Pgpool exporter | Deployment `postgres-ha-pgpool-exporter` in `data`, `:9719` |
+| Postgres exporter | Deployment `postgres-exporter` in `data`, `:9187` (Lifeguard primary) |
 | Provisioner | Ten-minute CronJob reconciling lifecycle, saved objects, and monitors |
 
 LAN entrypoints:
@@ -112,18 +112,15 @@ Primary log exploration is GitOps-managed:
 2. Expand **serviceName** → values are now scoped to that namespace
 3. Adjust **time** last; optionally filter `event_category` / `has_trace`
 
-### DataPersistence (Postgres / Pgpool / Redis)
+### DataPersistence (Postgres primary + replicas / Redis)
 
-Companion metrics dashboard for the shared data plane:
+Companion metrics dashboard for the Lifeguard data plane (Pgpool retired):
 
-- **KPIs** — `max_connections`, Pgpool frontend used/total, Redis clients + memory
-- **Masters & replicas** — Pgpool node role (`primary` / `standby`), up/down status, replication delay
-- **Postgres** — backends by `datname`, client-backend activity
-- **Pgpool** — frontend/backend slot time series
+- **KPIs** — `pg_up`, `max_connections`, `pg_replication_is_replica` (0 on primary), Redis clients + memory
+- **Streaming replicas** — `pg_stat_replication_pg_wal_lsn_diff` by `client_addr` / slot / state
+- **Postgres** — backends + activity by `datname`, database size
 - **Redis** — memory, clients, keyspace hits vs misses
-- **Discover saved searches** — Platform metrics / Postgres / Nodes & replication / Redis / DB pressure logs
-
-Source: `gitops/root/components/observability/dashboards/data-persistence.ndjson`.
+- **Discover saved searches** — Platform metrics / Postgres connections / Replication / Redis / DB pressure logs
 
 Sources: `gitops/root/components/observability/dashboards/{logs-explore,data-persistence}.ndjson`.
 Regenerate after editing `dashboard_definitions.py`:

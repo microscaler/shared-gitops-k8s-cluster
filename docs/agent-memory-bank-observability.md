@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-18 (DataPersistence dashboard)
+Updated: 2026-07-19 (DataPersistence Lifeguard cutover — must commit or Flux reverts)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
@@ -12,12 +12,12 @@ Updated: 2026-07-18 (DataPersistence dashboard)
 
 ## Managed dashboards
 - **Logs** (`logs-explore`) — HTTP triage, volume, top paths / status / duration, signal stream.
-- **DataPersistence** (`data-persistence`) — Postgres / Pgpool masters&replicas / Redis metrics + Discover saved searches.
+- **DataPersistence** (`data-persistence`) — Lifeguard Postgres primary + streaming replicas + Redis (Pgpool retired).
   - URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/data-persistence`
   - Source: `dashboard_definitions.py` → `dashboards/data-persistence.ndjson`
   - Metrics index: `shared-observability-metrics` (`otel-v1-apm-metrics*`), time field `time`, value `value`
-  - Postgres scrape keep-list includes `pg_replication_slots_active` + `pg_replication_slots_pg_wal_lsn_diff` (otel helm values)
-  - Vega rule: never combine `%context%`/`%timefield%` with `body.query`; use `range.time.%timefilter%` + term filter instead (`_metrics_vega_url`).
+  - OTel scrape: `postgres-exporter.data:9187` (not postgres-ha); keep `pg_up`, `pg_replication_*`, `pg_stat_replication_pg_wal_lsn_diff`, backends/activity/size
+  - Vega: streaming replicas table on `pg_stat_replication_pg_wal_lsn_diff` (`_metrics_vega_url` + `%timefilter%`)
 
 ## HTTP triage (done — `c13d9be` + status pie)
 - Saved search **Logs / HTTP** (`logs-http`): Lucene `event_class:application AND event_category:http`.

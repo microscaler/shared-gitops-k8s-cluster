@@ -27,25 +27,10 @@ LOGS_TIME_FIELD = dashboard_definitions.LOGS_TIME_FIELD
 LOGS_LEGACY_TIME_FIELD = "observedTime"
 MANAGED_BY = "shared-gitops-k8s-cluster"
 
-POSTGRES_ACTIVITY_QUERY = (
-    'name: "pg_stat_activity_count" and '
-    'metric.attributes.backend_type: "client backend" and '
-    '(metric.attributes.state: "idle" or metric.attributes.state: "active")'
-)
-PGPOOL_FRONTEND_QUERY = 'name: "pgpool2_frontend_used" or name: "pgpool2_frontend_total"'
-REDIS_CLIENTS_QUERY = 'name: "redis_connected_clients"'
-REDIS_MEMORY_QUERY = 'name: "redis_memory_used_bytes"'
-DATA_PLATFORM_METRICS_QUERY = (
-    "name: pg_stat_activity_count or name: pgpool2_frontend_used or "
-    "name: pgpool2_frontend_total or name: redis_connected_clients or "
-    'name: "redis_memory_used_bytes"'
-)
+# Discover/correlation helpers (kept for tests + ad-hoc triage docs).
 CORRELATED_LOGS_QUERY = 'traceId: * AND NOT traceId: ""'
 ERROR_LOGS_WITH_TRACE_QUERY = (
     'severityText: ("ERROR" or "FATAL") AND traceId: * AND NOT traceId: ""'
-)
-DB_PRESSURE_LOGS_QUERY = (
-    "body: (*connection* OR *pool* OR *postgres* OR *redis* OR *timeout* OR *Pgpool*)"
 )
 HTTP_SPANS_QUERY = 'name: "http_request"'
 
