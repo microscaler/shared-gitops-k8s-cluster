@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-19 (DataPersistence Lifeguard cutover — must commit or Flux reverts)
+Updated: 2026-07-19 (DataPersistence Lifeguard cutover on main@ae05c5b)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
