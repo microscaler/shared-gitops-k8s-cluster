@@ -1,0 +1,195 @@
+# Platform browser UIs → Envoy Gateway (no lan-proxy / MetalLB host routing).
+# L4-only traffic (Postgres, Redis, SMTP, OTel, registry, …) stays on MetalLB + thin haproxy.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mailpit
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: mailpit.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - mailpit.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: mailpit
+          port: 8025
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio-console
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: minio.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - minio.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: minio-console
+          port: 9001
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: pact-broker
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: pact.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - pact.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: pact-broker
+          port: 9292
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: faktory-dashboard
+  namespace: scheduling
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: faktory.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - faktory.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: faktory-server
+          port: 7420
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: routellm
+  namespace: cylon
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: routellm.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - routellm.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: routellm
+          port: 4000
+---
+# Browser entry: https://resurrection.dev.microscaler.local/
+# Hub has no HTML at / — redirect apex to /health so the subdomain is useful.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: resurrection-hub
+  namespace: cylon
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/hostname: resurrection.dev.microscaler.local
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: https
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - resurrection.dev.microscaler.local
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /health
+            statusCode: 302
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: resurrection-hub
+          port: 14000

@@ -1,5 +1,6 @@
-# Shared edge Gateway for *.dev.microscaler.local.
-# App routing = HTTPRoute CRs (GitOps), not lan-http-vhosts.yaml.
+# Shared edge Gateway — HTTP(S) for *.dev + TCP/UDP L4 ports (GitOps).
+# LAN: haproxy owns *.dev.microscaler.local (Tilt local; else → Envoy :80).
+# L4: haproxy TCP → this VIP’s matching ports → TCPRoute/UDPRoute → Service.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -32,5 +33,111 @@ spec:
             name: dev-microscaler-local-tls
             namespace: cert-manager
       allowedRoutes:
+        namespaces:
+          from: All
+
+    # --- L4 (lan-proxy forwards these ports to ENVOY_GATEWAY_LB_IP) ---
+    - name: tcp-k8s-api
+      port: 6443
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-postgres
+      port: 5433
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-redis
+      port: 6390
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-minio
+      port: 9000
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-mailpit-smtp
+      port: 1025
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-faktory
+      port: 7419
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-otel-grpc
+      port: 4317
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-otel-http
+      port: 4318
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-registry
+      port: 5001
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-squid
+      port: 3128
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: tcp-fluvio-sc
+      port: 9003
+      protocol: TCP
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+    - name: udp-radius-auth
+      port: 1812
+      protocol: UDP
+      allowedRoutes:
+        kinds:
+          - kind: UDPRoute
+        namespaces:
+          from: All
+    - name: udp-radius-acct
+      port: 1813
+      protocol: UDP
+      allowedRoutes:
+        kinds:
+          - kind: UDPRoute
         namespaces:
           from: All

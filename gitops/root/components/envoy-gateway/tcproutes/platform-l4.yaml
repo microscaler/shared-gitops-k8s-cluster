@@ -1,0 +1,293 @@
+# L4 through Envoy — replaces per-service haproxy → MetalLB hops.
+# Listener ports match lan-exposure.yaml (Mac → haproxy → Envoy VIP → here).
+---
+# k8s API (Multipass CP) — static Endpoints on the host bridge IP.
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8s-apiserver
+  namespace: envoy-gateway-system
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: k8s-api
+spec:
+  ports:
+    - name: https
+      port: 6443
+      targetPort: 6443
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: k8s-apiserver
+  namespace: envoy-gateway-system
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+subsets:
+  - addresses:
+      # Keep in sync with config/cluster.env K8S_CP_IP
+      - ip: 10.177.76.137
+    ports:
+      - name: https
+        port: 6443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: k8s-api
+  namespace: envoy-gateway-system
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "6443"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-k8s-api
+  rules:
+    - backendRefs:
+        - name: k8s-apiserver
+          port: 6443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: postgres
+  namespace: data
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "5433"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-postgres
+  rules:
+    - backendRefs:
+        - name: postgres
+          port: 5432
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: redis
+  namespace: data
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "6390"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-redis
+  rules:
+    - backendRefs:
+        - name: redis
+          port: 6379
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: minio-api
+  namespace: data
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "9000"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-minio
+  rules:
+    - backendRefs:
+        - name: minio
+          port: 9000
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: mailpit-smtp
+  namespace: data
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "1025"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-mailpit-smtp
+  rules:
+    - backendRefs:
+        - name: mailpit
+          port: 1025
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: faktory-worker
+  namespace: scheduling
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "7419"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-faktory
+  rules:
+    - backendRefs:
+        - name: faktory-server
+          port: 7419
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: otel-grpc
+  namespace: observability
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "4317"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-otel-grpc
+  rules:
+    - backendRefs:
+        - name: otel-collector
+          port: 4317
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: otel-http
+  namespace: observability
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "4318"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-otel-http
+  rules:
+    - backendRefs:
+        - name: otel-collector
+          port: 4318
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: registry
+  namespace: registry
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "5001"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-registry
+  rules:
+    - backendRefs:
+        - name: registry
+          port: 5000
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: squid
+  namespace: cylon
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "3128"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-squid
+  rules:
+    - backendRefs:
+        - name: squid-proxy
+          port: 3128
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TCPRoute
+metadata:
+  name: fluvio-sc
+  namespace: pipeline
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "9003"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: tcp-fluvio-sc
+  rules:
+    - backendRefs:
+        - name: fluvio-sc-public
+          port: 9003
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: UDPRoute
+metadata:
+  name: freeradius-auth
+  namespace: cylon
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "1812/udp"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: udp-radius-auth
+  rules:
+    - backendRefs:
+        - name: freeradius
+          port: 1812
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: UDPRoute
+metadata:
+  name: freeradius-acct
+  namespace: cylon
+  labels:
+    gitops.microscaler.io/stack: envoy-gateway
+  annotations:
+    gitops.microscaler.io/l4: "1813/udp"
+    gitops.microscaler.io/gateway: microscaler-dev
+spec:
+  parentRefs:
+    - name: microscaler-dev
+      namespace: envoy-gateway-system
+      sectionName: udp-radius-acct
+  rules:
+    - backendRefs:
+        - name: freeradius
+          port: 1813

@@ -1,16 +1,29 @@
 # Split-horizon dev DNS on ms02 (rendered by tools/configure_dev_dns.py).
 #
-# LAN zone (Mac / 192.168.1.x): *.dev.microscaler.local → MS02_LAN_IP (haproxy :80/:443).
+# LAN zone (Mac / 192.168.1.x): *.dev.microscaler.local → MS02_LAN_IP
+#   (haproxy :80/:443 → Envoy). Wildcard covers all hosts; extras are explicit A records.
 # MetalLB zone (ms02 / Multipass bridge): *.metallb.dev → fixed LoadBalancer IPs.
 
 lan_zone: dev.microscaler.local
 metallb_zone: metallb.dev
 
+# Explicit names for docs / non-wildcard resolvers. All browser UIs → Envoy.
 extra_lan_hostnames:
+  # Apps
   - hauliage
-  - sesame-idam
-  - cylon
-  - tilt-hauliage
-  - tilt-sesame
+  - loadlinker
+  # Platform UIs (HTTPRoute in envoy-gateway)
   - opensearch
   - grafana
+  - mailpit
+  - minio
+  - pact
+  - faktory
+  - routellm
+  - resurrection
+  # Tilt
+  - tilt-hauliage
+  - tilt-sesame
+  # Reserved (no HTTPRoute yet — will 404 until product adds one)
+  - sesame-idam
+  - cylon

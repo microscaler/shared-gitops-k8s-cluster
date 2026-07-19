@@ -72,6 +72,7 @@ services:
         protocol: TCP
     lan_port: 9000
 
+  # UI via Envoy (opensearch.dev); LB kept for in-cluster / bridge clients.
   - name: opensearch-dashboards-lb
     namespace: observability
     lb_ip: 10.177.76.227
@@ -79,7 +80,6 @@ services:
       - name: http
         port: 5601
         protocol: TCP
-    lan_port: 5601
 
   - name: fluvio-sc-public
     namespace: pipeline
@@ -170,6 +170,7 @@ services:
       - {name: smtp, lan_port: 1025, target_port: 1025}
       - {name: ui, lan_port: 8025, target_port: 8025}
 
+  # UI via Envoy (resurrection.dev); LB kept for bridge/ Raft peers if needed.
   - name: resurrection-hub
     namespace: cylon
     lb_ip: 10.177.76.236
@@ -177,7 +178,7 @@ services:
       - name: http
         port: 14000
         protocol: TCP
-    lan_port: 14000
+
 
   - name: frontend
     namespace: loadlinker

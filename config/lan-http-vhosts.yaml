@@ -1,9 +1,9 @@
-# RETIRED — HTTP host routing for *.dev.microscaler.local is Envoy Gateway + HTTPRoute
-# (gitops/root/components/envoy-gateway/). Lan-proxy only TCP-forwards :80/:443 to
-# ENVOY_GATEWAY_LB_IP (see config/lan-exposure.yaml).
+# HAProxy owns *.dev.microscaler.local on the LAN IP.
 #
-# Keep this file so tools/configure_lan_proxy.py and sync_haproxy_tls.py stay stable
-# with an empty vhost list (no host-based haproxy frontends).
+# - Tilt hosts → ms02 localhost (ONLY traffic outside Envoy)
+# - everything else → Envoy :80 (HTTPRoute GitOps); haproxy terminates TLS on :443
+#
+# Do not add app vhosts here — add HTTPRoute under gitops/root/components/envoy-gateway/.
 
 http_port: 80
 https_port: 443
@@ -14,4 +14,19 @@ tls:
   sync_dir: /etc/microscaler/haproxy/certs
   pem_file: dev.microscaler.local.pem
 
-vhosts: []
+# Catch-all for any *.dev host that is not listed in vhosts below.
+default_backend:
+  name: envoy
+  lb_ip_env: ENVOY_GATEWAY_LB_IP
+  target_port: 80
+
+vhosts:
+  - host: tilt-hauliage.dev.microscaler.local
+    name: tilt-hauliage
+    target_host: 127.0.0.1
+    target_port: 10352
+
+  - host: tilt-sesame.dev.microscaler.local
+    name: tilt-sesame-idam
+    target_host: 127.0.0.1
+    target_port: 10351

@@ -9,4 +9,6 @@ resources:
   - referencegrant-tls.yaml
   - httproutes/hauliage.yaml
   - httproutes/opensearch.yaml
-  - httproutes/tilt-hosts.yaml
+  - httproutes/platform-uis.yaml
+  # Tilt UIs stay on ms02 haproxy (outside Envoy) — see config/lan-http-vhosts.yaml
+  - tcproutes/platform-l4.yaml

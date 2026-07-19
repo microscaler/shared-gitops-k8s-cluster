@@ -1,137 +1,69 @@
-# LAN exposure on ms02 for Mac / 192.168.1.x clients.
-# Binds MS02_LAN_IP (default 192.168.1.189) and forwards to MetalLB Service IPs.
-# Keep in sync with config/loadbalancer-ips.env + gitops/inventory/metallb-services.yaml.
+# LAN L4 → Envoy Gateway VIP (TCP proxy). No per-service MetalLB hops.
 #
-# HTTP host routing for *.dev.microscaler.local is Envoy Gateway (GitOps HTTPRoute).
-# Lan-proxy only TCP-forwards :80/:443 to ENVOY_GATEWAY_LB_IP.
+# HTTP(S) *.dev.microscaler.local is owned by haproxy (config/lan-http-vhosts.yaml):
+#   Tilt → localhost; everything else → Envoy :80.
 #
-# Apply on ms02: just lan-proxy-up  (or just cluster-edge-apply lan_proxy)
+# Apply on ms02: just lan-proxy-up
 
 ms02_lan_ip: "192.168.1.189"
 
 proxies:
-  # --- Kubernetes API (Multipass CP on mpqemubr0; IP from config/cluster.env) ---
+  # All targets are ENVOY_GATEWAY_LB_IP — listener port == lan_port (see Gateway TCP listeners).
   - name: k8s-api
     lan_port: 6443
-    lb_ip_env: K8S_CP_IP
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
     target_port: 6443
     protocol: tcp
-
-  # --- Edge: thin TCP passthrough → Envoy Gateway ---
-  - name: envoy-http
-    lan_port: 80
+  - name: postgres
+    lan_port: 5433
     lb_ip_env: ENVOY_GATEWAY_LB_IP
-    target_port: 80
+    target_port: 5433
     protocol: tcp
-  - name: envoy-https
-    lan_port: 443
+  - name: redis
+    lan_port: 6390
     lb_ip_env: ENVOY_GATEWAY_LB_IP
-    target_port: 443
+    target_port: 6390
     protocol: tcp
-
-  # --- Observability (OpenSearch stack; no Grafana/Loki/Prom/Jaeger) ---
-  - name: opensearch-dashboards
-    lan_port: 5601
-    lb_ip_env: OPENSEARCH_DASHBOARDS_LB_IP
-    target_port: 5601
+  - name: minio-api
+    lan_port: 9000
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 9000
+    protocol: tcp
+  - name: mailpit-smtp
+    lan_port: 1025
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 1025
+    protocol: tcp
+  - name: faktory
+    lan_port: 7419
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 7419
     protocol: tcp
   - name: otel-grpc
     lan_port: 4317
-    lb_ip_env: OTEL_LB_IP
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
     target_port: 4317
     protocol: tcp
   - name: otel-http
     lan_port: 4318
-    lb_ip_env: OTEL_LB_IP
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
     target_port: 4318
     protocol: tcp
-
-  # --- Platform data ---
-  - name: postgres
-    lan_port: 5433
-    lb_ip_env: POSTGRES_LB_IP
-    target_port: 5432
-    protocol: tcp
-  - name: redis
-    lan_port: 6390
-    lb_ip_env: REDIS_LB_IP
-    target_port: 6379
-    protocol: tcp
-  - name: minio-api
-    lan_port: 9000
-    lb_ip_env: MINIO_LB_IP
-    target_port: 9000
-    protocol: tcp
-  - name: minio-console
-    lan_port: 9001
-    lb_ip_env: MINIO_LB_IP
-    target_port: 9001
-    protocol: tcp
-  - name: pact-broker
-    lan_port: 9292
-    lb_ip_env: PACT_BROKER_LB_IP
-    target_port: 9292
-    protocol: tcp
-  - name: mailpit-smtp
-    lan_port: 1025
-    lb_ip_env: MAILPIT_LB_IP
-    target_port: 1025
-    protocol: tcp
-  - name: mailpit-web
-    lan_port: 8025
-    lb_ip_env: MAILPIT_LB_IP
-    target_port: 8025
-    protocol: tcp
-
-  # --- Scheduling ---
-  - name: faktory
-    lan_port: 7419
-    lb_ip_env: FAKTORY_LB_IP
-    target_port: 7419
-    protocol: tcp
-  - name: faktory-dashboard
-    lan_port: 7420
-    lb_ip_env: FAKTORY_LB_IP
-    target_port: 7420
-    protocol: tcp
-
-  # --- Pipeline ---
-  - name: fluvio-sc
-    lan_port: 9003
-    lb_ip_env: FLUVIO_SC_LB_IP
-    target_port: 9003
-    protocol: tcp
-
-  # --- Cylon infra ---
-  - name: routellm
-    lan_port: 4000
-    lb_ip_env: ROUTELLM_LB_IP
-    target_port: 4000
+  - name: registry
+    lan_port: 5001
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 5001
     protocol: tcp
   - name: squid
     lan_port: 3128
-    lb_ip_env: SQUID_LB_IP
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
     target_port: 3128
     protocol: tcp
-  - name: resurrection-hub
-    lan_port: 14000
-    lb_ip_env: RESURRECTION_HUB_LB_IP
-    target_port: 14000
+  - name: fluvio-sc
+    lan_port: 9003
+    lb_ip_env: ENVOY_GATEWAY_LB_IP
+    target_port: 9003
     protocol: tcp
-  - name: freeradius-auth
-    lan_port: 1812
-    lb_ip_env: FREERADIUS_LB_IP
-    target_port: 1812
-    protocol: udp
-  - name: freeradius-acct
-    lan_port: 1813
-    lb_ip_env: FREERADIUS_LB_IP
-    target_port: 1813
-    protocol: udp
 
-  # --- Registry ---
-  - name: registry
-    lan_port: 5001
-    lb_ip_env: REGISTRY_LB_IP
-    target_port: 5000
-    protocol: tcp
+  # UDP (FreeRADIUS): use Envoy VIP directly from a host with mpqemubr0 route
+  # (10.177.76.234:1812/1813). haproxy UDP path not used.
