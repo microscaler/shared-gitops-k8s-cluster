@@ -6,6 +6,10 @@ auth:
   passwordKey: postgres-password
   replicationPasswordKey: postgres-replication-password
 
+postgresql:
+  # App pools (sesame / haulage / rerp) + replicas + admin headroom.
+  maxConnections: "500"
+
 primary:
   name: postgres-primary
   persistence:
