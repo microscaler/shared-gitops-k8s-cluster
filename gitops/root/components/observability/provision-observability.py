@@ -726,6 +726,15 @@ def import_dashboard_bundles(client: JsonClient, directory: Path) -> None:
     bundle_files = sorted(directory.glob("*.ndjson"))
     if not bundle_files:
         raise ApiError(f"no dashboard NDJSON bundles in {directory}")
+    # Delete dashboards first so panel gridData is not sticky across overwrite
+    # imports (OSD can keep a stale react-grid layout when only panelsJSON
+    # changes under position-based panelIndex values).
+    for dashboard_id in dashboard_definitions.DASHBOARD_BUNDLES:
+        client.request(
+            f"api/saved_objects/dashboard/{quote(dashboard_id)}",
+            method="DELETE",
+            allowed=(404,),
+        )
     for path in bundle_files:
         import_ndjson_file(client, path)
 

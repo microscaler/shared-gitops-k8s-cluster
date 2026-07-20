@@ -1496,6 +1496,9 @@ def assemble_dashboard(
     references: list[dict[str, str]] = []
     for position, (object_type, object_id, x, y, width, height) in enumerate(panels):
         panel_ref = f"{panel_ref_prefix}_{position}"
+        # Use object_id as grid i/panelIndex so geometry updates stick to the
+        # panel identity (position-based "1"/"2"/… can leave OSD showing a
+        # stale layout after overwrite imports).
         panel_json.append(
             {
                 "version": "2.19.6",
@@ -1505,9 +1508,9 @@ def assemble_dashboard(
                     "y": y,
                     "w": width,
                     "h": height,
-                    "i": str(position + 1),
+                    "i": object_id,
                 },
-                "panelIndex": str(position + 1),
+                "panelIndex": object_id,
                 "embeddableConfig": {},
                 "panelRefName": panel_ref,
             }

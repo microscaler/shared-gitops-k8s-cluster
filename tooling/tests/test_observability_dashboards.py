@@ -248,6 +248,14 @@ def test_dashboard_includes_http_triage_panels() -> None:
     assert panels["logs-http-status-codes-pie"]["x"] == 38
     assert panels["logs-http-status-codes-pie"]["y"] == 24
     assert panels["logs-http-status-codes-pie"]["h"] == 7
+    # Stable panel ids (object_id) so layout updates stick after reimport.
+    by_ref = {
+        ref["id"]: panels_json[i]
+        for i, ref in enumerate(dashboard["references"])
+    }
+    for object_id, panel in by_ref.items():
+        assert panel["gridData"]["i"] == object_id
+        assert panel["panelIndex"] == object_id
 
 
 def test_status_codes_pie_uses_class_colors() -> None:

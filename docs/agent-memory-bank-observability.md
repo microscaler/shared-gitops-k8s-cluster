@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-19 (DataPersistence Lifeguard cutover on main@ae05c5b)
+Updated: 2026-07-20 (Logs mid-row layout: status full-height; avg+donut stacked right)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
@@ -19,11 +19,13 @@ Updated: 2026-07-19 (DataPersistence Lifeguard cutover on main@ae05c5b)
   - OTel scrape: `postgres-exporter.data:9187` (not postgres-ha); keep `pg_up`, `pg_replication_*`, `pg_stat_replication_pg_wal_lsn_diff`, backends/activity/size
   - Vega: streaming replicas table on `pg_stat_replication_pg_wal_lsn_diff` (`_metrics_vega_url` + `%timefilter%`)
 
-## HTTP triage (done — `c13d9be` + status pie)
+## HTTP triage (done — status pie + mid-row layout)
 - Saved search **Logs / HTTP** (`logs-http`): Lucene `event_class:application AND event_category:http`.
-- Logs dashboard: guide → volume → Top paths / Status table + Status % pie / Avg duration → Signal stream (7 panels).
-- Pie viz `logs-http-status-codes-pie` stacked under status table (percent labels).
-- Banner notes collector drops + HTTP deep-link; verified in OSD after hard reload.
+- Logs dashboard: guide → volume → Top paths | Status table (full mid height) | Avg + Status % donut (stacked right) → Signal stream (7 panels).
+- Mid-row grid: status `x=28,h=14`; avg `x=38,y=17,h=7`; donut `x=38,y=24,h=7`.
+- Panel `gridData.i` / `panelIndex` = object_id (not position) so layout updates stick.
+- Provisioner deletes each dashboard before NDJSON import (overwrite alone left stale react-grid).
+- Banner notes collector drops + HTTP deep-link; verified in OSD after delete+reimport.
 - Provision: `just observability-provision-now` (ms02); generator: `tooling/generate_observability_dashboards.py`.
 
 ## Short Discover columns (in progress / local)
