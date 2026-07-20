@@ -122,11 +122,8 @@ config:
               - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
                 regex: node-exporter
                 action: keep
-              # OTel env-expands $VAR; use $$ so Prometheus gets $1.
-              - source_labels: [__meta_kubernetes_pod_ip]
-                regex: (.+)
-                target_label: __address__
-                replacement: "$$1:9100"
+              # k8s_sd sets __address__ from pod IP + containerPort (9100).
+              # Do not use $1 replacements — OTel env-expands them and crashes.
               - source_labels: [__meta_kubernetes_pod_node_name]
                 target_label: node
               - target_label: platform_component
@@ -155,10 +152,7 @@ config:
               - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
                 regex: kube-state-metrics
                 action: keep
-              - source_labels: [__meta_kubernetes_pod_ip]
-                regex: (.+)
-                target_label: __address__
-                replacement: "$$1:8080"
+              # k8s_sd sets __address__ from pod IP + containerPort (8080).
               - target_label: platform_component
                 replacement: k3s
               - target_label: service
