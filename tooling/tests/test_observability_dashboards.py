@@ -22,9 +22,48 @@ spec.loader.exec_module(definitions)
 def test_dashboard_bundles() -> None:
     assert set(definitions.DASHBOARD_BUNDLES) == {
         "logs-explore",
+        "http-latency",
         "data-persistence",
         "k3s-dev",
     }
+
+
+def test_http_latency_dashboard_and_logs_delta() -> None:
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "http-latency"
+    )
+    assert dashboard["attributes"]["title"] == "HTTP latency"
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "http-latency-guide",
+        "http-latency-p95-now",
+        "http-latency-p50-p95-timeline",
+        "http-latency-path-p95-timeline",
+        "http-latency-top-paths",
+        "http-latency-slow",
+    }.issubset(ref_ids)
+    path = DASHBOARDS / "http-latency.ndjson"
+    assert path.is_file()
+    top_paths = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization" and object_id == "logs-http-top-paths"
+    )
+    top_state = json.loads(top_paths["attributes"]["visState"])
+    assert top_state["type"] == "vega"
+    assert "deltaMs" in top_state["params"]["spec"]
+    assert "p95Base" in top_state["params"]["spec"]
+    guide = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization"
+        and object_id == "logs-explore-discover-guide"
+    )
+    markdown = json.loads(guide["attributes"]["visState"])["params"]["markdown"]
+    assert "http-latency" in markdown
 
 
 def test_k3s_dev_dashboard_is_lan_specific() -> None:

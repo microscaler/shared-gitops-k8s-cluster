@@ -25,5 +25,6 @@ configMapGenerator:
   - name: observability-dashboards
     files:
       - dashboards/logs-explore.ndjson
+      - dashboards/http-latency.ndjson
       - dashboards/data-persistence.ndjson
       - dashboards/k3s-dev.ndjson

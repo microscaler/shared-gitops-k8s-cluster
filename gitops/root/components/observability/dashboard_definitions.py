@@ -132,6 +132,10 @@ LOG_RUNTIME_NOISE_LUCENE = f"{LOG_EVENT_CLASS_FIELD}:runtime_noise"
 LOG_HTTP_LUCENE = (
     f"{LOG_EVENT_CLASS_FIELD}:application AND {LOG_EVENT_CATEGORY_FIELD}:http"
 )
+LOG_HTTP_SLOW_LUCENE = (
+    f"({LOG_HTTP_LUCENE}) AND {LOG_DURATION_FIELD}:>=500"
+)
+HTTP_LATENCY_DASHBOARD_ID = "http-latency"
 
 LOG_ERRORS_LUCENE = (
     f"({LOG_SIGNAL_LUCENE}) AND severityText: (ERROR OR FATAL OR WARN)"
@@ -256,7 +260,11 @@ def discover_guide_markdown() -> dict[str, Any]:
         "## Use Discover for filters (Logz.io-style left panel)\n\n"
         f"[**Open Logs / Signal**]({LOGS_DISCOVER_DEFAULT_ROUTE}) — default triage.\n"
         f"[**Open Logs / HTTP**]({http_route}) — access logs "
-        "(`Request completed` / method · path · status · duration).\n\n"
+        "(`Request completed` / method · path · status · duration).\n"
+        "[**HTTP latency**](/app/dashboards#/view/http-latency) — p50/p95 "
+        "trends, path timelines, slow requests (investigation room).\n\n"
+        "Top-paths **Δ ms** = current window p95 − prior equal 15m slice "
+        "(smoke alarm for jumps still under the 500 ms SLO).\n\n"
         "### Filter order\n"
         "1. **namespace** (`loadlinker` / `sesame-idam` / `rerp`)\n"
         "2. **application** (`serviceName`)\n"
@@ -705,6 +713,26 @@ def log_terms_pie_visualization(
     )
 
 
+def _http_path_terms_agg(*, size: int) -> dict[str, Any]:
+    return {
+        "paths": {
+            "terms": {
+                "field": LOG_PATH_KEYWORD_FIELD,
+                "size": size,
+                "order": {"_count": "desc"},
+            },
+            "aggs": {
+                "p95": {
+                    "percentiles": {
+                        "field": LOG_DURATION_FIELD,
+                        "percents": [95],
+                    }
+                }
+            },
+        }
+    }
+
+
 def log_http_top_paths_visualization(
     *,
     title: str,
@@ -712,20 +740,71 @@ def log_http_top_paths_visualization(
     query: str,
     size: int = 10,
     slo_ms: int = HTTP_P95_SLO_MS,
+    window_seconds: int = 900,
 ) -> dict[str, Any]:
-    """Top paths with count, RPS (window-normalized), and p95 vs SLO."""
-    # Full Vega: classic table cannot compute RPS from the dashboard time range.
+    """Top paths: count, RPS, p95, Δ vs prior window, pSLO.
+
+    Δ ms = current-window p95 − prior equal window (default 15m → prior
+    ``now-30m…now-15m``). Baseline is fixed to that prior slice because OSD
+    2.19 does not reliably inject ``%timefilter%`` into Vega signals.
+    """
+    baseline_url = {
+        "index": "otel-v1-apm-logs*",
+        "body": {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {
+                            "query_string": {
+                                "query": LOG_HTTP_LUCENE,
+                                "default_operator": "AND",
+                            }
+                        },
+                        {
+                            "range": {
+                                LOGS_TIME_FIELD: {
+                                    "gte": f"now-{2 * window_seconds}s",
+                                    "lt": f"now-{window_seconds}s",
+                                }
+                            }
+                        },
+                    ]
+                }
+            },
+            "aggs": _http_path_terms_agg(size=size * 2),
+        },
+    }
+    # Amber when p95 rose >50ms or >50% vs baseline; red on SLO breach or >200ms rise.
+    delta_fill = (
+        "datum.vsSlo === 'breach' || (isValid(datum.deltaMs) && datum.deltaMs > 200) "
+        "? '#b00020' : "
+        "(isValid(datum.deltaMs) && (datum.deltaMs > 50 || "
+        "(isValid(datum.p95Base) && datum.p95Base > 0 && "
+        "datum.deltaMs / datum.p95Base > 0.5))) "
+        "? '#c77700' : '#0a7a28'"
+    )
     spec = {
         "$schema": "https://vega.github.io/schema/vega/v5.json",
         "padding": 8,
         "autosize": {"type": "fit", "contains": "padding"},
         "signals": [
-            # Dashboard default window is 15m; RPS = count / windowSeconds.
-            # (OSD 2.19 does not reliably substitute %timefilter% into Vega signals.)
-            {"name": "windowSeconds", "value": 900},
+            {"name": "windowSeconds", "value": window_seconds},
             {"name": "sloMs", "value": slo_ms},
         ],
         "data": [
+            {
+                "name": "baseline",
+                "url": baseline_url,
+                "format": {"property": "aggregations.paths.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "p95Base",
+                        "expr": "datum.p95.values['95.0']",
+                    }
+                ],
+            },
             {
                 "name": "paths",
                 "url": {
@@ -734,23 +813,7 @@ def log_http_top_paths_visualization(
                     "index": "otel-v1-apm-logs*",
                     "body": {
                         "size": 0,
-                        "aggs": {
-                            "paths": {
-                                "terms": {
-                                    "field": LOG_PATH_KEYWORD_FIELD,
-                                    "size": size,
-                                    "order": {"_count": "desc"},
-                                },
-                                "aggs": {
-                                    "p95": {
-                                        "percentiles": {
-                                            "field": LOG_DURATION_FIELD,
-                                            "percents": [95],
-                                        }
-                                    }
-                                },
-                            }
-                        },
+                        "aggs": _http_path_terms_agg(size=size),
                     },
                 },
                 "format": {"property": "aggregations.paths.buckets"},
@@ -759,6 +822,19 @@ def log_http_top_paths_visualization(
                         "type": "formula",
                         "as": "p95",
                         "expr": "datum.p95.values['95.0']",
+                    },
+                    {
+                        "type": "lookup",
+                        "from": "baseline",
+                        "key": "key",
+                        "fields": ["p95Base"],
+                    },
+                    {
+                        "type": "formula",
+                        "as": "deltaMs",
+                        "expr": (
+                            "isValid(datum.p95Base) ? datum.p95 - datum.p95Base : null"
+                        ),
                     },
                     {
                         "type": "formula",
@@ -781,7 +857,7 @@ def log_http_top_paths_visualization(
                         "count": "count",
                         "rps": "rps/15m",
                         "p95": "p95 ms",
-                        "slo": "SLO ms",
+                        "delta": "Δ ms",
                         "vs": "pSLO",
                         "row": 0,
                     }
@@ -828,7 +904,7 @@ def log_http_top_paths_visualization(
                         "from": {"data": "header"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.48"},
+                                "x": {"signal": "width * 0.46"},
                                 "y": {"value": 14},
                                 "text": {"field": "count"},
                                 "align": {"value": "right"},
@@ -843,7 +919,7 @@ def log_http_top_paths_visualization(
                         "from": {"data": "header"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.60"},
+                                "x": {"signal": "width * 0.56"},
                                 "y": {"value": 14},
                                 "text": {"field": "rps"},
                                 "align": {"value": "right"},
@@ -858,7 +934,7 @@ def log_http_top_paths_visualization(
                         "from": {"data": "header"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.74"},
+                                "x": {"signal": "width * 0.68"},
                                 "y": {"value": 14},
                                 "text": {"field": "p95"},
                                 "align": {"value": "right"},
@@ -873,9 +949,9 @@ def log_http_top_paths_visualization(
                         "from": {"data": "header"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.86"},
+                                "x": {"signal": "width * 0.82"},
                                 "y": {"value": 14},
-                                "text": {"field": "slo"},
+                                "text": {"field": "delta"},
                                 "align": {"value": "right"},
                                 "fontWeight": {"value": "bold"},
                                 "fontSize": {"value": 11},
@@ -920,7 +996,7 @@ def log_http_top_paths_visualization(
                                 "text": {"field": "key"},
                                 "fontSize": {"value": 11},
                                 "fill": {"value": "#111"},
-                                "limit": {"signal": "width * 0.46"},
+                                "limit": {"signal": "width * 0.44"},
                             }
                         },
                     },
@@ -929,7 +1005,7 @@ def log_http_top_paths_visualization(
                         "from": {"data": "paths"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.48"},
+                                "x": {"signal": "width * 0.46"},
                                 "y": {"scale": "y", "field": "row", "band": 0.5},
                                 "text": {"field": "doc_count"},
                                 "align": {"value": "right"},
@@ -943,7 +1019,7 @@ def log_http_top_paths_visualization(
                         "from": {"data": "paths"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.60"},
+                                "x": {"signal": "width * 0.56"},
                                 "y": {"scale": "y", "field": "row", "band": 0.5},
                                 "text": {
                                     "signal": (
@@ -961,10 +1037,8 @@ def log_http_top_paths_visualization(
                         "from": {"data": "paths"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.74"},
+                                "x": {"signal": "width * 0.68"},
                                 "y": {"scale": "y", "field": "row", "band": 0.5},
-                                # Integer ms today (0/1/2…); use 3dp below 1 so
-                                # sub-ms floats are visible if emitters gain precision.
                                 "text": {
                                     "signal": (
                                         "datum.p95 < 1 ? format(datum.p95, '.3f') "
@@ -986,12 +1060,21 @@ def log_http_top_paths_visualization(
                         "from": {"data": "paths"},
                         "encode": {
                             "update": {
-                                "x": {"signal": "width * 0.86"},
+                                "x": {"signal": "width * 0.82"},
                                 "y": {"scale": "y", "field": "row", "band": 0.5},
-                                "text": {"signal": "sloMs"},
+                                "text": {
+                                    "signal": (
+                                        "!isValid(datum.deltaMs) ? '—' : "
+                                        "(datum.deltaMs > 0 ? '+' : '') + "
+                                        "(abs(datum.deltaMs) < 1 "
+                                        "? format(datum.deltaMs, '.2f') "
+                                        ": format(datum.deltaMs, '.1f'))"
+                                    )
+                                },
                                 "align": {"value": "right"},
                                 "fontSize": {"value": 11},
-                                "fill": {"value": "#555"},
+                                "fontWeight": {"value": "bold"},
+                                "fill": {"signal": delta_fill},
                             }
                         },
                     },
@@ -1435,6 +1518,649 @@ def log_avg_metric_visualization(
     )
 
 
+def log_count_metric_visualization(
+    *,
+    title: str,
+    data_view: str,
+    query: str,
+    custom_label: str = "requests",
+) -> dict[str, Any]:
+    """Single-number document count metric."""
+    vis_state = {
+        "title": title,
+        "type": "metric",
+        "params": {
+            "addTooltip": True,
+            "addLegend": False,
+            "type": "metric",
+            "metric": {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [{"from": 0, "to": 1000000}],
+                "labels": {"show": True},
+                "invertColors": False,
+                "style": {
+                    "bgFill": 0.0,
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": 40,
+                },
+            },
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "count",
+                "schema": "metric",
+                "params": {"customLabel": custom_label},
+            }
+        ],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_percentile_metric_vega(
+    *,
+    title: str,
+    data_view: str,
+    query: str,
+    percentile: float,
+    field: str = LOG_DURATION_FIELD,
+    custom_label: str = "ms",
+    slo_ms: int | None = None,
+) -> dict[str, Any]:
+    """Single-number percentile of a log numeric field (dashboard time context)."""
+    # OpenSearch returns percentile keys like "95.0" / "50.0".
+    pct_key = f"{float(percentile):.1f}"
+    fill_expr = "'#111'"
+    if slo_ms is not None:
+        fill_expr = f"datum.value > {slo_ms} ? '#b00020' : '#0a7a28'"
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 8,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "pct",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": LOGS_TIME_FIELD,
+                    "index": "otel-v1-apm-logs*",
+                    "body": {
+                        "size": 0,
+                        "aggs": {
+                            "pct": {
+                                "percentiles": {
+                                    "field": field,
+                                    "percents": [percentile],
+                                }
+                            }
+                        },
+                    },
+                },
+                "format": {"property": "aggregations.pct"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "value",
+                        "expr": f"datum.values['{pct_key}']",
+                    }
+                ],
+            }
+        ],
+        "marks": [
+            {
+                "type": "text",
+                "from": {"data": "pct"},
+                "encode": {
+                    "enter": {
+                        "align": {"value": "center"},
+                        "baseline": {"value": "middle"},
+                        "fontSize": {"value": 40},
+                        "fontWeight": {"value": "bold"},
+                    },
+                    "update": {
+                        "x": {"signal": "width / 2"},
+                        "y": {"signal": "height / 2"},
+                        "fill": {"signal": fill_expr},
+                        "text": {
+                            "signal": (
+                                "!isValid(datum.value) ? '—' : "
+                                "(datum.value < 1 ? format(datum.value, '.3f') "
+                                f": format(datum.value, '.1f')) + ' {custom_label}'"
+                            )
+                        },
+                    },
+                },
+            }
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_http_percentile_timeline_vega(
+    *,
+    title: str,
+    data_view: str,
+    query: str,
+    interval: str = "1m",
+    slo_ms: int = HTTP_P95_SLO_MS,
+) -> dict[str, Any]:
+    """Overall HTTP p50 + p95 over time with SLO reference line."""
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": {"left": 8, "right": 8, "top": 8, "bottom": 8},
+        "autosize": {"type": "fit", "contains": "padding"},
+        "signals": [{"name": "sloMs", "value": slo_ms}],
+        "data": [
+            {
+                "name": "timeline",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": LOGS_TIME_FIELD,
+                    "index": "otel-v1-apm-logs*",
+                    "body": {
+                        "size": 0,
+                        "aggs": {
+                            "timeline": {
+                                "date_histogram": {
+                                    "field": LOGS_TIME_FIELD,
+                                    "fixed_interval": interval,
+                                    "min_doc_count": 1,
+                                },
+                                "aggs": {
+                                    "p50": {
+                                        "percentiles": {
+                                            "field": LOG_DURATION_FIELD,
+                                            "percents": [50],
+                                        }
+                                    },
+                                    "p95": {
+                                        "percentiles": {
+                                            "field": LOG_DURATION_FIELD,
+                                            "percents": [95],
+                                        }
+                                    },
+                                },
+                            }
+                        },
+                    },
+                },
+                "format": {"property": "aggregations.timeline.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "p50",
+                        "expr": "datum.p50.values['50.0']",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "p95",
+                        "expr": "datum.p95.values['95.0']",
+                    },
+                ],
+            }
+        ],
+        "scales": [
+            {
+                "name": "x",
+                "type": "time",
+                "domain": {"data": "timeline", "field": "key"},
+                "range": "width",
+            },
+            {
+                "name": "y",
+                "type": "linear",
+                "domain": {
+                    "data": "timeline",
+                    "fields": ["p50", "p95"],
+                },
+                "nice": True,
+                "zero": True,
+                "range": "height",
+            },
+        ],
+        "axes": [
+            {
+                "orient": "bottom",
+                "scale": "x",
+                "labelFontSize": 10,
+                "title": LOGS_TIME_FIELD,
+                "titleFontSize": 11,
+            },
+            {
+                "orient": "left",
+                "scale": "y",
+                "labelFontSize": 10,
+                "title": "ms",
+                "titleFontSize": 11,
+            },
+        ],
+        "marks": [
+            {
+                "type": "rule",
+                "encode": {
+                    "update": {
+                        "x": {"value": 0},
+                        "x2": {"signal": "width"},
+                        "y": {"scale": "y", "signal": "sloMs"},
+                        "stroke": {"value": "#b00020"},
+                        "strokeDash": {"value": [4, 4]},
+                        "strokeWidth": {"value": 1},
+                        "tooltip": {
+                            "signal": "{'SLO p95': sloMs + ' ms'}"
+                        },
+                    }
+                },
+            },
+            {
+                "type": "line",
+                "from": {"data": "timeline"},
+                "encode": {
+                    "enter": {
+                        "interpolate": {"value": "linear"},
+                        "stroke": {"value": "#1a73e8"},
+                        "strokeWidth": {"value": 2},
+                    },
+                    "update": {
+                        "x": {"scale": "x", "field": "key"},
+                        "y": {"scale": "y", "field": "p50"},
+                        "tooltip": {
+                            "signal": (
+                                "{title: 'p50', "
+                                "time: utcFormat(datum.key, '%H:%M'), "
+                                "ms: format(datum.p50, '.1f')}"
+                            )
+                        },
+                    },
+                },
+            },
+            {
+                "type": "line",
+                "from": {"data": "timeline"},
+                "encode": {
+                    "enter": {
+                        "interpolate": {"value": "linear"},
+                        "stroke": {"value": "#c77700"},
+                        "strokeWidth": {"value": 2},
+                    },
+                    "update": {
+                        "x": {"scale": "x", "field": "key"},
+                        "y": {"scale": "y", "field": "p95"},
+                        "tooltip": {
+                            "signal": (
+                                "{title: 'p95', "
+                                "time: utcFormat(datum.key, '%H:%M'), "
+                                "ms: format(datum.p95, '.1f')}"
+                            )
+                        },
+                    },
+                },
+            },
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def log_http_path_p95_timeline_vega(
+    *,
+    title: str,
+    data_view: str,
+    query: str,
+    size: int = 5,
+    interval: str = "1m",
+) -> dict[str, Any]:
+    """p95 over time for the top-N paths by request count."""
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": {"left": 8, "right": 8, "top": 8, "bottom": 8},
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "raw",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": LOGS_TIME_FIELD,
+                    "index": "otel-v1-apm-logs*",
+                    "body": {
+                        "size": 0,
+                        "aggs": {
+                            "timeline": {
+                                "date_histogram": {
+                                    "field": LOGS_TIME_FIELD,
+                                    "fixed_interval": interval,
+                                    "min_doc_count": 1,
+                                },
+                                "aggs": {
+                                    "paths": {
+                                        "terms": {
+                                            "field": LOG_PATH_KEYWORD_FIELD,
+                                            "size": size,
+                                            "order": {"_count": "desc"},
+                                        },
+                                        "aggs": {
+                                            "p95": {
+                                                "percentiles": {
+                                                    "field": LOG_DURATION_FIELD,
+                                                    "percents": [95],
+                                                }
+                                            }
+                                        },
+                                    }
+                                },
+                            }
+                        },
+                    },
+                },
+                "format": {"property": "aggregations.timeline.buckets"},
+                "transform": [
+                    {
+                        "type": "flatten",
+                        "fields": ["paths.buckets"],
+                        "as": ["bucket"],
+                    },
+                    {
+                        "type": "formula",
+                        "as": "path",
+                        "expr": "datum.bucket.key",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "p95",
+                        "expr": "datum.bucket.p95.values['95.0']",
+                    },
+                    {
+                        "type": "filter",
+                        "expr": "isValid(datum.p95) && isFinite(datum.p95)",
+                    },
+                ],
+            }
+        ],
+        "scales": [
+            {
+                "name": "x",
+                "type": "time",
+                "domain": {"data": "raw", "field": "key"},
+                "range": "width",
+            },
+            {
+                "name": "y",
+                "type": "linear",
+                "domain": {"data": "raw", "field": "p95"},
+                "nice": True,
+                "zero": True,
+                "range": "height",
+            },
+            {
+                "name": "color",
+                "type": "ordinal",
+                "domain": {"data": "raw", "field": "path"},
+                "range": {"scheme": "category10"},
+            },
+        ],
+        "axes": [
+            {
+                "orient": "bottom",
+                "scale": "x",
+                "labelFontSize": 10,
+                "title": LOGS_TIME_FIELD,
+                "titleFontSize": 11,
+            },
+            {
+                "orient": "left",
+                "scale": "y",
+                "labelFontSize": 10,
+                "title": "p95 ms",
+                "titleFontSize": 11,
+            },
+        ],
+        "legends": [
+            {
+                "fill": "color",
+                "title": "path",
+                "orient": "right",
+                "labelFontSize": 9,
+                "titleFontSize": 10,
+                "labelLimit": 160,
+            }
+        ],
+        "marks": [
+            {
+                "type": "group",
+                "from": {
+                    "facet": {
+                        "name": "series",
+                        "data": "raw",
+                        "groupby": "path",
+                    }
+                },
+                "marks": [
+                    {
+                        "type": "line",
+                        "from": {"data": "series"},
+                        "encode": {
+                            "enter": {
+                                "interpolate": {"value": "linear"},
+                                "strokeWidth": {"value": 2},
+                            },
+                            "update": {
+                                "x": {"scale": "x", "field": "key"},
+                                "y": {"scale": "y", "field": "p95"},
+                                "stroke": {"scale": "color", "field": "path"},
+                                "tooltip": {
+                                    "signal": (
+                                        "{title: datum.path, "
+                                        "time: utcFormat(datum.key, '%H:%M'), "
+                                        "p95: format(datum.p95, '.1f') + ' ms'}"
+                                    )
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
+def http_latency_guide_markdown() -> dict[str, Any]:
+    """Banner for the HTTP latency investigation board."""
+    http_route = _discover_route_for_query(LOG_HTTP_LUCENE)
+    slow_route = _discover_route_for_query(LOG_HTTP_SLOW_LUCENE)
+    markdown = (
+        "## HTTP latency — investigation room\n\n"
+        f"[**Logs**](/app/dashboards#/view/{LOGS_DASHBOARD_ID}) — triage / smoke "
+        "alarm (top paths Δ + status).\n"
+        f"[**Logs / HTTP**]({http_route}) — Discover access logs.\n"
+        f"[**Slow requests (≥{HTTP_P95_SLO_MS} ms)**]({slow_route}) — "
+        "Discover filter on duration.\n\n"
+        f"SLO: **p95 ≤ {HTTP_P95_SLO_MS} ms** (BFF edge design target).\n"
+        "Use this board for trends and path timelines; use Logs when you only "
+        "need “is anything hot / breached right now?”.\n\n"
+        f"Managed by {MANAGED_BY}."
+    )
+    vis_state = {
+        "title": "HTTP latency guide",
+        "type": "markdown",
+        "params": {
+            "fontSize": 12,
+            "openLinksInNewTab": False,
+            "markdown": markdown,
+        },
+        "aggs": [],
+    }
+    return {
+        "attributes": {
+            "title": "HTTP latency guide",
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(
+                    {"query": {"query": "", "language": "lucene"}, "filter": []}
+                )
+            },
+        },
+        "references": [],
+    }
+
+
+def _http_latency_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    """Dedicated HTTP latency investigation dashboard."""
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        ("visualization", "http-latency-guide", http_latency_guide_markdown()),
+        (
+            "visualization",
+            "http-latency-req-count",
+            log_count_metric_visualization(
+                title="HTTP requests (window)",
+                data_view=LOGS_VIEW,
+                query=LOG_HTTP_LUCENE,
+                custom_label="requests",
+            ),
+        ),
+        (
+            "visualization",
+            "http-latency-p50-now",
+            log_percentile_metric_vega(
+                title="Overall p50 (ms)",
+                data_view=LOGS_VIEW,
+                query=LOG_HTTP_LUCENE,
+                percentile=50,
+                custom_label="p50 ms",
+            ),
+        ),
+        (
+            "visualization",
+            "http-latency-p95-now",
+            log_percentile_metric_vega(
+                title=f"Overall p95 (ms) vs {HTTP_P95_SLO_MS} SLO",
+                data_view=LOGS_VIEW,
+                query=LOG_HTTP_LUCENE,
+                percentile=95,
+                custom_label="p95 ms",
+                slo_ms=HTTP_P95_SLO_MS,
+            ),
+        ),
+        (
+            "visualization",
+            "http-latency-avg",
+            log_avg_metric_visualization(
+                title="Avg duration_ms (HTTP)",
+                data_view=LOGS_VIEW,
+                field=LOG_DURATION_FIELD,
+                query=LOG_HTTP_LUCENE,
+            ),
+        ),
+        (
+            "visualization",
+            "http-latency-p50-p95-timeline",
+            log_http_percentile_timeline_vega(
+                title=f"Overall p50 / p95 over time (SLO {HTTP_P95_SLO_MS}ms)",
+                data_view=LOGS_VIEW,
+                query=LOG_HTTP_LUCENE,
+                interval="1m",
+                slo_ms=HTTP_P95_SLO_MS,
+            ),
+        ),
+        (
+            "visualization",
+            "http-latency-path-p95-timeline",
+            log_http_path_p95_timeline_vega(
+                title="p95 by top paths over time",
+                data_view=LOGS_VIEW,
+                query=LOG_HTTP_LUCENE,
+                size=5,
+                interval="1m",
+            ),
+        ),
+        (
+            "visualization",
+            "http-latency-top-paths",
+            log_http_top_paths_visualization(
+                title=(
+                    f"Top paths — RPS + p95 + Δ vs prior 15m "
+                    f"(SLO {HTTP_P95_SLO_MS}ms)"
+                ),
+                data_view=LOGS_VIEW,
+                query=LOG_HTTP_LUCENE,
+                size=15,
+                slo_ms=HTTP_P95_SLO_MS,
+            ),
+        ),
+        (
+            "search",
+            "http-latency-slow",
+            saved_search(
+                title="HTTP / Slow (≥500ms)",
+                data_view=LOGS_VIEW,
+                time_field=LOGS_TIME_FIELD,
+                columns=LOG_HTTP_COLUMNS,
+                query=LOG_HTTP_SLOW_LUCENE,
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id=HTTP_LATENCY_DASHBOARD_ID,
+            title="HTTP latency",
+            description=(
+                "HTTP latency investigation: overall p50/p95, path timelines, "
+                "top-path Δ vs prior window, and slow-request Discover. "
+                f"Companion to Logs triage. Managed by {MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "http-latency-guide", 0, 0, 48, 6),
+                ("visualization", "http-latency-req-count", 0, 6, 12, 6),
+                ("visualization", "http-latency-p50-now", 12, 6, 12, 6),
+                ("visualization", "http-latency-p95-now", 24, 6, 12, 6),
+                ("visualization", "http-latency-avg", 36, 6, 12, 6),
+                ("visualization", "http-latency-p50-p95-timeline", 0, 12, 24, 14),
+                ("visualization", "http-latency-path-p95-timeline", 24, 12, 24, 14),
+                ("visualization", "http-latency-top-paths", 0, 26, 48, 16),
+                ("search", "http-latency-slow", 0, 42, 48, 14),
+            ],
+            panel_ref_prefix="http_latency",
+            time_from="now-1h",
+            refresh_ms=30000,
+            query=LOG_HTTP_LUCENE,
+            filters=[],
+        )
+    )
+    return objects
+
+
 def saved_search(
     *,
     title: str,
@@ -1597,7 +2323,10 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             "visualization",
             "logs-http-top-paths",
             log_http_top_paths_visualization(
-                title=f"Top paths (HTTP) — RPS + p95 vs {HTTP_P95_SLO_MS}ms SLO",
+                title=(
+                    f"Top paths (HTTP) — RPS + p95 + Δ vs prior 15m "
+                    f"(SLO {HTTP_P95_SLO_MS}ms)"
+                ),
                 data_view=LOGS_VIEW,
                 query=LOG_HTTP_LUCENE,
                 size=10,
@@ -1666,13 +2395,14 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             dashboard_id="logs-explore",
             title="Logs",
             description=(
-                "Companion overview with HTTP triage (top paths, status table + "
-                "pie, avg latency) and a signal stream with per-row Discover "
-                "doc/surrounding links. Open Discover for the field sidebar and "
-                "saved searches (Signal / HTTP / Errors / Auth / BFF / Runtime "
-                "noise). Epoll and memory are dropped at the collector; rare "
-                "lifecycle/config noise is selectable via Runtime noise. "
-                f"Managed by {MANAGED_BY}"
+                "Companion overview with HTTP triage (top paths with p95 Δ vs "
+                "prior window, status table + pie, avg latency) and a signal "
+                "stream with per-row Discover doc/surrounding links. Deep "
+                "latency trends live on http-latency. Open Discover for the "
+                "field sidebar and saved searches (Signal / HTTP / Errors / "
+                "Auth / BFF / Runtime noise). Epoll and memory are dropped at "
+                "the collector; rare lifecycle/config noise is selectable via "
+                f"Runtime noise. Managed by {MANAGED_BY}"
             ),
             panels=[
                 ("visualization", "logs-explore-discover-guide", 0, 0, 48, 7),
@@ -3398,6 +4128,7 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
 
 DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "logs-explore": _logs_explore_bundle(),
+    "http-latency": _http_latency_bundle(),
     "data-persistence": _data_persistence_bundle(),
     "k3s-dev": _k3s_dev_bundle(),
 }

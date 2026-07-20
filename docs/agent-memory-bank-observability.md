@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-20 (k3s phase `value:1` + MiB/GiB lines; commit `a94539e`)
+Updated: 2026-07-20 (Logs Δ ms + HTTP latency board)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
@@ -11,7 +11,10 @@ Updated: 2026-07-20 (k3s phase `value:1` + MiB/GiB lines; commit `a94539e`)
 - Discover Signal columns include method/path/status/duration_ms.
 
 ## Managed dashboards
-- **Logs** (`logs-explore`) — HTTP triage, volume, top paths / status / duration, signal stream.
+- **Logs** (`logs-explore`) — HTTP triage, volume, top paths (p95 + Δ vs prior 15m) / status / duration, signal stream.
+- **HTTP latency** (`http-latency`) — investigation room: overall p50/p95, path p95 timelines, top-path Δ, slow (≥500ms) Discover.
+  - URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/http-latency`
+  - Logs stays smoke-alarm; this board is trends / deviations.
 - **DataPersistence** (`data-persistence`) — Lifeguard Postgres primary + streaming replicas + Redis (Pgpool retired).
   - URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/data-persistence`
   - Source: `dashboard_definitions.py` → `dashboards/data-persistence.ndjson`
@@ -61,10 +64,15 @@ Link shapes (OSD 2.19): use classic Discover, not data-explorer:
 Vega `href` requires `vis_type_vega.enableExternalUrls: true` in Dashboards
 (`helm-values-dashboards.yaml`); otherwise canvas clicks fail silently.
 
-## Top paths RPS + pSLO (done)
-- Vega panel `logs-http-top-paths`: path | count | rps/15m | p95 ms | SLO ms (500) | pSLO (ok/breach).
+## Top paths RPS + Δ + pSLO (done)
+- Vega panel `logs-http-top-paths`: path | count | rps/15m | p95 ms | Δ ms | pSLO.
+- Δ ms = current p95 − prior equal 15m window (`now-30m…now-15m`); amber >50ms/50%, red >200ms or SLO breach.
 - RPS = count / 900 (dashboard default 15m). OSD 2.19 does not reliably inject `%timefilter%` into Vega signals.
 - Status-codes panel empty until access logs carry `log.attributes.status` (rebuild on BRRTRouter `d0b931a`).
+
+## HTTP latency board (done)
+- Dashboard `http-latency`: guide, request count, p50/p95/avg KPIs, overall p50/p95 timeline + SLO line, top-path p95 timeline, top-paths Δ table, slow (≥500ms) saved search.
+- Default time `now-1h`; linked from Logs guide.
 
 ## Status colors + volume click-zoom (done)
 - Status pie is Vega: **2xx green / 3xx blue / 4xx amber / 5xx red**.
