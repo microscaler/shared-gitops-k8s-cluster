@@ -1713,6 +1713,8 @@ METRICS_PHASE_KEYWORD = "metric.attributes.phase.keyword"
 METRICS_CONDITION_KEYWORD = "metric.attributes.condition.keyword"
 METRICS_STATUS_KEYWORD = "metric.attributes.status.keyword"
 METRICS_DEPLOYMENT_KEYWORD = "metric.attributes.deployment.keyword"
+METRICS_DAEMONSET_KEYWORD = "metric.attributes.daemonset.keyword"
+METRICS_PLATFORM_COMPONENT_KEYWORD = "metric.attributes.platform_component.keyword"
 
 K3S_DEV_DASHBOARD_ID = "k3s-dev"
 K3S_NODE_SPLIT_FIELD = METRICS_NODE_KEYWORD
@@ -1848,7 +1850,13 @@ def metrics_value_metric_visualization(
     agg: str = "avg",
     custom_label: str | None = None,
 ) -> dict[str, Any]:
-    """Single-number gauge from metric `value` (avg/max/sum)."""
+    """Single-number gauge from metric `value` (avg/max/sum).
+
+    Warning: ``sum`` over a dashboard time range totals *every scrape
+    datapoint*, not the live gauge. Prefer
+    ``metrics_cardinality_metric_visualization`` (distinct series) or
+    ``metrics_instant_sum_vega`` (latest value per series, then sum).
+    """
     vis_state = {
         "title": title,
         "type": "metric",
@@ -1891,6 +1899,237 @@ def metrics_value_metric_visualization(
         data_view=METRICS_VIEW,
         vis_state=vis_state,
         query=query,
+        filters=[],
+    )
+
+
+def metrics_cardinality_metric_visualization(
+    *,
+    title: str,
+    query: str,
+    field: str,
+    custom_label: str | None = None,
+) -> dict[str, Any]:
+    """Count distinct series keys matching the query (not sum of scrapes)."""
+    vis_state = {
+        "title": title,
+        "type": "metric",
+        "params": {
+            "addTooltip": True,
+            "addLegend": False,
+            "type": "metric",
+            "metric": {
+                "percentageMode": False,
+                "useRanges": False,
+                "colorSchema": "Green to Red",
+                "metricColorMode": "None",
+                "colorsRange": [{"from": 0, "to": 10000}],
+                "labels": {"show": True},
+                "invertColors": False,
+                "style": {
+                    "bgFill": 0.0,
+                    "bgColor": False,
+                    "labelColor": False,
+                    "subText": "",
+                    "fontSize": 40,
+                },
+            },
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "cardinality",
+                "schema": "metric",
+                "params": {
+                    "field": field,
+                    "customLabel": custom_label or title,
+                },
+            }
+        ],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query=query,
+        filters=[],
+    )
+
+
+def metrics_cardinality_table_visualization(
+    *,
+    title: str,
+    query: str,
+    bucket_field: str,
+    cardinality_field: str,
+    size: int = 10,
+    bucket_label: str | None = None,
+    metric_label: str = "count",
+) -> dict[str, Any]:
+    """Distinct-series count broken down by a terms bucket."""
+    bucket_params: dict[str, Any] = {
+        "field": bucket_field,
+        "size": size,
+        "order": "desc",
+        "orderBy": "1",
+        "otherBucket": False,
+        "otherBucketLabel": "Other",
+        "missingBucket": False,
+        "missingBucketLabel": "Missing",
+    }
+    if bucket_label:
+        bucket_params["customLabel"] = bucket_label
+    vis_state = {
+        "title": title,
+        "type": "table",
+        "params": {
+            "perPage": size,
+            "showPartialRows": False,
+            "showMeticsAtAllLevels": False,
+            "sort": {"columnIndex": None, "direction": None},
+            "showTotal": False,
+            "showToolbar": False,
+            "totalFunc": "sum",
+            "percentageCol": "",
+        },
+        "aggs": [
+            {
+                "id": "1",
+                "enabled": True,
+                "type": "cardinality",
+                "schema": "metric",
+                "params": {
+                    "field": cardinality_field,
+                    "customLabel": metric_label,
+                },
+            },
+            {
+                "id": "2",
+                "enabled": True,
+                "type": "terms",
+                "schema": "bucket",
+                "params": bucket_params,
+            },
+        ],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query=query,
+        filters=[],
+    )
+
+
+def metrics_instant_sum_vega(
+    *,
+    title: str,
+    metric_name: str,
+    series_field: str,
+    extra_filters: list[dict[str, Any]] | None = None,
+    series_size: int = 200,
+    custom_label: str = "now",
+) -> dict[str, Any]:
+    """Sum of the latest gauge value per series (Prometheus-style instant).
+
+    Classic metric ``sum`` over the time picker adds every scrape sample and
+    looks "cumulative". This takes ``top_metrics`` per series key, then sums.
+    """
+    filters: list[dict[str, Any]] = [
+        {"range": {METRICS_TIME_FIELD: {"%timefilter%": True}}},
+        {"term": {METRICS_NAME_KEYWORD: metric_name}},
+        {"term": {METRICS_PLATFORM_COMPONENT_KEYWORD: "k3s"}},
+    ]
+    if extra_filters:
+        filters.extend(extra_filters)
+    url = {
+        "index": "otel-v1-apm-metrics*",
+        "body": {
+            "size": 0,
+            "query": {"bool": {"filter": filters}},
+            "aggs": {
+                "series": {
+                    "terms": {"field": series_field, "size": series_size},
+                    "aggs": {
+                        "latest": {
+                            "top_metrics": {
+                                "metrics": {"field": METRICS_VALUE_FIELD},
+                                "sort": {METRICS_TIME_FIELD: "desc"},
+                                "size": 1,
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    }
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 8,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "series",
+                "url": url,
+                "format": {"property": "aggregations.series.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "latest",
+                        "expr": (
+                            "datum.latest && datum.latest.top && "
+                            "datum.latest.top[0] && "
+                            "datum.latest.top[0].metrics && "
+                            f"datum.latest.top[0].metrics['{METRICS_VALUE_FIELD}'] != null "
+                            f"? datum.latest.top[0].metrics['{METRICS_VALUE_FIELD}'] : 0"
+                        ),
+                    },
+                    {
+                        "type": "aggregate",
+                        "ops": ["sum"],
+                        "fields": ["latest"],
+                        "as": ["total"],
+                    },
+                ],
+            }
+        ],
+        "marks": [
+            {
+                "type": "text",
+                "from": {"data": "series"},
+                "encode": {
+                    "enter": {
+                        "align": {"value": "center"},
+                        "baseline": {"value": "middle"},
+                        "fill": {"value": "#111"},
+                        "fontSize": {"value": 40},
+                        "fontWeight": {"value": "bold"},
+                        "text": {
+                            "signal": (
+                                f"format(datum.total, ',.0f') + ' {custom_label}'"
+                            )
+                        },
+                    },
+                    "update": {
+                        "x": {"signal": "width / 2"},
+                        "y": {"signal": "height / 2"},
+                    },
+                },
+            }
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query="",
         filters=[],
     )
 
@@ -2016,8 +2255,14 @@ def metrics_terms_table_visualization(
     field: str,
     size: int = 10,
     field_label: str | None = None,
+    value_agg: str = "avg",
+    value_label: str | None = None,
 ) -> dict[str, Any]:
-    """Latest-window avg(value) by terms bucket (replicas, databases, …)."""
+    """Value agg by terms bucket (replicas, databases, …).
+
+    Prefer ``value_agg=\"max\"`` for Prometheus gauges/counters so the cell
+    reflects the latest-ish magnitude rather than a time-range average.
+    """
     bucket_params: dict[str, Any] = {
         "field": field,
         "size": size,
@@ -2047,11 +2292,11 @@ def metrics_terms_table_visualization(
             {
                 "id": "1",
                 "enabled": True,
-                "type": "avg",
+                "type": value_agg,
                 "schema": "metric",
                 "params": {
                     "field": METRICS_VALUE_FIELD,
-                    "customLabel": "avg value",
+                    "customLabel": value_label or f"{value_agg} value",
                 },
             },
             {
@@ -2635,6 +2880,9 @@ def k3s_dev_guide_markdown() -> dict[str, Any]:
         "- **kube-state-metrics** (`observability:8080`, allowlisted series)\n"
         "- OTel `prometheus/k3s` → Data Prepper → `otel-v1-apm-metrics*`\n"
         "- Filter: `metric.attributes.platform_component: k3s`\n\n"
+        "KPI tiles use **distinct series** / **latest-per-series sum** — "
+        "not `sum` of every scrape sample in the time picker (that looked like "
+        "140 \"nodes Ready\").\n\n"
         "### Companion boards\n"
         f"- [**Logs**](/app/dashboards#/view/{LOGS_DASHBOARD_ID}) — app signal / HTTP\n"
         "- [**DataPersistence**](/app/dashboards#/view/data-persistence) — "
@@ -2676,7 +2924,8 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "k3s-dev-nodes-ready",
-            metrics_value_metric_visualization(
+            # Distinct nodes (not sum of every Ready=true scrape sample).
+            metrics_cardinality_metric_visualization(
                 title="Nodes Ready (condition=true)",
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_node_status_condition" AND '
@@ -2684,49 +2933,41 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                     f'{METRICS_STATUS_KEYWORD}: "true" AND '
                     f"metric.attributes.platform_component: k3s"
                 ),
-                agg="sum",
+                field=METRICS_NODE_KEYWORD,
                 custom_label="nodes Ready",
             ),
         ),
         (
             "visualization",
             "k3s-dev-pods-running",
-            metrics_value_metric_visualization(
+            metrics_cardinality_metric_visualization(
                 title="Pods Running",
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
                     f'{METRICS_PHASE_KEYWORD}: Running AND '
                     f"metric.attributes.platform_component: k3s"
                 ),
-                agg="sum",
+                field=METRICS_POD_KEYWORD,
                 custom_label="pods Running",
             ),
         ),
         (
             "visualization",
             "k3s-dev-deploy-unavailable",
-            metrics_value_metric_visualization(
+            metrics_instant_sum_vega(
                 title="Deployment replicas unavailable",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: '
-                    f'"kube_deployment_status_replicas_unavailable" AND '
-                    f"metric.attributes.platform_component: k3s"
-                ),
-                agg="sum",
+                metric_name="kube_deployment_status_replicas_unavailable",
+                series_field=METRICS_DEPLOYMENT_KEYWORD,
                 custom_label="unavailable replicas",
             ),
         ),
         (
             "visualization",
             "k3s-dev-ds-unavailable",
-            metrics_value_metric_visualization(
+            metrics_instant_sum_vega(
                 title="DaemonSet pods unavailable",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: '
-                    f'"kube_daemonset_status_number_unavailable" AND '
-                    f"metric.attributes.platform_component: k3s"
-                ),
-                agg="sum",
+                metric_name="kube_daemonset_status_number_unavailable",
+                series_field=METRICS_DAEMONSET_KEYWORD,
                 custom_label="unavailable DS pods",
             ),
         ),
@@ -2775,35 +3016,40 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "k3s-dev-pods-by-phase",
-            metrics_terms_table_visualization(
-                title="Pods by phase (sum of gauges)",
+            metrics_cardinality_table_visualization(
+                title="Pods by phase (distinct pods)",
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
                     f"metric.attributes.platform_component: k3s"
                 ),
-                field=METRICS_PHASE_KEYWORD,
+                bucket_field=METRICS_PHASE_KEYWORD,
+                cardinality_field=METRICS_POD_KEYWORD,
                 size=8,
-                field_label="phase",
+                bucket_label="phase",
+                metric_label="pods",
             ),
         ),
         (
             "visualization",
             "k3s-dev-pods-by-namespace",
-            metrics_terms_table_visualization(
+            metrics_cardinality_table_visualization(
                 title="Running pods by namespace",
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
                     f'{METRICS_PHASE_KEYWORD}: Running AND '
                     f"metric.attributes.platform_component: k3s"
                 ),
-                field=METRICS_NAMESPACE_KEYWORD,
+                bucket_field=METRICS_NAMESPACE_KEYWORD,
+                cardinality_field=METRICS_POD_KEYWORD,
                 size=20,
-                field_label="namespace",
+                bucket_label="namespace",
+                metric_label="pods",
             ),
         ),
         (
             "visualization",
             "k3s-dev-top-restarts",
+            # Restart totals are counters — max over the window ≈ current counter.
             metrics_terms_table_visualization(
                 title="Top container restart counters",
                 query=(
@@ -2814,6 +3060,8 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 field=METRICS_POD_KEYWORD,
                 size=15,
                 field_label="pod",
+                value_agg="max",
+                value_label="restarts",
             ),
         ),
         (
@@ -2829,6 +3077,8 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 field=METRICS_DEPLOYMENT_KEYWORD,
                 size=15,
                 field_label="deployment",
+                value_agg="max",
+                value_label="unavailable",
             ),
         ),
         (

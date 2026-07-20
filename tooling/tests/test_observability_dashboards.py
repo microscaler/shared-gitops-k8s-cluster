@@ -56,6 +56,22 @@ def test_k3s_dev_dashboard_is_lan_specific() -> None:
     assert "10.177.76.137" in markdown
     path = DASHBOARDS / "k3s-dev.ndjson"
     assert path.is_file()
+    nodes_ready = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization" and object_id == "k3s-dev-nodes-ready"
+    )
+    nodes_state = json.loads(nodes_ready["attributes"]["visState"])
+    assert nodes_state["aggs"][0]["type"] == "cardinality"
+    deploy_unavail = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization"
+        and object_id == "k3s-dev-deploy-unavailable"
+    )
+    deploy_state = json.loads(deploy_unavail["attributes"]["visState"])
+    assert deploy_state["type"] == "vega"
+    assert "top_metrics" in deploy_state["params"]["spec"]
 
 
 def test_dashboard_references_are_complete_and_stable() -> None:

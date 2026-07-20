@@ -23,6 +23,8 @@ Updated: 2026-07-20 (k3s-dev dashboard + node-exporter/kube-state scrapes)
   - Scrapes: `node-exporter` DaemonSet + `kube-state-metrics` via OTel `prometheus/k3s`
   - Filter: `metric.attributes.platform_component: k3s`
   - Nodes: k8s-cp-1 `10.177.76.137`, workers `.175` / `.141` / `.44`
+  - KPI pitfall: metric `sum` over the time range totals every scrape → use
+    cardinality (nodes/pods) or Vega `top_metrics` then sum (unavailable replicas).
 - Stale Loadlinker/Platform/Sesame dashboards are in `DEPRECATED_SAVED_OBJECTS` (deleted on provision).
   OSD *Recently viewed* is browser localStorage — clear nav history if old titles linger.
 
