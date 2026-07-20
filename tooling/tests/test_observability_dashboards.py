@@ -89,6 +89,19 @@ def test_k3s_dev_dashboard_is_lan_specific() -> None:
     assert mem_state["type"] == "vega"
     assert "MemAvailable MiB" in mem["attributes"]["title"]
     assert str(1024 * 1024) in mem_state["params"]["spec"]
+    deploy_table = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization"
+        and object_id == "k3s-dev-deploy-unavailable-table"
+    )
+    deploy_table_state = json.loads(deploy_table["attributes"]["visState"])
+    bucket_labels = [
+        agg["params"].get("customLabel")
+        for agg in deploy_table_state["aggs"]
+        if agg.get("schema") == "bucket"
+    ]
+    assert bucket_labels == ["namespace", "Deployment"]
 
 
 def test_dashboard_references_are_complete_and_stable() -> None:

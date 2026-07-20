@@ -2448,24 +2448,80 @@ def metrics_terms_table_visualization(
     field_label: str | None = None,
     value_agg: str = "avg",
     value_label: str | None = None,
+    parent_field: str | None = None,
+    parent_field_label: str | None = None,
+    parent_size: int | None = None,
 ) -> dict[str, Any]:
     """Value agg by terms bucket (replicas, databases, …).
 
     Prefer ``value_agg=\"max\"`` for Prometheus gauges/counters so the cell
     reflects the latest-ish magnitude rather than a time-range average.
+
+    Optional ``parent_field`` adds an outer terms bucket (first column), e.g.
+    namespace → deployment → unavailable.
     """
-    bucket_params: dict[str, Any] = {
-        "field": field,
-        "size": size,
-        "order": "desc",
-        "orderBy": "1",
-        "otherBucket": False,
-        "otherBucketLabel": "Other",
-        "missingBucket": False,
-        "missingBucketLabel": "Missing",
-    }
-    if field_label:
-        bucket_params["customLabel"] = field_label
+
+    def _terms_params(
+        *,
+        terms_field: str,
+        terms_size: int,
+        label: str | None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "field": terms_field,
+            "size": terms_size,
+            "order": "desc",
+            "orderBy": "1",
+            "otherBucket": False,
+            "otherBucketLabel": "Other",
+            "missingBucket": False,
+            "missingBucketLabel": "Missing",
+        }
+        if label:
+            params["customLabel"] = label
+        return params
+
+    aggs: list[dict[str, Any]] = [
+        {
+            "id": "1",
+            "enabled": True,
+            "type": value_agg,
+            "schema": "metric",
+            "params": {
+                "field": METRICS_VALUE_FIELD,
+                "customLabel": value_label or f"{value_agg} value",
+            },
+        },
+    ]
+    next_id = 2
+    if parent_field:
+        aggs.append(
+            {
+                "id": str(next_id),
+                "enabled": True,
+                "type": "terms",
+                "schema": "bucket",
+                "params": _terms_params(
+                    terms_field=parent_field,
+                    terms_size=parent_size or size,
+                    label=parent_field_label,
+                ),
+            }
+        )
+        next_id += 1
+    aggs.append(
+        {
+            "id": str(next_id),
+            "enabled": True,
+            "type": "terms",
+            "schema": "bucket",
+            "params": _terms_params(
+                terms_field=field,
+                terms_size=size,
+                label=field_label,
+            ),
+        }
+    )
     vis_state = {
         "title": title,
         "type": "table",
@@ -2479,25 +2535,7 @@ def metrics_terms_table_visualization(
             "totalFunc": "sum",
             "percentageCol": "",
         },
-        "aggs": [
-            {
-                "id": "1",
-                "enabled": True,
-                "type": value_agg,
-                "schema": "metric",
-                "params": {
-                    "field": METRICS_VALUE_FIELD,
-                    "customLabel": value_label or f"{value_agg} value",
-                },
-            },
-            {
-                "id": "2",
-                "enabled": True,
-                "type": "terms",
-                "schema": "bucket",
-                "params": bucket_params,
-            },
-        ],
+        "aggs": aggs,
     }
     return _visualization(
         title=title,
@@ -3266,9 +3304,12 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                     f'"kube_deployment_status_replicas_unavailable" AND '
                     f"metric.attributes.platform_component: k3s"
                 ),
+                parent_field=METRICS_NAMESPACE_KEYWORD,
+                parent_field_label="namespace",
+                parent_size=30,
                 field=METRICS_DEPLOYMENT_KEYWORD,
                 size=15,
-                field_label="deployment",
+                field_label="Deployment",
                 value_agg="max",
                 value_label="unavailable",
             ),
