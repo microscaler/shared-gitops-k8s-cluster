@@ -72,6 +72,23 @@ def test_k3s_dev_dashboard_is_lan_specific() -> None:
     deploy_state = json.loads(deploy_unavail["attributes"]["visState"])
     assert deploy_state["type"] == "vega"
     assert "top_metrics" in deploy_state["params"]["spec"]
+    pods_running = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization" and object_id == "k3s-dev-pods-running"
+    )
+    assert "value: 1" in pods_running["attributes"]["kibanaSavedObjectMeta"][
+        "searchSourceJSON"
+    ]
+    mem = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization" and object_id == "k3s-dev-mem-available"
+    )
+    mem_state = json.loads(mem["attributes"]["visState"])
+    assert mem_state["type"] == "vega"
+    assert "MemAvailable MiB" in mem["attributes"]["title"]
+    assert str(1024 * 1024) in mem_state["params"]["spec"]
 
 
 def test_dashboard_references_are_complete_and_stable() -> None:

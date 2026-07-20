@@ -2248,6 +2248,197 @@ def metrics_line_visualization(
     )
 
 
+def metrics_scaled_line_vega(
+    *,
+    title: str,
+    metric_name: str,
+    split_field: str,
+    scale_divisor: float,
+    y_label: str,
+    split_size: int = 8,
+    interval: str = "1m",
+) -> dict[str, Any]:
+    """Multi-series gauge line with a unit scale (e.g. bytes → MiB).
+
+    Classic OSD line charts cannot rescale ``value``; Vega averages per bucket
+    then divides by ``scale_divisor``.
+    """
+    url = {
+        "index": "otel-v1-apm-metrics*",
+        "body": {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"range": {METRICS_TIME_FIELD: {"%timefilter%": True}}},
+                        {"term": {METRICS_NAME_KEYWORD: metric_name}},
+                        {
+                            "term": {
+                                METRICS_PLATFORM_COMPONENT_KEYWORD: "k3s"
+                            }
+                        },
+                    ]
+                }
+            },
+            "aggs": {
+                "timeline": {
+                    "date_histogram": {
+                        "field": METRICS_TIME_FIELD,
+                        "fixed_interval": interval,
+                        "min_doc_count": 1,
+                    },
+                    "aggs": {
+                        "series": {
+                            "terms": {"field": split_field, "size": split_size},
+                            "aggs": {
+                                "avg_value": {
+                                    "avg": {"field": METRICS_VALUE_FIELD}
+                                }
+                            },
+                        }
+                    },
+                }
+            },
+        },
+    }
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": {"left": 8, "right": 8, "top": 8, "bottom": 8},
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "raw",
+                "url": url,
+                "format": {"property": "aggregations.timeline.buckets"},
+                "transform": [
+                    {
+                        "type": "flatten",
+                        "fields": ["series.buckets"],
+                        "as": ["bucket"],
+                    },
+                    {
+                        "type": "formula",
+                        "as": "node",
+                        "expr": "datum.bucket.key",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "raw_value",
+                        "expr": "datum.bucket.avg_value.value",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "value",
+                        "expr": f"datum.raw_value / {scale_divisor}",
+                    },
+                    {
+                        "type": "filter",
+                        "expr": "isValid(datum.value) && isFinite(datum.value)",
+                    },
+                ],
+            }
+        ],
+        "scales": [
+            {
+                "name": "x",
+                "type": "time",
+                "domain": {"data": "raw", "field": "key"},
+                "range": "width",
+            },
+            {
+                "name": "y",
+                "type": "linear",
+                "domain": {"data": "raw", "field": "value"},
+                "nice": True,
+                "zero": False,
+                "range": "height",
+            },
+            {
+                "name": "color",
+                "type": "ordinal",
+                "domain": {"data": "raw", "field": "node"},
+                "range": {"scheme": "category10"},
+            },
+        ],
+        "axes": [
+            {
+                "orient": "bottom",
+                "scale": "x",
+                "labelFontSize": 10,
+                "title": METRICS_TIME_FIELD,
+                "titleFontSize": 11,
+            },
+            {
+                "orient": "left",
+                "scale": "y",
+                "labelFontSize": 10,
+                "title": y_label,
+                "titleFontSize": 11,
+                "format": ",.1f",
+            },
+        ],
+        "legends": [
+            {
+                "fill": "color",
+                "title": "node",
+                "orient": "right",
+                "labelFontSize": 10,
+                "titleFontSize": 11,
+            }
+        ],
+        "marks": [
+            {
+                "type": "group",
+                "from": {
+                    "facet": {
+                        "name": "series",
+                        "data": "raw",
+                        "groupby": "node",
+                    }
+                },
+                "marks": [
+                    {
+                        "type": "line",
+                        "from": {"data": "series"},
+                        "encode": {
+                            "enter": {
+                                "interpolate": {"value": "linear"},
+                                "strokeWidth": {"value": 2},
+                            },
+                            "update": {
+                                "x": {"scale": "x", "field": "key"},
+                                "y": {"scale": "y", "field": "value"},
+                                "stroke": {"scale": "color", "field": "node"},
+                                "tooltip": {
+                                    "signal": (
+                                        "{title: datum.node, "
+                                        f"'{y_label}': format(datum.value, ',.1f'), "
+                                        "time: utcFormat(datum.key, "
+                                        "'%Y-%m-%d %H:%M')}"
+                                    )
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query="",
+        filters=[],
+    )
+
+
 def metrics_terms_table_visualization(
     *,
     title: str,
@@ -2882,7 +3073,9 @@ def k3s_dev_guide_markdown() -> dict[str, Any]:
         "- Filter: `metric.attributes.platform_component: k3s`\n\n"
         "KPI tiles use **distinct series** / **latest-per-series sum** — "
         "not `sum` of every scrape sample in the time picker (that looked like "
-        "140 \"nodes Ready\").\n\n"
+        "140 \"nodes Ready\"). Phase / Running counts require `value:1` — "
+        "kube-state emits every phase with 0/1, so cardinality without that "
+        "filter counts every pod in every phase.\n\n"
         "### Companion boards\n"
         f"- [**Logs**](/app/dashboards#/view/{LOGS_DASHBOARD_ID}) — app signal / HTTP\n"
         "- [**DataPersistence**](/app/dashboards#/view/data-persistence) — "
@@ -2945,6 +3138,7 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
                     f'{METRICS_PHASE_KEYWORD}: Running AND '
+                    f"value: 1 AND "
                     f"metric.attributes.platform_component: k3s"
                 ),
                 field=METRICS_POD_KEYWORD,
@@ -2988,29 +3182,25 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "k3s-dev-mem-available",
-            metrics_line_visualization(
-                title="MemAvailable bytes by node",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: "node_memory_MemAvailable_bytes" AND '
-                    f"metric.attributes.platform_component: k3s"
-                ),
+            metrics_scaled_line_vega(
+                title="MemAvailable MiB by node",
+                metric_name="node_memory_MemAvailable_bytes",
                 split_field=K3S_NODE_SPLIT_FIELD,
+                scale_divisor=1024 * 1024,
+                y_label="MiB",
                 split_size=8,
-                y_label="bytes",
             ),
         ),
         (
             "visualization",
             "k3s-dev-rootfs-avail",
-            metrics_line_visualization(
-                title="Root filesystem avail bytes by node",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: "node_filesystem_avail_bytes" AND '
-                    f"metric.attributes.platform_component: k3s"
-                ),
+            metrics_scaled_line_vega(
+                title="Root filesystem avail GiB by node",
+                metric_name="node_filesystem_avail_bytes",
                 split_field=K3S_NODE_SPLIT_FIELD,
+                scale_divisor=1024 * 1024 * 1024,
+                y_label="GiB",
                 split_size=8,
-                y_label="bytes",
             ),
         ),
         (
@@ -3020,6 +3210,7 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 title="Pods by phase (distinct pods)",
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f"value: 1 AND "
                     f"metric.attributes.platform_component: k3s"
                 ),
                 bucket_field=METRICS_PHASE_KEYWORD,
@@ -3037,6 +3228,7 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 query=(
                     f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
                     f'{METRICS_PHASE_KEYWORD}: Running AND '
+                    f"value: 1 AND "
                     f"metric.attributes.platform_component: k3s"
                 ),
                 bucket_field=METRICS_NAMESPACE_KEYWORD,
