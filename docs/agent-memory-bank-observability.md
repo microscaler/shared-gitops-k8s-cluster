@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-20 (k3s-dev dashboard + node-exporter/kube-state scrapes)
+Updated: 2026-07-20 (k3s phase `value:1` + MiB/GiB lines; commit `a94539e`)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
