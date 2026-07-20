@@ -10,6 +10,9 @@ opensearchHosts: "http://opensearch-nodes:9200"
 config:
   opensearch_dashboards.yml: |
     data_source.enabled: false
+    # Required for Vega mark href (doc/around links, volume bar zoom). Without
+    # this, canvas clicks sanitize-fail silently and look like dead links.
+    vis_type_vega.enableExternalUrls: true
 
 service:
   type: ClusterIP

@@ -1080,7 +1080,6 @@ def _vega_row_text(
     align: str | None = None,
     fill: str | dict[str, Any] = "#111",
     limit: str | None = None,
-    href_field: str | None = None,
     font_weight: str | None = None,
 ) -> dict[str, Any]:
     encode: dict[str, Any] = {
@@ -1104,10 +1103,6 @@ def _vega_row_text(
         encode["fill"] = {"value": fill}
     if limit is not None:
         encode["limit"] = {"signal": limit}
-    if href_field is not None:
-        encode["href"] = {"field": href_field}
-        encode["cursor"] = {"value": "pointer"}
-        encode["fill"] = {"value": "#006bb8"}
     if font_weight is not None:
         encode["fontWeight"] = {"value": font_weight}
     return {
@@ -1115,6 +1110,63 @@ def _vega_row_text(
         "from": {"data": "rows"},
         "encode": {"update": encode},
     }
+
+
+def _vega_row_link(
+    *,
+    label: str,
+    href_field: str,
+    x_signal: str,
+    width_signal: str = "width * 0.07",
+) -> list[dict[str, Any]]:
+    """Clickable link: wide hit rect + label (OSD needs enableExternalUrls)."""
+    return [
+        {
+            "type": "rect",
+            "from": {"data": "rows"},
+            "encode": {
+                "enter": {
+                    "fill": {"value": "transparent"},
+                    "cursor": {"value": "pointer"},
+                },
+                "update": {
+                    "x": {"signal": x_signal},
+                    "y": {
+                        "scale": "y",
+                        "field": "row",
+                        "band": 0,
+                    },
+                    "width": {"signal": width_signal},
+                    "height": {"scale": "y", "band": 1},
+                    "href": {"field": href_field},
+                    "tooltip": {
+                        "signal": (
+                            "{'open': '" + label + "', 'id': datum._id}"
+                        )
+                    },
+                },
+            },
+        },
+        {
+            "type": "text",
+            "from": {"data": "rows"},
+            "encode": {
+                "enter": {
+                    "fill": {"value": "#006bb8"},
+                    "fontWeight": {"value": "bold"},
+                    "fontSize": {"value": 11},
+                    "baseline": {"value": "middle"},
+                    "cursor": {"value": "pointer"},
+                },
+                "update": {
+                    "x": {"signal": f"({x_signal}) + 2"},
+                    "y": {"scale": "y", "field": "row", "band": 0.5},
+                    "text": {"value": label},
+                    "href": {"field": href_field},
+                },
+            },
+        },
+    ]
 
 
 def log_signal_stream_visualization(
@@ -1327,17 +1379,15 @@ def log_signal_stream_visualization(
                         },
                     ),
                     _vega_row_text(field="dur", x="width * 0.74"),
-                    _vega_row_text(
-                        signal="'doc'",
-                        x="width * 0.82",
+                    *_vega_row_link(
+                        label="doc",
                         href_field="docUrl",
-                        font_weight="bold",
+                        x_signal="width * 0.82",
                     ),
-                    _vega_row_text(
-                        signal="'around'",
-                        x="width * 0.92",
+                    *_vega_row_link(
+                        label="around",
                         href_field="ctxUrl",
-                        font_weight="bold",
+                        x_signal="width * 0.91",
                     ),
                 ],
             },

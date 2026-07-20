@@ -37,6 +37,9 @@ Discover still has expand → Table/JSON. On the Logs dashboard, the **Signal st
 Vega panel exposes **doc** / **around** on every row (same as View single document /
 View surrounding documents) so you do not need to expand first.
 
+Vega `href` requires `vis_type_vega.enableExternalUrls: true` in Dashboards
+(`helm-values-dashboards.yaml`); otherwise canvas clicks fail silently.
+
 ## Top paths RPS + pSLO (done)
 - Vega panel `logs-http-top-paths`: path | count | rps/15m | p95 ms | SLO ms (500) | pSLO (ok/breach).
 - RPS = count / 900 (dashboard default 15m). OSD 2.19 does not reliably inject `%timefilter%` into Vega signals.

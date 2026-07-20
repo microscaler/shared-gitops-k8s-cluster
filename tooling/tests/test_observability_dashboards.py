@@ -317,3 +317,14 @@ def test_signal_stream_has_row_discover_links() -> None:
     assert "docUrl" in spec_text
     assert "ctxUrl" in spec_text
     assert "otel-v1-apm-logs-*" in spec_text
+    # Wide hit rects (not text-only) so canvas clicks register.
+    assert '"type":"rect"' in spec_text.replace(" ", "")
+    assert "href" in spec_text
+
+
+def test_dashboards_enables_vega_external_urls() -> None:
+    values = (
+        ROOT
+        / "deployment-configuration/profiles/dev/observability/helm-values-dashboards.yaml"
+    ).read_text(encoding="utf-8")
+    assert "vis_type_vega.enableExternalUrls: true" in values
