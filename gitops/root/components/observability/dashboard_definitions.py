@@ -622,6 +622,14 @@ def log_terms_pie_visualization(
                         "as": "percent",
                         "expr": "datum.total > 0 ? datum.doc_count / datum.total : 0",
                     },
+                    # Legend label: "200 - 100%" (no text on the donut itself).
+                    {
+                        "type": "formula",
+                        "as": "label",
+                        "expr": (
+                            "datum.status + ' - ' + format(datum.percent, '.0%')"
+                        ),
+                    },
                     {
                         "type": "pie",
                         "field": "doc_count",
@@ -635,7 +643,7 @@ def log_terms_pie_visualization(
             {
                 "name": "color",
                 "type": "ordinal",
-                "domain": {"data": "statuses", "field": "status"},
+                "domain": {"data": "statuses", "field": "label"},
                 "range": {"data": "statuses", "field": "color"},
             }
         ],
@@ -652,49 +660,19 @@ def log_terms_pie_visualization(
                             "signal": (
                                 "{'status': datum.status, "
                                 "'count': datum.doc_count, "
-                                "'pct': format(datum.percent, '.1%')}"
+                                "'pct': format(datum.percent, '.0%')}"
                             )
                         },
                     },
                     "update": {
-                        "x": {"signal": "width / 2"},
+                        # Leave room on the right for "200 - 100%" legend labels.
+                        "x": {"signal": "width * 0.38"},
                         "y": {"signal": "height / 2"},
                         "startAngle": {"field": "startAngle"},
                         "endAngle": {"field": "endAngle"},
-                        "innerRadius": {"signal": "min(width, height) / 5"},
-                        "outerRadius": {"signal": "min(width, height) / 2 - 4"},
-                    },
-                },
-            },
-            {
-                "type": "text",
-                "from": {"data": "statuses"},
-                "encode": {
-                    "enter": {
-                        "text": {
-                            "signal": (
-                                "datum.percent >= 0.05 ? "
-                                "(datum.status + ' (' + format(datum.percent, '.1%') + ')') "
-                                ": ''"
-                            )
-                        },
-                        "fontSize": {"value": 10},
-                        "fill": {"value": "#222"},
-                        "align": {"value": "center"},
-                        "baseline": {"value": "middle"},
-                    },
-                    "update": {
-                        "x": {
-                            "signal": (
-                                "width/2 + (min(width,height)/2.8) * "
-                                "cos((datum.startAngle + datum.endAngle)/2 - PI/2)"
-                            )
-                        },
-                        "y": {
-                            "signal": (
-                                "height/2 + (min(width,height)/2.8) * "
-                                "sin((datum.startAngle + datum.endAngle)/2 - PI/2)"
-                            )
+                        "innerRadius": {"signal": "min(width * 0.72, height) / 5"},
+                        "outerRadius": {
+                            "signal": "min(width * 0.72, height) / 2 - 4"
                         },
                     },
                 },
@@ -707,6 +685,7 @@ def log_terms_pie_visualization(
                 "title": "status",
                 "labelFontSize": 11,
                 "symbolType": "circle",
+                "symbolSize": 80,
             }
         ],
     }

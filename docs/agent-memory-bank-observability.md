@@ -54,6 +54,7 @@ Vega `href` requires `vis_type_vega.enableExternalUrls: true` in Dashboards
 
 ## Status colors + volume click-zoom (done)
 - Status pie is Vega: **2xx green / 3xx blue / 4xx amber / 5xx red**.
+- Donut has no on-arc labels; legend shows `200 - 100%` (status + integer %).
 - Volume histogram is Vega: click a bar → dashboard `_g.time` zooms to that 30s bucket.
 
 ## Optional next

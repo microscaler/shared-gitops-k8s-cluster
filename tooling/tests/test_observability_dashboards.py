@@ -266,6 +266,7 @@ def test_status_codes_pie_uses_class_colors() -> None:
     )
     vis_state = json.loads(pie["attributes"]["visState"])
     assert vis_state["type"] == "vega"
+    spec = json.loads(vis_state["params"]["spec"])
     spec_text = vis_state["params"]["spec"]
     assert definitions.HTTP_STATUS_COLOR_2XX in spec_text
     assert definitions.HTTP_STATUS_COLOR_3XX in spec_text
@@ -273,6 +274,10 @@ def test_status_codes_pie_uses_class_colors() -> None:
     assert definitions.HTTP_STATUS_COLOR_5XX in spec_text
     assert definitions.LOG_STATUS_FIELD in spec_text
     assert "toNumber(datum.status) >= 500" in spec_text
+    # Percentages live in the legend ("200 - 100%"), not as text on the donut.
+    assert not any(mark.get("type") == "text" for mark in spec["marks"])
+    assert "datum.status + ' - ' + format(datum.percent, '.0%')" in spec_text
+    assert {"data": "statuses", "field": "label"} == spec["scales"][0]["domain"]
 
 
 def test_volume_histogram_click_zooms_time() -> None:
