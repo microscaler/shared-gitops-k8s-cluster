@@ -319,8 +319,10 @@ def test_signal_stream_has_row_discover_links() -> None:
     vis_state = json.loads(stream["attributes"]["visState"])
     assert vis_state["type"] == "vega"
     spec_text = vis_state["params"]["spec"]
-    assert "#/doc/shared-observability-logs/" in spec_text
-    assert "#/context/shared-observability-logs/" in spec_text
+    # Classic Discover (not data-explorer) owns single-doc + surrounding views.
+    assert "/app/discover#/doc/shared-observability-logs/" in spec_text
+    assert "/app/discover#/context/shared-observability-logs/" in spec_text
+    assert "/app/data-explorer/discover/" not in spec_text
     assert "hits.hits" in spec_text
     assert "docUrl" in spec_text
     assert "ctxUrl" in spec_text

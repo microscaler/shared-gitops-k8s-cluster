@@ -39,6 +39,11 @@ Discover still has expand → Table/JSON. On the Logs dashboard, the **Signal st
 Vega panel exposes **doc** / **around** on every row (same as View single document /
 View surrounding documents) so you do not need to expand first.
 
+Link shapes (OSD 2.19): use classic Discover, not data-explorer:
+- **doc** → `/app/discover#/doc/<indexPattern>/<index>?id=<docId>` (Table/JSON)
+- **around** → `/app/discover#/context/<indexPattern>/<docId>`
+`/app/data-explorer/discover/#/doc|context/...` silently falls back to the search list.
+
 Vega `href` requires `vis_type_vega.enableExternalUrls: true` in Dashboards
 (`helm-values-dashboards.yaml`); otherwise canvas clicks fail silently.
 

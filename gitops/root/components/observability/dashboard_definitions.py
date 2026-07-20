@@ -1177,11 +1177,13 @@ def log_signal_stream_visualization(
     size: int = 40,
 ) -> dict[str, Any]:
     """Signal stream with per-row Discover doc / surrounding links (no expand)."""
-    # OSD Discover link shapes (from discover.plugin.js generateCb):
+    # Classic Discover app owns single-doc + surrounding views.
+    # `/app/data-explorer/discover/#/doc|context/...` silently falls back to the
+    # search list (no Table/JSON doc view). Use `/app/discover#/...` instead.
     #   single:  #/doc/<indexPattern>/<index>?id=<docId>
     #   surround:#/context/<indexPattern>/<docId>
-    doc_base = f"/app/data-explorer/discover/#/doc/{LOGS_VIEW}/"
-    ctx_prefix = f"/app/data-explorer/discover/#/context/{LOGS_VIEW}/"
+    doc_base = f"/app/discover#/doc/{LOGS_VIEW}/"
+    ctx_prefix = f"/app/discover#/context/{LOGS_VIEW}/"
     # Prefer dated indices; bare otel-v1-apm-logs lacks observedTimestamp mapping.
     index_pattern = "otel-v1-apm-logs-*"
     spec = {
