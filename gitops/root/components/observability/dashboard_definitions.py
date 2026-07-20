@@ -2034,7 +2034,8 @@ def metrics_instant_sum_vega(
     """Sum of the latest gauge value per series (Prometheus-style instant).
 
     Classic metric ``sum`` over the time picker adds every scrape sample and
-    looks "cumulative". This takes ``top_metrics`` per series key, then sums.
+    looks "cumulative". Uses OpenSearch ``top_hits`` per series key, then sums
+    (Elasticsearch ``top_metrics`` is not available here).
     """
     filters: list[dict[str, Any]] = [
         {"range": {METRICS_TIME_FIELD: {"%timefilter%": True}}},
@@ -2053,10 +2054,12 @@ def metrics_instant_sum_vega(
                     "terms": {"field": series_field, "size": series_size},
                     "aggs": {
                         "latest": {
-                            "top_metrics": {
-                                "metrics": {"field": METRICS_VALUE_FIELD},
-                                "sort": {METRICS_TIME_FIELD: "desc"},
+                            "top_hits": {
                                 "size": 1,
+                                "sort": [
+                                    {METRICS_TIME_FIELD: {"order": "desc"}}
+                                ],
+                                "_source": [METRICS_VALUE_FIELD],
                             }
                         }
                     },
@@ -2078,11 +2081,12 @@ def metrics_instant_sum_vega(
                         "type": "formula",
                         "as": "latest",
                         "expr": (
-                            "datum.latest && datum.latest.top && "
-                            "datum.latest.top[0] && "
-                            "datum.latest.top[0].metrics && "
-                            f"datum.latest.top[0].metrics['{METRICS_VALUE_FIELD}'] != null "
-                            f"? datum.latest.top[0].metrics['{METRICS_VALUE_FIELD}'] : 0"
+                            "datum.latest && datum.latest.hits && "
+                            "datum.latest.hits.hits && "
+                            "datum.latest.hits.hits[0] && "
+                            "datum.latest.hits.hits[0]._source && "
+                            f"datum.latest.hits.hits[0]._source['{METRICS_VALUE_FIELD}'] != null "
+                            f"? datum.latest.hits.hits[0]._source['{METRICS_VALUE_FIELD}'] : 0"
                         ),
                     },
                     {

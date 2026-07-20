@@ -24,7 +24,8 @@ Updated: 2026-07-20 (k3s phase `value:1` + MiB/GiB lines; commit `a94539e`)
   - Filter: `metric.attributes.platform_component: k3s`
   - Nodes: k8s-cp-1 `10.177.76.137`, workers `.175` / `.141` / `.44`
   - KPI pitfall: metric `sum` over the time range totals every scrape → use
-    cardinality (nodes/pods) or Vega `top_metrics` then sum (unavailable replicas).
+    cardinality (nodes/pods) or Vega `top_hits` then sum (unavailable replicas).
+    OpenSearch has no `top_metrics` (ES-only) — that caused Bad Request tiles.
   - Phase gauges: always filter `value: 1` — kube-state emits every phase with
     0/1; cardinality without it counts all pods in every phase.
   - MemAvailable / rootfs: Vega scaled lines (MiB / GiB), not raw bytes.

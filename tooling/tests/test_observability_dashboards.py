@@ -71,7 +71,8 @@ def test_k3s_dev_dashboard_is_lan_specific() -> None:
     )
     deploy_state = json.loads(deploy_unavail["attributes"]["visState"])
     assert deploy_state["type"] == "vega"
-    assert "top_metrics" in deploy_state["params"]["spec"]
+    assert "top_hits" in deploy_state["params"]["spec"]
+    assert "top_metrics" not in deploy_state["params"]["spec"]
     pods_running = next(
         payload
         for object_type, object_id, payload in objects
