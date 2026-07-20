@@ -42,6 +42,10 @@ View surrounding documents) so you do not need to expand first.
 - RPS = count / 900 (dashboard default 15m). OSD 2.19 does not reliably inject `%timefilter%` into Vega signals.
 - Status-codes panel empty until access logs carry `log.attributes.status` (rebuild on BRRTRouter `d0b931a`).
 
+## Status colors + volume click-zoom (done)
+- Status pie is Vega: **2xx green / 3xx blue / 4xx amber / 5xx red**.
+- Volume histogram is Vega: click a bar → dashboard `_g.time` zooms to that 30s bucket.
+
 ## Optional next
 - Error-rate strip; trace deep-links; rebuild services on BRRTRouter `d0b931a` so `status` lands on access logs.
 - Make RPS follow the selected time picker if OSD timefilter→Vega improves.

@@ -26,6 +26,16 @@ LOG_DURATION_FIELD = "log.attributes.duration_ms"
 # Default HTTP latency SLO percentile target (BFF edge design: p95 ≤ 500 ms).
 HTTP_P95_SLO_MS = 500
 
+# HTTP status class colors (pie / stream / triage).
+HTTP_STATUS_COLOR_2XX = "#0a7a28"  # green
+HTTP_STATUS_COLOR_3XX = "#1a73e8"  # blue
+HTTP_STATUS_COLOR_4XX = "#c77700"  # amber
+HTTP_STATUS_COLOR_5XX = "#b00020"  # red
+HTTP_STATUS_COLOR_OTHER = "#666666"
+
+LOGS_DASHBOARD_ID = "logs-explore"
+LOG_VOLUME_BUCKET_MS = 30_000  # clickable volume bars (matches typical auto bucket)
+
 # epoll_io is dropped at the collector (filter/drop-epoll-io); keep the token
 # for legacy docs still in the index and for Discover filter pills.
 LOG_NOISE_CATEGORIES = (
@@ -293,6 +303,34 @@ def discover_guide_markdown() -> dict[str, Any]:
     }
 
 
+def http_status_class_color_expr(field: str = "status") -> str:
+    """Vega expr: map numeric/string HTTP status → class color."""
+    return (
+        f"toNumber(datum.{field}) >= 500 ? '{HTTP_STATUS_COLOR_5XX}' : "
+        f"toNumber(datum.{field}) >= 400 ? '{HTTP_STATUS_COLOR_4XX}' : "
+        f"toNumber(datum.{field}) >= 300 ? '{HTTP_STATUS_COLOR_3XX}' : "
+        f"toNumber(datum.{field}) >= 200 ? '{HTTP_STATUS_COLOR_2XX}' : "
+        f"'{HTTP_STATUS_COLOR_OTHER}'"
+    )
+
+
+def http_status_vis_colors() -> dict[str, str]:
+    """uiState legend colors for classic pie/table (keyed by status string)."""
+    colors: dict[str, str] = {}
+    for code in range(100, 600):
+        if 200 <= code < 300:
+            colors[str(code)] = HTTP_STATUS_COLOR_2XX
+        elif 300 <= code < 400:
+            colors[str(code)] = HTTP_STATUS_COLOR_3XX
+        elif 400 <= code < 500:
+            colors[str(code)] = HTTP_STATUS_COLOR_4XX
+        elif 500 <= code < 600:
+            colors[str(code)] = HTTP_STATUS_COLOR_5XX
+        else:
+            colors[str(code)] = HTTP_STATUS_COLOR_OTHER
+    return colors
+
+
 def _visualization(
     *,
     title: str,
@@ -300,6 +338,7 @@ def _visualization(
     vis_state: dict[str, Any],
     query: str,
     filters: list[dict[str, Any]] | None = None,
+    ui_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_ref = "kibanaSavedObjectMeta.searchSourceJSON.index"
     return {
@@ -307,7 +346,7 @@ def _visualization(
             "title": title,
             "description": f"Managed by {MANAGED_BY}",
             "visState": compact(vis_state),
-            "uiStateJSON": "{}",
+            "uiStateJSON": compact(ui_state or {}),
             "kibanaSavedObjectMeta": {
                 "searchSourceJSON": compact(
                     search_source(source_ref, query, filters=filters)
@@ -324,76 +363,150 @@ def log_histogram_visualization(
     data_view: str,
     time_field: str,
     query: str = LOG_SIGNAL_LUCENE,
+    bucket_ms: int = LOG_VOLUME_BUCKET_MS,
+    dashboard_id: str = LOGS_DASHBOARD_ID,
 ) -> dict[str, Any]:
-    vis_state = {
-        "title": title,
-        "type": "histogram",
-        "params": {
-            "type": "histogram",
-            "grid": {"categoryLines": False},
-            "categoryAxes": [
-                {
-                    "id": "CategoryAxis-1",
-                    "type": "category",
-                    "position": "bottom",
-                    "show": True,
-                    "style": {},
-                    "scale": {"type": "linear"},
-                    "labels": {"show": True, "truncate": 100},
-                    "title": {},
-                }
-            ],
-            "valueAxes": [
-                {
-                    "id": "ValueAxis-1",
-                    "name": "LeftAxis-1",
-                    "type": "value",
-                    "position": "left",
-                    "show": True,
-                    "style": {},
-                    "scale": {"type": "linear", "mode": "normal"},
-                    "labels": {"show": True, "rotate": 0, "filter": False, "truncate": 100},
-                    "title": {"text": "Count"},
-                }
-            ],
-            "seriesParams": [
-                {
-                    "show": True,
-                    "type": "histogram",
-                    "mode": "stacked",
-                    "data": {"label": "Count", "id": "1"},
-                    "valueAxis": "ValueAxis-1",
-                    "drawLinesBetweenPoints": True,
-                    "showCircles": True,
-                }
-            ],
-            "addTooltip": True,
-            "addLegend": False,
-            "legendPosition": "right",
-            "times": [],
-            "addTimeMarker": False,
-        },
-        "aggs": [
+    """Volume bars; click a bar to zoom the dashboard time range to that bucket."""
+    # href updates `_g.time` (rison). Interval fixed so click bounds are known.
+    interval = f"{bucket_ms // 1000}s"
+    href_expr = (
+        f"'/app/dashboards#/view/{dashboard_id}?_g=(filters:!(),"
+        "refreshInterval:(pause:!f,value:30000),"
+        "time:(from:\\'' + utcFormat(datum.start, '%Y-%m-%dT%H:%M:%S.000Z') + "
+        "'\\',to:\\'' + utcFormat(datum.end, '%Y-%m-%dT%H:%M:%S.000Z') + '\\'))'"
+    )
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": {"left": 8, "right": 8, "top": 8, "bottom": 8},
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
             {
-                "id": "1",
-                "enabled": True,
-                "type": "count",
-                "schema": "metric",
-                "params": {},
+                "name": "volumes",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": time_field,
+                    "index": "otel-v1-apm-logs-*",
+                    "body": {
+                        "size": 0,
+                        "aggs": {
+                            "volumes": {
+                                "date_histogram": {
+                                    "field": time_field,
+                                    "fixed_interval": interval,
+                                    "min_doc_count": 0,
+                                    "extended_bounds": {
+                                        "min": {"%timefilter%": "min"},
+                                        "max": {"%timefilter%": "max"},
+                                    },
+                                }
+                            }
+                        },
+                    },
+                },
+                "format": {"property": "aggregations.volumes.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "start",
+                        "expr": "datum.key",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "end",
+                        "expr": f"datum.key + {bucket_ms}",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "href",
+                        "expr": href_expr,
+                    },
+                ],
+            }
+        ],
+        "signals": [
+            {
+                "name": "tooltip",
+                "value": {},
+                "on": [
+                    {
+                        "events": "@volbar:mouseover",
+                        "update": (
+                            "{x: x(), y: y(), count: datum.doc_count, "
+                            "label: utcFormat(datum.start, '%H:%M:%S')}"
+                        ),
+                    },
+                    {"events": "@volbar:mouseout", "update": "{}"},
+                ],
+            }
+        ],
+        "scales": [
+            {
+                "name": "x",
+                "type": "time",
+                "domain": {"data": "volumes", "field": "start"},
+                "range": "width",
             },
             {
-                "id": "2",
-                "enabled": True,
-                "type": "date_histogram",
-                "schema": "segment",
-                "params": {
-                    "field": time_field,
-                    "interval": "auto",
-                    "min_doc_count": 1,
-                    "extended_bounds": {},
-                },
+                "name": "y",
+                "type": "linear",
+                "domain": {"data": "volumes", "field": "doc_count"},
+                "nice": True,
+                "range": "height",
             },
         ],
+        "axes": [
+            {
+                "orient": "bottom",
+                "scale": "x",
+                "labelFontSize": 10,
+                "title": f"{time_field} per {interval} (click bar → zoom time)",
+                "titleFontSize": 11,
+            },
+            {
+                "orient": "left",
+                "scale": "y",
+                "labelFontSize": 10,
+                "title": "Count",
+                "titleFontSize": 11,
+            },
+        ],
+        "marks": [
+            {
+                "name": "volbar",
+                "type": "rect",
+                "from": {"data": "volumes"},
+                "encode": {
+                    "enter": {
+                        "fill": {"value": "#0b7a75"},
+                        "cursor": {"value": "pointer"},
+                    },
+                    "update": {
+                        "x": {"scale": "x", "field": "start"},
+                        "x2": {
+                            "scale": "x",
+                            "signal": f"datum.start + {bucket_ms * 0.85}",
+                        },
+                        "y": {"scale": "y", "field": "doc_count"},
+                        "y2": {"scale": "y", "value": 0},
+                        "href": {"field": "href"},
+                        "tooltip": {
+                            "signal": (
+                                "{title: utcFormat(datum.start, '%Y-%m-%d %H:%M:%S'), "
+                                "'count': datum.doc_count, "
+                                "'action': 'click to zoom time range'}"
+                            )
+                        },
+                    },
+                    "hover": {"fill": {"value": "#095e5a"}},
+                },
+            }
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
     }
     return _visualization(
         title=title, data_view=data_view, vis_state=vis_state, query=query
@@ -466,55 +579,150 @@ def log_terms_pie_visualization(
     size: int = 10,
     field_label: str | None = None,
 ) -> dict[str, Any]:
-    """Terms pie with slice percentages (status codes, …)."""
-    bucket_params: dict[str, Any] = {
-        "field": field,
-        "size": size,
-        "order": "desc",
-        "orderBy": "1",
-        "otherBucket": False,
-        "otherBucketLabel": "Other",
-        "missingBucket": False,
-        "missingBucketLabel": "Missing",
-    }
-    if field_label:
-        bucket_params["customLabel"] = field_label
-    vis_state = {
-        "title": title,
-        "type": "pie",
-        "params": {
-            "type": "pie",
-            "addTooltip": True,
-            "addLegend": True,
-            "legendPosition": "right",
-            "isDonut": True,
-            "labels": {
-                "show": True,
-                "values": True,
-                "last_level": True,
-                "truncate": 100,
-                "percentDecimals": 1,
-            },
-        },
-        "aggs": [
+    """HTTP status donut: 2xx green / 3xx blue / 4xx amber / 5xx red."""
+    del field_label  # labels come from status keys
+    # Vega pie — classic pie ignores custom class colors (all teal).
+    color_expr = http_status_class_color_expr("status")
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 4,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
             {
-                "id": "1",
-                "enabled": True,
-                "type": "count",
-                "schema": "metric",
-                "params": {},
-            },
-            {
-                "id": "2",
-                "enabled": True,
-                "type": "terms",
-                "schema": "segment",
-                "params": bucket_params,
+                "name": "statuses",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": LOGS_TIME_FIELD,
+                    "index": "otel-v1-apm-logs-*",
+                    "body": {
+                        "size": 0,
+                        "aggs": {
+                            "statuses": {
+                                "terms": {
+                                    "field": field,
+                                    "size": size,
+                                    "order": {"_count": "desc"},
+                                }
+                            }
+                        },
+                    },
+                },
+                "format": {"property": "aggregations.statuses.buckets"},
+                "transform": [
+                    {"type": "formula", "as": "status", "expr": "datum.key"},
+                    {"type": "formula", "as": "color", "expr": color_expr},
+                    {
+                        "type": "joinaggregate",
+                        "ops": ["sum"],
+                        "fields": ["doc_count"],
+                        "as": ["total"],
+                    },
+                    {
+                        "type": "formula",
+                        "as": "percent",
+                        "expr": "datum.total > 0 ? datum.doc_count / datum.total : 0",
+                    },
+                    {
+                        "type": "pie",
+                        "field": "doc_count",
+                        "startAngle": 0,
+                        "endAngle": 6.283185307179586,
+                    },
+                ],
             },
         ],
+        "scales": [
+            {
+                "name": "color",
+                "type": "ordinal",
+                "domain": {"data": "statuses", "field": "status"},
+                "range": {"data": "statuses", "field": "color"},
+            }
+        ],
+        "marks": [
+            {
+                "type": "arc",
+                "from": {"data": "statuses"},
+                "encode": {
+                    "enter": {
+                        "fill": {"field": "color"},
+                        "stroke": {"value": "#fff"},
+                        "strokeWidth": {"value": 1},
+                        "tooltip": {
+                            "signal": (
+                                "{'status': datum.status, "
+                                "'count': datum.doc_count, "
+                                "'pct': format(datum.percent, '.1%')}"
+                            )
+                        },
+                    },
+                    "update": {
+                        "x": {"signal": "width / 2"},
+                        "y": {"signal": "height / 2"},
+                        "startAngle": {"field": "startAngle"},
+                        "endAngle": {"field": "endAngle"},
+                        "innerRadius": {"signal": "min(width, height) / 5"},
+                        "outerRadius": {"signal": "min(width, height) / 2 - 4"},
+                    },
+                },
+            },
+            {
+                "type": "text",
+                "from": {"data": "statuses"},
+                "encode": {
+                    "enter": {
+                        "text": {
+                            "signal": (
+                                "datum.percent >= 0.05 ? "
+                                "(datum.status + ' (' + format(datum.percent, '.1%') + ')') "
+                                ": ''"
+                            )
+                        },
+                        "fontSize": {"value": 10},
+                        "fill": {"value": "#222"},
+                        "align": {"value": "center"},
+                        "baseline": {"value": "middle"},
+                    },
+                    "update": {
+                        "x": {
+                            "signal": (
+                                "width/2 + (min(width,height)/2.8) * "
+                                "cos((datum.startAngle + datum.endAngle)/2 - PI/2)"
+                            )
+                        },
+                        "y": {
+                            "signal": (
+                                "height/2 + (min(width,height)/2.8) * "
+                                "sin((datum.startAngle + datum.endAngle)/2 - PI/2)"
+                            )
+                        },
+                    },
+                },
+            },
+        ],
+        "legends": [
+            {
+                "fill": "color",
+                "orient": "right",
+                "title": "status",
+                "labelFontSize": 11,
+                "symbolType": "circle",
+            }
+        ],
+    }
+    # Legend uses ordinal scale range from data colors — keep uiState as docs hint.
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
     }
     return _visualization(
-        title=title, data_view=data_view, vis_state=vis_state, query=query
+        title=title,
+        data_view=data_view,
+        vis_state=vis_state,
+        query=query,
+        ui_state={"vis": {"colors": http_status_vis_colors()}},
     )
 
 
@@ -1346,7 +1554,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             "visualization",
             "logs-explore-histogram",
             log_histogram_visualization(
-                title="Log volume (signal)",
+                title="Log volume (signal) — click bar to zoom time",
                 data_view=LOGS_VIEW,
                 time_field=LOGS_TIME_FIELD,
             ),

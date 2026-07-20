@@ -236,18 +236,36 @@ def test_dashboard_includes_http_triage_panels() -> None:
     }
 
 
-def test_status_codes_pie_shows_percentages() -> None:
+def test_status_codes_pie_uses_class_colors() -> None:
     pie = next(
         payload
         for object_type, object_id, payload in definitions.all_dashboard_objects()
         if object_type == "visualization" and object_id == "logs-http-status-codes-pie"
     )
     vis_state = json.loads(pie["attributes"]["visState"])
-    assert vis_state["type"] == "pie"
-    assert vis_state["params"]["labels"]["values"] is True
-    assert vis_state["params"]["labels"]["percentDecimals"] == 1
-    segment = next(agg for agg in vis_state["aggs"] if agg["schema"] == "segment")
-    assert segment["params"]["field"] == definitions.LOG_STATUS_FIELD
+    assert vis_state["type"] == "vega"
+    spec_text = vis_state["params"]["spec"]
+    assert definitions.HTTP_STATUS_COLOR_2XX in spec_text
+    assert definitions.HTTP_STATUS_COLOR_3XX in spec_text
+    assert definitions.HTTP_STATUS_COLOR_4XX in spec_text
+    assert definitions.HTTP_STATUS_COLOR_5XX in spec_text
+    assert definitions.LOG_STATUS_FIELD in spec_text
+    assert "toNumber(datum.status) >= 500" in spec_text
+
+
+def test_volume_histogram_click_zooms_time() -> None:
+    hist = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "visualization" and object_id == "logs-explore-histogram"
+    )
+    vis_state = json.loads(hist["attributes"]["visState"])
+    assert vis_state["type"] == "vega"
+    spec_text = vis_state["params"]["spec"]
+    assert f"/view/{definitions.LOGS_DASHBOARD_ID}" in spec_text
+    assert "time:(from:" in spec_text
+    assert "fixed_interval" in spec_text
+    assert "href" in spec_text
 
 
 def test_top_paths_includes_rps_and_pslo() -> None:
