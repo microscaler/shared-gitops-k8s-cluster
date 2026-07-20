@@ -239,78 +239,6 @@ def search_source(
     }
 
 
-def _discover_route_for_query(query: str) -> str:
-    return (
-        "/app/data-explorer/discover/#/?"
-        "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
-        "&_a=(discover:(columns:!("
-        + ",".join(LOG_STREAM_COLUMNS)
-        + "),interval:auto,sort:!(!(observedTimestamp,desc))),"
-        "metadata:(indexPattern:shared-observability-logs,view:discover))"
-        "&_q=(filters:!(),query:(language:lucene,query:'"
-        + _url_encode_lucene(query)
-        + "'))"
-    )
-
-
-def discover_guide_markdown() -> dict[str, Any]:
-    """Dashboard banner: field sidebar + saved-search scopes live in Discover."""
-    http_route = _discover_route_for_query(LOG_HTTP_LUCENE)
-    markdown = (
-        "## Use Discover for filters (Logz.io-style left panel)\n\n"
-        f"[**Open Logs / Signal**]({LOGS_DISCOVER_DEFAULT_ROUTE}) — default triage.\n"
-        f"[**Open Logs / HTTP**]({http_route}) — access logs "
-        "(`Request completed` / method · path · status · duration).\n"
-        "[**HTTP latency**](/app/dashboards#/view/http-latency) — p50/p95 "
-        "trends, path timelines, slow requests (investigation room).\n\n"
-        "Top-paths **Δ ms** = current window p95 − prior equal 15m slice "
-        "(smoke alarm for jumps still under the 500 ms SLO).\n\n"
-        "### Filter order\n"
-        "1. **namespace** (`loadlinker` / `sesame-idam` / `rerp`)\n"
-        "2. **application** (`serviceName`)\n"
-        "3. **time** (picker, top right)\n"
-        "4. **event_category** (`http` / `auth`) or method / path / status\n\n"
-        "### Saved searches (Discover → Open)\n"
-        "- **Logs / Signal** — all application logs "
-        "(`event_class:application`)\n"
-        "- **Logs / HTTP** — access logs only (`event_category:http`)\n"
-        "- **Logs / Errors** — WARN+ within signal\n"
-        "- **Logs / Auth** — `sesame-idam` signal\n"
-        "- **Logs / BFF** — `loadlinker` + `bff` signal\n"
-        "- **Logs / Runtime noise** — rare lifecycle/config lines "
-        "(`event_class:runtime_noise`)\n\n"
-        "Epoll and memory stats are **dropped at the collector** (not indexed).\n\n"
-        "### Signal stream row links (no expand)\n"
-        "- **doc** → View single document\n"
-        "- **around** → View surrounding documents\n"
-        "Use Discover (links above) when you need the field sidebar / JSON detail."
-    )
-    vis_state = {
-        "title": "Open Discover for field sidebar",
-        "type": "markdown",
-        "params": {
-            "fontSize": 12,
-            "openLinksInNewTab": False,
-            "markdown": markdown,
-        },
-        "aggs": [],
-    }
-    return {
-        "attributes": {
-            "title": "Open Discover for field sidebar",
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(
-                    {"query": {"query": "", "language": "lucene"}, "filter": []}
-                )
-            },
-        },
-        "references": [],
-    }
-
-
 def http_status_class_color_expr(field: str = "status") -> str:
     """Vega expr: map numeric/string HTTP status → class color."""
     return (
@@ -2267,11 +2195,6 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     objects: list[tuple[str, str, dict[str, Any]]] = [
         (
             "visualization",
-            "logs-explore-discover-guide",
-            discover_guide_markdown(),
-        ),
-        (
-            "visualization",
             "logs-explore-histogram",
             log_histogram_visualization(
                 title="Log volume (signal) — click bar to zoom time",
@@ -2365,14 +2288,13 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 f"Runtime noise. Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "logs-explore-discover-guide", 0, 0, 48, 7),
-                ("visualization", "logs-explore-histogram", 0, 7, 48, 10),
-                ("visualization", "logs-http-top-paths", 0, 17, 28, 14),
+                ("visualization", "logs-explore-histogram", 0, 0, 48, 10),
+                ("visualization", "logs-http-top-paths", 0, 10, 28, 14),
                 # Mid column: status table full height. Right: avg + donut stacked.
-                ("visualization", "logs-http-status-codes", 28, 17, 10, 14),
-                ("visualization", "logs-http-avg-duration", 38, 17, 10, 7),
-                ("visualization", "logs-http-status-codes-pie", 38, 24, 10, 7),
-                ("visualization", "logs-signal-stream", 0, 31, 48, 24),
+                ("visualization", "logs-http-status-codes", 28, 10, 10, 14),
+                ("visualization", "logs-http-avg-duration", 38, 10, 10, 7),
+                ("visualization", "logs-http-status-codes-pie", 38, 17, 10, 7),
+                ("visualization", "logs-signal-stream", 0, 24, 48, 24),
             ],
             panel_ref_prefix="logs_explore",
             time_from="now-15m",
@@ -2461,76 +2383,6 @@ DB_PRESSURE_LOGS_LUCENE = (
     "body: (*connection* OR *pool* OR *postgres* OR *redis* OR *timeout* OR "
     "*replication* OR *replica*)"
 )
-
-
-def _metrics_discover_route(query: str) -> str:
-    return (
-        "/app/data-explorer/discover/#/?"
-        "_g=(filters:!(),refreshInterval:(pause:!f,value:30000),time:(from:now-15m,to:now))"
-        "&_a=(discover:(columns:!("
-        + ",".join(METRICS_COLUMNS)
-        + f"),interval:auto,sort:!(!({METRICS_TIME_FIELD},desc))),"
-        "metadata:(indexPattern:shared-observability-metrics,view:discover))"
-        "&_q=(filters:!(),query:(language:lucene,query:'"
-        + _url_encode_lucene(query)
-        + "'))"
-    )
-
-
-def data_persistence_guide_markdown() -> dict[str, Any]:
-    """Banner: Discover scopes for Postgres primary/replicas + Redis."""
-    markdown = (
-        "## DataPersistence — Postgres primary + replicas, Redis\n\n"
-        "Topology: Lifeguard `postgres-primary` + `postgres-replica-{0,1}` "
-        "(no Pgpool). Exporter scrapes the primary Service; replica health is "
-        "visible via `pg_stat_replication_*` streaming rows.\n\n"
-        f"[**Open metrics (all)**]({_metrics_discover_route(DATA_PLATFORM_LUCENE)}) — "
-        "Postgres + Redis gauges.\n"
-        f"[**Open replication**]({_metrics_discover_route(PG_REPLICATION_LUCENE)}) — "
-        "`pg_up`, is_replica, WAL lag bytes per standby.\n"
-        f"[**Open Redis**]({_metrics_discover_route(REDIS_LUCENE)}) — "
-        "clients, memory, keyspace.\n\n"
-        "### What to watch\n"
-        "1. **`pg_up`** — exporter scrape of primary = 1\n"
-        "2. **`pg_replication_is_replica`** — primary scrape should stay **0**\n"
-        "3. **Streaming replicas** — two `client_addr` rows in "
-        "`pg_stat_replication_pg_wal_lsn_diff`, state `streaming`, lag ≈ 0\n"
-        "4. **DB backends** — `pg_stat_database_numbackends` by `datname`\n"
-        "5. **Redis** — connected clients + memory used\n\n"
-        "### Saved searches (Discover → Open)\n"
-        "- **DataPersistence / Platform metrics**\n"
-        "- **DataPersistence / Postgres connections**\n"
-        "- **DataPersistence / Replication**\n"
-        "- **DataPersistence / Redis**\n"
-        "- **DataPersistence / DB pressure logs** (log index)\n\n"
-        "Scraped via OTel `prometheus/data` → `postgres-exporter:9187` + "
-        "`redis-metrics` → Data Prepper → `otel-v1-apm-metrics*`. "
-        "Managed by shared-gitops-k8s-cluster."
-    )
-    vis_state = {
-        "title": "DataPersistence guide",
-        "type": "markdown",
-        "params": {
-            "fontSize": 12,
-            "openLinksInNewTab": False,
-            "markdown": markdown,
-        },
-        "aggs": [],
-    }
-    return {
-        "attributes": {
-            "title": "DataPersistence guide",
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(
-                    {"query": {"query": "", "language": "lucene"}, "filter": []}
-                )
-            },
-        },
-        "references": [],
-    }
 
 
 def metrics_value_metric_visualization(
@@ -3536,7 +3388,6 @@ def metrics_streaming_replicas_vega(
 def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     """Lifeguard Postgres primary + streaming replicas + Redis overview."""
     objects: list[tuple[str, str, dict[str, Any]]] = [
-        ("visualization", "data-persistence-guide", data_persistence_guide_markdown()),
         (
             "visualization",
             "data-persistence-pg-up",
@@ -3753,22 +3604,21 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 f"Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "data-persistence-guide", 0, 0, 48, 8),
-                ("visualization", "data-persistence-pg-up", 0, 8, 8, 6),
-                ("visualization", "data-persistence-pg-max-connections", 8, 8, 10, 6),
-                ("visualization", "data-persistence-is-replica", 18, 8, 10, 6),
-                ("visualization", "data-persistence-redis-clients", 28, 8, 10, 6),
-                ("visualization", "data-persistence-redis-memory", 38, 8, 10, 6),
-                ("visualization", "data-persistence-streaming-replicas", 0, 14, 28, 12),
-                ("visualization", "data-persistence-backends-table", 28, 14, 20, 12),
-                ("visualization", "data-persistence-replication-lag", 0, 26, 24, 12),
-                ("visualization", "data-persistence-pg-backends", 24, 26, 24, 12),
-                ("visualization", "data-persistence-pg-activity", 0, 38, 24, 12),
-                ("visualization", "data-persistence-pg-db-size", 24, 38, 24, 12),
-                ("visualization", "data-persistence-redis-memory-line", 0, 50, 24, 12),
-                ("visualization", "data-persistence-redis-clients-line", 24, 50, 24, 12),
-                ("visualization", "data-persistence-redis-keyspace", 0, 62, 48, 12),
-                ("search", "data-persistence-metrics", 0, 74, 48, 18),
+                ("visualization", "data-persistence-pg-up", 0, 0, 8, 6),
+                ("visualization", "data-persistence-pg-max-connections", 8, 0, 10, 6),
+                ("visualization", "data-persistence-is-replica", 18, 0, 10, 6),
+                ("visualization", "data-persistence-redis-clients", 28, 0, 10, 6),
+                ("visualization", "data-persistence-redis-memory", 38, 0, 10, 6),
+                ("visualization", "data-persistence-streaming-replicas", 0, 6, 28, 12),
+                ("visualization", "data-persistence-backends-table", 28, 6, 20, 12),
+                ("visualization", "data-persistence-replication-lag", 0, 18, 24, 12),
+                ("visualization", "data-persistence-pg-backends", 24, 18, 24, 12),
+                ("visualization", "data-persistence-pg-activity", 0, 30, 24, 12),
+                ("visualization", "data-persistence-pg-db-size", 24, 30, 24, 12),
+                ("visualization", "data-persistence-redis-memory-line", 0, 42, 24, 12),
+                ("visualization", "data-persistence-redis-clients-line", 24, 42, 24, 12),
+                ("visualization", "data-persistence-redis-keyspace", 0, 54, 48, 12),
+                ("search", "data-persistence-metrics", 0, 66, 48, 18),
             ],
             panel_ref_prefix="data_persistence",
             time_from="now-1h",
@@ -3785,67 +3635,8 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
 # ---------------------------------------------------------------------------
 
 
-def k3s_dev_guide_markdown() -> dict[str, Any]:
-    """Banner: topology for the shared LAN k3s cluster (not GCP)."""
-    markdown = (
-        "## k3s (dev) — LAN cluster health\n\n"
-        "**Dev-only.** Built for the Multipass/`shared-gitops-k8s-cluster` "
-        "k3s LAN (`v1.36.2+k3s1`), not for GCP/cloud.\n\n"
-        "### Nodes (expected)\n"
-        "| Node | Role | LAN IP |\n"
-        "|---|---|---|\n"
-        "| `k8s-cp-1` | control-plane + etcd | `10.177.76.137` |\n"
-        "| `k8s-worker-1` | worker | `10.177.76.175` |\n"
-        "| `k8s-worker-2` | worker | `10.177.76.141` |\n"
-        "| `k8s-worker-3` | worker | `10.177.76.44` |\n\n"
-        "### What feeds this board\n"
-        "- **node-exporter** DaemonSet (`observability`, hostNetwork `:9100`)\n"
-        "- **kube-state-metrics** (`observability:8080`, allowlisted series)\n"
-        "- OTel `prometheus/k3s` → Data Prepper → `otel-v1-apm-metrics*`\n"
-        "- Filter: `metric.attributes.platform_component: k3s`\n\n"
-        "KPI tiles use **distinct series** / **latest-per-series sum** — "
-        "not `sum` of every scrape sample in the time picker (that looked like "
-        "140 \"nodes Ready\"). Phase / Running counts require `value:1` — "
-        "kube-state emits every phase with 0/1, so cardinality without that "
-        "filter counts every pod in every phase.\n\n"
-        "### Companion boards\n"
-        f"- [**Logs**](/app/dashboards#/view/{LOGS_DASHBOARD_ID}) — app signal / HTTP\n"
-        "- [**DataPersistence**](/app/dashboards#/view/data-persistence) — "
-        "Postgres + Redis\n\n"
-        "Stale nav entries under *Recently viewed* (Loadlinker / Platform war "
-        "room / …) are browser history only — those dashboards were deleted. "
-        "Clear via the nav overflow or a fresh profile.\n\n"
-        f"Managed by {MANAGED_BY}."
-    )
-    vis_state = {
-        "title": "k3s (dev) guide",
-        "type": "markdown",
-        "params": {
-            "fontSize": 12,
-            "openLinksInNewTab": False,
-            "markdown": markdown,
-        },
-        "aggs": [],
-    }
-    return {
-        "attributes": {
-            "title": "k3s (dev) guide",
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(
-                    {"query": {"query": "", "language": "lucene"}, "filter": []}
-                )
-            },
-        },
-        "references": [],
-    }
-
-
 def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     objects: list[tuple[str, str, dict[str, Any]]] = [
-        ("visualization", "k3s-dev-guide", k3s_dev_guide_markdown()),
         (
             "visualization",
             "k3s-dev-nodes-ready",
@@ -4059,22 +3850,23 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 "LAN k3s cluster health (Multipass shared-gitops): node load / "
                 "memory / root disk, Ready nodes, pod phases, restart leaders, "
                 "unavailable Deployments/DaemonSets. Dev-only — not for GCP. "
-                f"Managed by {MANAGED_BY}"
+                "Nodes: k8s-cp-1 10.177.76.137; workers k8s-worker-1 "
+                "10.177.76.175, k8s-worker-2 10.177.76.141, k8s-worker-3 "
+                f"10.177.76.44. Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "k3s-dev-guide", 0, 0, 48, 10),
-                ("visualization", "k3s-dev-nodes-ready", 0, 10, 12, 6),
-                ("visualization", "k3s-dev-pods-running", 12, 10, 12, 6),
-                ("visualization", "k3s-dev-deploy-unavailable", 24, 10, 12, 6),
-                ("visualization", "k3s-dev-ds-unavailable", 36, 10, 12, 6),
-                ("visualization", "k3s-dev-load1", 0, 16, 24, 12),
-                ("visualization", "k3s-dev-mem-available", 24, 16, 24, 12),
-                ("visualization", "k3s-dev-rootfs-avail", 0, 28, 48, 12),
-                ("visualization", "k3s-dev-pods-by-phase", 0, 40, 16, 12),
-                ("visualization", "k3s-dev-pods-by-namespace", 16, 40, 16, 12),
-                ("visualization", "k3s-dev-top-restarts", 32, 40, 16, 12),
-                ("visualization", "k3s-dev-deploy-unavailable-table", 0, 52, 24, 12),
-                ("search", "k3s-dev-metrics", 24, 52, 24, 12),
+                ("visualization", "k3s-dev-nodes-ready", 0, 0, 12, 6),
+                ("visualization", "k3s-dev-pods-running", 12, 0, 12, 6),
+                ("visualization", "k3s-dev-deploy-unavailable", 24, 0, 12, 6),
+                ("visualization", "k3s-dev-ds-unavailable", 36, 0, 12, 6),
+                ("visualization", "k3s-dev-load1", 0, 6, 24, 12),
+                ("visualization", "k3s-dev-mem-available", 24, 6, 24, 12),
+                ("visualization", "k3s-dev-rootfs-avail", 0, 18, 48, 12),
+                ("visualization", "k3s-dev-pods-by-phase", 0, 30, 16, 12),
+                ("visualization", "k3s-dev-pods-by-namespace", 16, 30, 16, 12),
+                ("visualization", "k3s-dev-top-restarts", 32, 30, 16, 12),
+                ("visualization", "k3s-dev-deploy-unavailable-table", 0, 42, 24, 12),
+                ("search", "k3s-dev-metrics", 24, 42, 24, 12),
             ],
             panel_ref_prefix="k3s_dev",
             time_from="now-1h",
@@ -4095,6 +3887,9 @@ DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
 
 DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [
     ("visualization", "http-latency-guide"),
+    ("visualization", "logs-explore-discover-guide"),
+    ("visualization", "data-persistence-guide"),
+    ("visualization", "k3s-dev-guide"),
     ("dashboard", "shared-observability-overview"),
     ("dashboard", "shared-postgres-connections"),
     ("dashboard", "shared-data-platform"),

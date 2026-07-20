@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-20 (Logs Δ ms + HTTP latency board)
+Updated: 2026-07-20 (removed all dashboard guide panels)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
@@ -39,7 +39,8 @@ Updated: 2026-07-20 (Logs Δ ms + HTTP latency board)
 ## HTTP triage (done — status pie + mid-row layout)
 - Saved search **Logs / HTTP** (`logs-http`): Lucene `event_class:application AND event_category:http`.
 - Logs dashboard: guide → volume → Top paths | Status table (full mid height) | Avg + Status % donut (stacked right) → Signal stream (7 panels).
-- Mid-row grid: status `x=28,h=14`; avg `x=38,y=17,h=7`; donut `x=38,y=24,h=7`.
+- Mid-row grid (no guide): status `x=28,y=10,h=14`; avg `x=38,y=10,h=7`; donut `x=38,y=17,h=7`.
+- Markdown guide panels removed from all managed dashboards (space).
 - Panel `gridData.i` / `panelIndex` = object_id (not position) so layout updates stick.
 - Provisioner deletes each dashboard before NDJSON import (overwrite alone left stale react-grid).
 - Banner notes collector drops + HTTP deep-link; verified in OSD after delete+reimport.

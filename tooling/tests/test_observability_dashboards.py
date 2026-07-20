@@ -28,6 +28,22 @@ def test_dashboard_bundles() -> None:
     }
 
 
+def test_no_guide_panels_on_managed_dashboards() -> None:
+    objects = definitions.all_dashboard_objects()
+    for object_type, object_id, payload in objects:
+        if object_type != "dashboard":
+            continue
+        ref_ids = {ref["id"] for ref in payload["references"]}
+        assert not any(rid.endswith("-guide") for rid in ref_ids), object_id
+    deprecated = set(definitions.DEPRECATED_SAVED_OBJECTS)
+    assert {
+        ("visualization", "logs-explore-discover-guide"),
+        ("visualization", "data-persistence-guide"),
+        ("visualization", "k3s-dev-guide"),
+        ("visualization", "http-latency-guide"),
+    }.issubset(deprecated)
+
+
 def test_http_latency_dashboard_and_logs_delta() -> None:
     objects = definitions.all_dashboard_objects()
     dashboard = next(
@@ -57,14 +73,12 @@ def test_http_latency_dashboard_and_logs_delta() -> None:
     assert top_state["type"] == "vega"
     assert "deltaMs" in top_state["params"]["spec"]
     assert "p95Base" in top_state["params"]["spec"]
-    guide = next(
+    logs = next(
         payload
         for object_type, object_id, payload in objects
-        if object_type == "visualization"
-        and object_id == "logs-explore-discover-guide"
+        if object_type == "dashboard" and object_id == "logs-explore"
     )
-    markdown = json.loads(guide["attributes"]["visState"])["params"]["markdown"]
-    assert "http-latency" in markdown
+    assert "http-latency" in logs["attributes"]["description"]
 
 
 def test_k3s_dev_dashboard_is_lan_specific() -> None:
@@ -77,23 +91,17 @@ def test_k3s_dev_dashboard_is_lan_specific() -> None:
     assert dashboard["attributes"]["title"] == "k3s (dev)"
     assert "not for GCP" in dashboard["attributes"]["description"]
     assert "platform_component: k3s" in json.dumps(dashboard)
+    assert "k8s-cp-1" in dashboard["attributes"]["description"]
+    assert "10.177.76.137" in dashboard["attributes"]["description"]
     ref_ids = {ref["id"] for ref in dashboard["references"]}
     assert {
-        "k3s-dev-guide",
         "k3s-dev-nodes-ready",
         "k3s-dev-load1",
         "k3s-dev-mem-available",
         "k3s-dev-pods-by-namespace",
         "k3s-dev-metrics",
     }.issubset(ref_ids)
-    guide = next(
-        payload
-        for object_type, object_id, payload in objects
-        if object_type == "visualization" and object_id == "k3s-dev-guide"
-    )
-    markdown = json.loads(guide["attributes"]["visState"])["params"]["markdown"]
-    assert "k8s-cp-1" in markdown
-    assert "10.177.76.137" in markdown
+    assert "k3s-dev-guide" not in ref_ids
     path = DASHBOARDS / "k3s-dev.ndjson"
     assert path.is_file()
     nodes_ready = next(
@@ -191,13 +199,6 @@ def test_data_persistence_ndjson_and_panels() -> None:
         and item["id"] == "data-persistence-streaming-replicas"
         for item in parsed
     )
-    assert any(
-        item["type"] == "search" and item["id"] == "data-persistence-redis" for item in parsed
-    )
-    assert any(
-        item["type"] == "search" and item["id"] == "data-persistence-replication"
-        for item in parsed
-    )
 
     objects = definitions.all_dashboard_objects()
     dashboard = next(
@@ -211,7 +212,6 @@ def test_data_persistence_ndjson_and_panels() -> None:
     assert "streaming replicas" in dashboard["attributes"]["description"]
     ref_ids = {ref["id"] for ref in dashboard["references"]}
     assert {
-        "data-persistence-guide",
         "data-persistence-pg-up",
         "data-persistence-streaming-replicas",
         "data-persistence-replication-lag",
@@ -219,6 +219,7 @@ def test_data_persistence_ndjson_and_panels() -> None:
         "data-persistence-redis-memory-line",
         "data-persistence-metrics",
     }.issubset(ref_ids)
+    assert "data-persistence-guide" not in ref_ids
     assert "data-persistence-pgpool-frontend-used" not in ref_ids
 
     nodes = next(
@@ -245,11 +246,8 @@ def test_discover_is_canonical_field_sidebar_surface() -> None:
         "/app/data-explorer/discover/"
     )
     assert "shared-observability-logs" in definitions.LOGS_DISCOVER_DEFAULT_ROUTE
-    guide = definitions.discover_guide_markdown()
-    vis_state = json.loads(guide["attributes"]["visState"])
-    assert vis_state["type"] == "markdown"
-    assert "Logs / HTTP" in vis_state["params"]["markdown"]
-    assert "dropped at the collector" in vis_state["params"]["markdown"]
+    assert "event_class" in definitions.LOG_SIGNAL_LUCENE
+    assert "http" in definitions.LOG_HTTP_LUCENE
 
 
 def test_log_stream_uses_structured_sidebar_columns() -> None:
@@ -344,7 +342,6 @@ def test_dashboard_includes_http_triage_panels() -> None:
     assert dashboard["attributes"]["timeFrom"] == "now-15m"
     ref_ids = {ref["id"] for ref in dashboard["references"]}
     assert {
-        "logs-explore-discover-guide",
         "logs-explore-histogram",
         "logs-http-top-paths",
         "logs-http-status-codes",
@@ -352,6 +349,7 @@ def test_dashboard_includes_http_triage_panels() -> None:
         "logs-http-avg-duration",
         "logs-signal-stream",
     }.issubset(ref_ids)
+    assert "logs-explore-discover-guide" not in ref_ids
     # Saved search kept for Discover; dashboard stream is the Vega panel.
     assert ("search", "logs-explore-stream") in {
         (object_type, object_id) for object_type, object_id, _ in objects
@@ -365,10 +363,10 @@ def test_dashboard_includes_http_triage_panels() -> None:
     assert panels["logs-http-status-codes"]["h"] == 14
     assert panels["logs-http-status-codes"]["x"] == 28
     assert panels["logs-http-avg-duration"]["x"] == 38
-    assert panels["logs-http-avg-duration"]["y"] == 17
+    assert panels["logs-http-avg-duration"]["y"] == 10
     assert panels["logs-http-avg-duration"]["h"] == 7
     assert panels["logs-http-status-codes-pie"]["x"] == 38
-    assert panels["logs-http-status-codes-pie"]["y"] == 24
+    assert panels["logs-http-status-codes-pie"]["y"] == 17
     assert panels["logs-http-status-codes-pie"]["h"] == 7
     # Stable panel ids (object_id) so layout updates stick after reimport.
     by_ref = {
@@ -431,8 +429,8 @@ def test_top_paths_includes_rps_and_pslo() -> None:
     assert signals["sloMs"] == definitions.HTTP_P95_SLO_MS
     assert "windowSeconds" in vis_state["params"]["spec"]
     assert "vsSlo" in vis_state["params"]["spec"]
+    assert "deltaMs" in vis_state["params"]["spec"]
     assert "log.attributes.path.keyword" in vis_state["params"]["spec"]
-    assert "p95" in spec["data"][0]["url"]["body"]["aggs"]["paths"]["aggs"]
     assert "datum.p95 < 1" in vis_state["params"]["spec"]
     assert ".3f" in vis_state["params"]["spec"]
 
