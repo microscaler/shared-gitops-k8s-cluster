@@ -824,10 +824,13 @@ def log_http_top_paths_visualization(
                         "expr": "datum.p95.values['95.0']",
                     },
                     {
+                        # Vega: fields = primary keys; values = secondary cols to copy.
                         "type": "lookup",
                         "from": "baseline",
                         "key": "key",
-                        "fields": ["p95Base"],
+                        "fields": ["key"],
+                        "values": ["p95Base"],
+                        "as": ["p95Base"],
                     },
                     {
                         "type": "formula",
