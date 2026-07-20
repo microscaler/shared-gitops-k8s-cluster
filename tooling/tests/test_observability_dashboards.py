@@ -317,6 +317,9 @@ def test_signal_stream_has_row_discover_links() -> None:
     assert "docUrl" in spec_text
     assert "ctxUrl" in spec_text
     assert "otel-v1-apm-logs-*" in spec_text
+    # Single doc needs concrete index + ?id= (not bare doc id in the path).
+    assert "datum._index + '?id=' + datum._id" in spec_text
+    assert "ctxUrl" in spec_text and "' + datum._id" in spec_text
     # Wide hit rects (not text-only) so canvas clicks register.
     assert '"type":"rect"' in spec_text.replace(" ", "")
     assert "href" in spec_text
