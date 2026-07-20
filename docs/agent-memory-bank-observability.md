@@ -28,6 +28,7 @@ Updated: 2026-07-20 (k3s phase `value:1` + MiB/GiB lines; commit `a94539e`)
   - Phase gauges: always filter `value: 1` — kube-state emits every phase with
     0/1; cardinality without it counts all pods in every phase.
   - MemAvailable / rootfs: Vega scaled lines (MiB / GiB), not raw bytes.
+  - Deploy unavailable table: namespace → Deployment → unavailable.
 - Stale Loadlinker/Platform/Sesame dashboards are in `DEPRECATED_SAVED_OBJECTS` (deleted on provision).
   OSD *Recently viewed* is browser localStorage — clear nav history if old titles linger.
 
