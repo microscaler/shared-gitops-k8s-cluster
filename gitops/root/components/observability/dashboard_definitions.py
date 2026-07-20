@@ -1644,9 +1644,10 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 ("visualization", "logs-explore-discover-guide", 0, 0, 48, 7),
                 ("visualization", "logs-explore-histogram", 0, 7, 48, 10),
                 ("visualization", "logs-http-top-paths", 0, 17, 28, 14),
-                ("visualization", "logs-http-status-codes", 28, 17, 10, 7),
-                ("visualization", "logs-http-status-codes-pie", 28, 24, 10, 7),
-                ("visualization", "logs-http-avg-duration", 38, 17, 10, 14),
+                # Mid column: status table full height. Right: avg + donut stacked.
+                ("visualization", "logs-http-status-codes", 28, 17, 10, 14),
+                ("visualization", "logs-http-avg-duration", 38, 17, 10, 7),
+                ("visualization", "logs-http-status-codes-pie", 38, 24, 10, 7),
                 ("visualization", "logs-signal-stream", 0, 31, 48, 24),
             ],
             panel_ref_prefix="logs_explore",

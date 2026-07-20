@@ -234,6 +234,20 @@ def test_dashboard_includes_http_triage_panels() -> None:
     assert ("search", "logs-explore-stream") in {
         (object_type, object_id) for object_type, object_id, _ in objects
     }
+    panels_json = json.loads(dashboard["attributes"]["panelsJSON"])
+    panels = {
+        ref["id"]: panels_json[i]["gridData"]
+        for i, ref in enumerate(dashboard["references"])
+    }
+    # Status table full height; donut under avg duration (right column).
+    assert panels["logs-http-status-codes"]["h"] == 14
+    assert panels["logs-http-status-codes"]["x"] == 28
+    assert panels["logs-http-avg-duration"]["x"] == 38
+    assert panels["logs-http-avg-duration"]["y"] == 17
+    assert panels["logs-http-avg-duration"]["h"] == 7
+    assert panels["logs-http-status-codes-pie"]["x"] == 38
+    assert panels["logs-http-status-codes-pie"]["y"] == 24
+    assert panels["logs-http-status-codes-pie"]["h"] == 7
 
 
 def test_status_codes_pie_uses_class_colors() -> None:
