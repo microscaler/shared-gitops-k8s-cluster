@@ -1706,6 +1706,35 @@ METRICS_SLOT_KEYWORD = "metric.attributes.slot_name.keyword"
 METRICS_CLIENT_ADDR_KEYWORD = "metric.attributes.client_addr.keyword"
 METRICS_STATE_KEYWORD = "metric.attributes.state.keyword"
 METRICS_SERVER_KEYWORD = "metric.attributes.server.keyword"
+METRICS_NODE_KEYWORD = "metric.attributes.node.keyword"
+METRICS_NAMESPACE_KEYWORD = "metric.attributes.namespace.keyword"
+METRICS_POD_KEYWORD = "metric.attributes.pod.keyword"
+METRICS_PHASE_KEYWORD = "metric.attributes.phase.keyword"
+METRICS_CONDITION_KEYWORD = "metric.attributes.condition.keyword"
+METRICS_STATUS_KEYWORD = "metric.attributes.status.keyword"
+METRICS_DEPLOYMENT_KEYWORD = "metric.attributes.deployment.keyword"
+
+K3S_DEV_DASHBOARD_ID = "k3s-dev"
+K3S_NODE_SPLIT_FIELD = METRICS_NODE_KEYWORD
+K3S_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: (node_* OR kube_*) AND '
+    f'metric.attributes.platform_component: k3s'
+)
+K3S_NODE_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: (node_load1 OR node_load5 OR node_load15 OR '
+    f'node_memory_MemAvailable_bytes OR node_memory_MemTotal_bytes OR '
+    f'node_filesystem_avail_bytes OR node_filesystem_size_bytes OR '
+    f'node_network_receive_bytes_total OR node_network_transmit_bytes_total OR '
+    f'node_uname_info) AND metric.attributes.platform_component: k3s'
+)
+K3S_KUBE_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: (kube_node_info OR kube_node_status_condition OR '
+    f'kube_pod_status_phase OR kube_pod_container_status_restarts_total OR '
+    f'kube_deployment_status_replicas_unavailable OR '
+    f'kube_deployment_status_replicas_available OR '
+    f'kube_daemonset_status_number_unavailable) AND '
+    f'metric.attributes.platform_component: k3s'
+)
 
 METRICS_COLUMNS = [
     "time",
@@ -2583,9 +2612,307 @@ def _data_persistence_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     return objects
 
 
+# ---------------------------------------------------------------------------
+# k3s (dev) — LAN multipass cluster hosts + object health
+# ---------------------------------------------------------------------------
+
+
+def k3s_dev_guide_markdown() -> dict[str, Any]:
+    """Banner: topology for the shared LAN k3s cluster (not GCP)."""
+    markdown = (
+        "## k3s (dev) — LAN cluster health\n\n"
+        "**Dev-only.** Built for the Multipass/`shared-gitops-k8s-cluster` "
+        "k3s LAN (`v1.36.2+k3s1`), not for GCP/cloud.\n\n"
+        "### Nodes (expected)\n"
+        "| Node | Role | LAN IP |\n"
+        "|---|---|---|\n"
+        "| `k8s-cp-1` | control-plane + etcd | `10.177.76.137` |\n"
+        "| `k8s-worker-1` | worker | `10.177.76.175` |\n"
+        "| `k8s-worker-2` | worker | `10.177.76.141` |\n"
+        "| `k8s-worker-3` | worker | `10.177.76.44` |\n\n"
+        "### What feeds this board\n"
+        "- **node-exporter** DaemonSet (`observability`, hostNetwork `:9100`)\n"
+        "- **kube-state-metrics** (`observability:8080`, allowlisted series)\n"
+        "- OTel `prometheus/k3s` → Data Prepper → `otel-v1-apm-metrics*`\n"
+        "- Filter: `metric.attributes.platform_component: k3s`\n\n"
+        "### Companion boards\n"
+        f"- [**Logs**](/app/dashboards#/view/{LOGS_DASHBOARD_ID}) — app signal / HTTP\n"
+        "- [**DataPersistence**](/app/dashboards#/view/data-persistence) — "
+        "Postgres + Redis\n\n"
+        "Stale nav entries under *Recently viewed* (Loadlinker / Platform war "
+        "room / …) are browser history only — those dashboards were deleted. "
+        "Clear via the nav overflow or a fresh profile.\n\n"
+        f"Managed by {MANAGED_BY}."
+    )
+    vis_state = {
+        "title": "k3s (dev) guide",
+        "type": "markdown",
+        "params": {
+            "fontSize": 12,
+            "openLinksInNewTab": False,
+            "markdown": markdown,
+        },
+        "aggs": [],
+    }
+    return {
+        "attributes": {
+            "title": "k3s (dev) guide",
+            "description": f"Managed by {MANAGED_BY}",
+            "visState": compact(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": compact(
+                    {"query": {"query": "", "language": "lucene"}, "filter": []}
+                )
+            },
+        },
+        "references": [],
+    }
+
+
+def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        ("visualization", "k3s-dev-guide", k3s_dev_guide_markdown()),
+        (
+            "visualization",
+            "k3s-dev-nodes-ready",
+            metrics_value_metric_visualization(
+                title="Nodes Ready (condition=true)",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_node_status_condition" AND '
+                    f'{METRICS_CONDITION_KEYWORD}: Ready AND '
+                    f'{METRICS_STATUS_KEYWORD}: "true" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                agg="sum",
+                custom_label="nodes Ready",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-pods-running",
+            metrics_value_metric_visualization(
+                title="Pods Running",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f'{METRICS_PHASE_KEYWORD}: Running AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                agg="sum",
+                custom_label="pods Running",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-deploy-unavailable",
+            metrics_value_metric_visualization(
+                title="Deployment replicas unavailable",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: '
+                    f'"kube_deployment_status_replicas_unavailable" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                agg="sum",
+                custom_label="unavailable replicas",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-ds-unavailable",
+            metrics_value_metric_visualization(
+                title="DaemonSet pods unavailable",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: '
+                    f'"kube_daemonset_status_number_unavailable" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                agg="sum",
+                custom_label="unavailable DS pods",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-load1",
+            metrics_line_visualization(
+                title="Load1 by node",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "node_load1" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                split_field=K3S_NODE_SPLIT_FIELD,
+                split_size=8,
+                y_label="load1",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-mem-available",
+            metrics_line_visualization(
+                title="MemAvailable bytes by node",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "node_memory_MemAvailable_bytes" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                split_field=K3S_NODE_SPLIT_FIELD,
+                split_size=8,
+                y_label="bytes",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-rootfs-avail",
+            metrics_line_visualization(
+                title="Root filesystem avail bytes by node",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "node_filesystem_avail_bytes" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                split_field=K3S_NODE_SPLIT_FIELD,
+                split_size=8,
+                y_label="bytes",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-pods-by-phase",
+            metrics_terms_table_visualization(
+                title="Pods by phase (sum of gauges)",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_PHASE_KEYWORD,
+                size=8,
+                field_label="phase",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-pods-by-namespace",
+            metrics_terms_table_visualization(
+                title="Running pods by namespace",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f'{METRICS_PHASE_KEYWORD}: Running AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_NAMESPACE_KEYWORD,
+                size=20,
+                field_label="namespace",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-top-restarts",
+            metrics_terms_table_visualization(
+                title="Top container restart counters",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: '
+                    f'"kube_pod_container_status_restarts_total" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_POD_KEYWORD,
+                size=15,
+                field_label="pod",
+            ),
+        ),
+        (
+            "visualization",
+            "k3s-dev-deploy-unavailable-table",
+            metrics_terms_table_visualization(
+                title="Deployments with unavailable replicas",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: '
+                    f'"kube_deployment_status_replicas_unavailable" AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_DEPLOYMENT_KEYWORD,
+                size=15,
+                field_label="deployment",
+            ),
+        ),
+        (
+            "search",
+            "k3s-dev-metrics",
+            saved_search(
+                title="k3s (dev) / Metrics",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS
+                + ["metric.attributes.node", "metric.attributes.namespace"],
+                query=K3S_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "k3s-dev-node-metrics",
+            saved_search(
+                title="k3s (dev) / Node exporter",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS + ["metric.attributes.node"],
+                query=K3S_NODE_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "k3s-dev-kube-metrics",
+            saved_search(
+                title="k3s (dev) / kube-state-metrics",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS
+                + [
+                    "metric.attributes.namespace",
+                    "metric.attributes.pod",
+                    "metric.attributes.phase",
+                ],
+                query=K3S_KUBE_LUCENE,
+                filters=[],
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id=K3S_DEV_DASHBOARD_ID,
+            title="k3s (dev)",
+            description=(
+                "LAN k3s cluster health (Multipass shared-gitops): node load / "
+                "memory / root disk, Ready nodes, pod phases, restart leaders, "
+                "unavailable Deployments/DaemonSets. Dev-only — not for GCP. "
+                f"Managed by {MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "k3s-dev-guide", 0, 0, 48, 10),
+                ("visualization", "k3s-dev-nodes-ready", 0, 10, 12, 6),
+                ("visualization", "k3s-dev-pods-running", 12, 10, 12, 6),
+                ("visualization", "k3s-dev-deploy-unavailable", 24, 10, 12, 6),
+                ("visualization", "k3s-dev-ds-unavailable", 36, 10, 12, 6),
+                ("visualization", "k3s-dev-load1", 0, 16, 24, 12),
+                ("visualization", "k3s-dev-mem-available", 24, 16, 24, 12),
+                ("visualization", "k3s-dev-rootfs-avail", 0, 28, 48, 12),
+                ("visualization", "k3s-dev-pods-by-phase", 0, 40, 16, 12),
+                ("visualization", "k3s-dev-pods-by-namespace", 16, 40, 16, 12),
+                ("visualization", "k3s-dev-top-restarts", 32, 40, 16, 12),
+                ("visualization", "k3s-dev-deploy-unavailable-table", 0, 52, 24, 12),
+                ("search", "k3s-dev-metrics", 24, 52, 24, 12),
+            ],
+            panel_ref_prefix="k3s_dev",
+            time_from="now-1h",
+            refresh_ms=30000,
+            query=K3S_LUCENE,
+            filters=[],
+        )
+    )
+    return objects
+
+
 DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "logs-explore": _logs_explore_bundle(),
     "data-persistence": _data_persistence_bundle(),
+    "k3s-dev": _k3s_dev_bundle(),
 }
 
 DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [

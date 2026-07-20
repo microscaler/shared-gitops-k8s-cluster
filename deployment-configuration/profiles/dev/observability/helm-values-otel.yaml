@@ -107,6 +107,65 @@ config:
               - source_labels: [__name__]
                 regex: redis_connected_clients|redis_memory_used_bytes|redis_commands_processed_total|redis_keyspace_hits_total|redis_keyspace_misses_total|redis_evicted_keys_total
                 action: keep
+    # Dev k3s hosts + object state (node-exporter DaemonSet + kube-state-metrics).
+    # Highly specific to the LAN multipass/k3s cluster — not for GCP.
+    prometheus/k3s:
+      config:
+        scrape_configs:
+          - job_name: node-exporter
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [observability]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: node-exporter
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip]
+                regex: (.+)
+                target_label: __address__
+                replacement: "${1}:9100"
+              - source_labels: [__meta_kubernetes_pod_node_name]
+                target_label: node
+              - target_label: platform_component
+                replacement: k3s
+              - target_label: service
+                replacement: node-exporter
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: node_load1|node_load5|node_load15|node_memory_MemAvailable_bytes|node_memory_MemTotal_bytes|node_filesystem_avail_bytes|node_filesystem_size_bytes|node_uname_info|node_network_receive_bytes_total|node_network_transmit_bytes_total
+                action: keep
+              # Filesystem metrics without mountpoint=/ are host noise.
+              - source_labels: [mountpoint]
+                regex: '/.+'
+                action: drop
+              # Skip loopback / virtual NICs.
+              - source_labels: [device]
+                regex: 'lo|veth.*|flannel.*|cni.*|cali.*|docker.*|br-.*'
+                action: drop
+          - job_name: kube-state-metrics
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [observability]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: kube-state-metrics
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip]
+                regex: (.+)
+                target_label: __address__
+                replacement: "${1}:8080"
+              - target_label: platform_component
+                replacement: k3s
+              - target_label: service
+                replacement: kube-state-metrics
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: kube_node_info|kube_node_status_condition|kube_pod_info|kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas_available|kube_deployment_status_replicas_unavailable|kube_daemonset_status_number_unavailable
+                action: keep
   processors:
     batch: {}
     memory_limiter:
@@ -208,7 +267,7 @@ config:
         processors: [memory_limiter, batch]
         exporters: [otlp/traces]
       metrics:
-        receivers: [otlp, prometheus/data]
+        receivers: [otlp, prometheus/data, prometheus/k3s]
         processors: [memory_limiter, filter/drop-no-recorded-value, batch]
         exporters: [otlp/metrics, prometheus]
       logs:

@@ -20,7 +20,42 @@ spec.loader.exec_module(definitions)
 
 
 def test_dashboard_bundles() -> None:
-    assert set(definitions.DASHBOARD_BUNDLES) == {"logs-explore", "data-persistence"}
+    assert set(definitions.DASHBOARD_BUNDLES) == {
+        "logs-explore",
+        "data-persistence",
+        "k3s-dev",
+    }
+
+
+def test_k3s_dev_dashboard_is_lan_specific() -> None:
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "k3s-dev"
+    )
+    assert dashboard["attributes"]["title"] == "k3s (dev)"
+    assert "not for GCP" in dashboard["attributes"]["description"]
+    assert "platform_component: k3s" in json.dumps(dashboard)
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "k3s-dev-guide",
+        "k3s-dev-nodes-ready",
+        "k3s-dev-load1",
+        "k3s-dev-mem-available",
+        "k3s-dev-pods-by-namespace",
+        "k3s-dev-metrics",
+    }.issubset(ref_ids)
+    guide = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "visualization" and object_id == "k3s-dev-guide"
+    )
+    markdown = json.loads(guide["attributes"]["visState"])["params"]["markdown"]
+    assert "k8s-cp-1" in markdown
+    assert "10.177.76.137" in markdown
+    path = DASHBOARDS / "k3s-dev.ndjson"
+    assert path.is_file()
 
 
 def test_dashboard_references_are_complete_and_stable() -> None:

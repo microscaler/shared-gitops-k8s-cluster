@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-20 (Logs mid-row layout: status full-height; avg+donut stacked right)
+Updated: 2026-07-20 (k3s-dev dashboard + node-exporter/kube-state scrapes)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
@@ -18,6 +18,13 @@ Updated: 2026-07-20 (Logs mid-row layout: status full-height; avg+donut stacked 
   - Metrics index: `shared-observability-metrics` (`otel-v1-apm-metrics*`), time field `time`, value `value`
   - OTel scrape: `postgres-exporter.data:9187` (not postgres-ha); keep `pg_up`, `pg_replication_*`, `pg_stat_replication_pg_wal_lsn_diff`, backends/activity/size
   - Vega: streaming replicas table on `pg_stat_replication_pg_wal_lsn_diff` (`_metrics_vega_url` + `%timefilter%`)
+- **k3s (dev)** (`k3s-dev`) — LAN Multipass k3s only (not GCP).
+  - URL: `http://opensearch.dev.microscaler.local/app/dashboards#/view/k3s-dev`
+  - Scrapes: `node-exporter` DaemonSet + `kube-state-metrics` via OTel `prometheus/k3s`
+  - Filter: `metric.attributes.platform_component: k3s`
+  - Nodes: k8s-cp-1 `10.177.76.137`, workers `.175` / `.141` / `.44`
+- Stale Loadlinker/Platform/Sesame dashboards are in `DEPRECATED_SAVED_OBJECTS` (deleted on provision).
+  OSD *Recently viewed* is browser localStorage — clear nav history if old titles linger.
 
 ## HTTP triage (done — status pie + mid-row layout)
 - Saved search **Logs / HTTP** (`logs-http`): Lucene `event_class:application AND event_category:http`.
@@ -60,3 +67,4 @@ Vega `href` requires `vis_type_vega.enableExternalUrls: true` in Dashboards
 ## Optional next
 - Error-rate strip; trace deep-links; rebuild services on BRRTRouter `d0b931a` so `status` lands on access logs.
 - Make RPS follow the selected time picker if OSD timefilter→Vega improves.
+- k3s-dev: CPU % (from `node_cpu_seconds_total` rate), MetalLB VIP / Envoy panels, Flux HelmRelease health.

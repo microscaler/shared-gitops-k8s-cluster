@@ -13,6 +13,8 @@ resources:
   - helm-release-dashboards.yaml
   - helm-release-data-prepper.yaml
   - helm-release-otel.yaml
+  - node-exporter.yaml
+  - kube-state-metrics.yaml
   - observability-provisioner-cronjob.yaml
 
 configMapGenerator:
@@ -24,3 +26,4 @@ configMapGenerator:
     files:
       - dashboards/logs-explore.ndjson
       - dashboards/data-persistence.ndjson
+      - dashboards/k3s-dev.ndjson
