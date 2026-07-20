@@ -261,9 +261,11 @@ def discover_guide_markdown() -> dict[str, Any]:
         "- **Logs / BFF** — `loadlinker` + `bff` signal\n"
         "- **Logs / Runtime noise** — rare lifecycle/config lines "
         "(`event_class:runtime_noise`)\n\n"
-        "Epoll and memory stats are **dropped at the collector** (not indexed). "
-        "Expand a row for structured fields (`log.attributes.message`, method, "
-        "path, status, duration_ms)."
+        "Epoll and memory stats are **dropped at the collector** (not indexed).\n\n"
+        "### Signal stream row links (no expand)\n"
+        "- **doc** → View single document\n"
+        "- **around** → View surrounding documents\n"
+        "Use Discover (links above) when you need the field sidebar / JSON detail."
     )
     vis_state = {
         "title": "Open Discover for field sidebar",
@@ -843,6 +845,310 @@ def log_http_top_paths_visualization(
     )
 
 
+def _vega_header_text(field: str, x: str | dict[str, Any]) -> dict[str, Any]:
+    encode: dict[str, Any] = {
+        "y": {"value": 14},
+        "text": {"field": field},
+        "fontWeight": {"value": "bold"},
+        "fontSize": {"value": 11},
+        "fill": {"value": "#333"},
+    }
+    if isinstance(x, dict):
+        encode["x"] = x
+    else:
+        encode["x"] = {"signal": x}
+    return {
+        "type": "text",
+        "from": {"data": "header"},
+        "encode": {"update": encode},
+    }
+
+
+def _vega_row_text(
+    *,
+    field: str | None = None,
+    signal: str | None = None,
+    x: str | dict[str, Any],
+    align: str | None = None,
+    fill: str | dict[str, Any] = "#111",
+    limit: str | None = None,
+    href_field: str | None = None,
+    font_weight: str | None = None,
+) -> dict[str, Any]:
+    encode: dict[str, Any] = {
+        "y": {"scale": "y", "field": "row", "band": 0.5},
+        "fontSize": {"value": 11},
+        "baseline": {"value": "middle"},
+    }
+    if isinstance(x, dict):
+        encode["x"] = x
+    else:
+        encode["x"] = {"signal": x}
+    if field is not None:
+        encode["text"] = {"field": field}
+    if signal is not None:
+        encode["text"] = {"signal": signal}
+    if align is not None:
+        encode["align"] = {"value": align}
+    if isinstance(fill, dict):
+        encode["fill"] = fill
+    else:
+        encode["fill"] = {"value": fill}
+    if limit is not None:
+        encode["limit"] = {"signal": limit}
+    if href_field is not None:
+        encode["href"] = {"field": href_field}
+        encode["cursor"] = {"value": "pointer"}
+        encode["fill"] = {"value": "#006bb8"}
+    if font_weight is not None:
+        encode["fontWeight"] = {"value": font_weight}
+    return {
+        "type": "text",
+        "from": {"data": "rows"},
+        "encode": {"update": encode},
+    }
+
+
+def log_signal_stream_visualization(
+    *,
+    title: str,
+    data_view: str,
+    query: str = LOG_SIGNAL_LUCENE,
+    size: int = 40,
+) -> dict[str, Any]:
+    """Signal stream with per-row Discover doc / surrounding links (no expand)."""
+    # OSD Discover routes (data-explorer): #/doc|:context/:indexPattern/:id
+    doc_prefix = (
+        f"/app/data-explorer/discover/#/doc/{LOGS_VIEW}/"
+    )
+    ctx_prefix = (
+        f"/app/data-explorer/discover/#/context/{LOGS_VIEW}/"
+    )
+    # Prefer dated indices; bare otel-v1-apm-logs lacks observedTimestamp mapping.
+    index_pattern = "otel-v1-apm-logs-*"
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 8,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "rows",
+                "url": {
+                    "%context%": True,
+                    "%timefield%": LOGS_TIME_FIELD,
+                    "index": index_pattern,
+                    "body": {
+                        "size": size,
+                        "sort": [{LOGS_TIME_FIELD: {"order": "desc"}}],
+                        "_source": [
+                            LOGS_TIME_FIELD,
+                            "name",
+                            LOG_APPLICATION_FIELD,
+                            "severityText",
+                            "method",
+                            "path",
+                            "status",
+                            "duration_ms",
+                            "body",
+                        ],
+                    },
+                },
+                "format": {"property": "hits.hits"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "ts",
+                        "expr": (
+                            "datum._source.observedTimestamp ? "
+                            "slice(datum._source.observedTimestamp, 11, 19) : ''"
+                        ),
+                    },
+                    {
+                        "type": "formula",
+                        "as": "ns",
+                        "expr": "datum._source.name || ''",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "app",
+                        "expr": "datum._source.serviceName || ''",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "sev",
+                        "expr": "datum._source.severityText || ''",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "method",
+                        "expr": "datum._source.method || ''",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "path",
+                        "expr": "datum._source.path || datum._source.body || ''",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "status",
+                        "expr": (
+                            "datum._source.status == null ? '' : "
+                            "datum._source.status"
+                        ),
+                    },
+                    {
+                        "type": "formula",
+                        "as": "dur",
+                        "expr": (
+                            "datum._source.duration_ms == null ? '' : "
+                            "datum._source.duration_ms"
+                        ),
+                    },
+                    {
+                        "type": "formula",
+                        "as": "docUrl",
+                        "expr": f"'{doc_prefix}' + datum._id",
+                    },
+                    {
+                        "type": "formula",
+                        "as": "ctxUrl",
+                        "expr": f"'{ctx_prefix}' + datum._id",
+                    },
+                    {
+                        "type": "window",
+                        "ops": ["row_number"],
+                        "as": ["row"],
+                        "sort": [
+                            {
+                                "field": "_source.observedTimestamp",
+                                "order": "descending",
+                            }
+                        ],
+                    },
+                ],
+            },
+            {
+                "name": "header",
+                "values": [
+                    {
+                        "ts": "time",
+                        "ns": "ns",
+                        "app": "app",
+                        "sev": "sev",
+                        "method": "method",
+                        "path": "path",
+                        "status": "status",
+                        "dur": "ms",
+                        "doc": "single doc",
+                        "ctx": "surrounding",
+                        "row": 0,
+                    }
+                ],
+            },
+        ],
+        "scales": [
+            {
+                "name": "y",
+                "type": "band",
+                "domain": {"data": "rows", "field": "row"},
+                "range": {"step": 20},
+                "padding": 0.05,
+            }
+        ],
+        "marks": [
+            {
+                "type": "group",
+                "encode": {
+                    "update": {
+                        "x": {"value": 0},
+                        "y": {"value": 0},
+                        "width": {"signal": "width"},
+                        "height": {"signal": "22"},
+                    }
+                },
+                "marks": [
+                    _vega_header_text("ts", {"value": 0}),
+                    _vega_header_text("ns", "width * 0.09"),
+                    _vega_header_text("app", "width * 0.20"),
+                    _vega_header_text("sev", "width * 0.30"),
+                    _vega_header_text("method", "width * 0.36"),
+                    _vega_header_text("path", "width * 0.42"),
+                    _vega_header_text("status", "width * 0.68"),
+                    _vega_header_text("dur", "width * 0.74"),
+                    _vega_header_text("doc", "width * 0.82"),
+                    _vega_header_text("ctx", "width * 0.92"),
+                ],
+            },
+            {
+                "type": "group",
+                "encode": {
+                    "update": {
+                        "y": {"value": 22},
+                        "width": {"signal": "width"},
+                        "height": {"signal": "height - 22"},
+                    }
+                },
+                "marks": [
+                    _vega_row_text(field="ts", x={"value": 0}),
+                    _vega_row_text(field="ns", x="width * 0.09", limit="width * 0.10"),
+                    _vega_row_text(field="app", x="width * 0.20", limit="width * 0.09"),
+                    _vega_row_text(
+                        field="sev",
+                        x="width * 0.30",
+                        fill={
+                            "signal": (
+                                "datum.sev === 'ERROR' || datum.sev === 'FATAL' "
+                                "? '#b00020' : datum.sev === 'WARN' "
+                                "? '#a15c00' : '#111'"
+                            )
+                        },
+                    ),
+                    _vega_row_text(field="method", x="width * 0.36"),
+                    _vega_row_text(
+                        field="path", x="width * 0.42", limit="width * 0.24"
+                    ),
+                    _vega_row_text(
+                        field="status",
+                        x="width * 0.68",
+                        fill={
+                            "signal": (
+                                "datum.status >= 500 ? '#b00020' : "
+                                "datum.status >= 400 ? '#a15c00' : "
+                                "datum.status >= 200 ? '#0a7a28' : '#111'"
+                            )
+                        },
+                    ),
+                    _vega_row_text(field="dur", x="width * 0.74"),
+                    _vega_row_text(
+                        signal="'doc'",
+                        x="width * 0.82",
+                        href_field="docUrl",
+                        font_weight="bold",
+                    ),
+                    _vega_row_text(
+                        signal="'around'",
+                        x="width * 0.92",
+                        href_field="ctxUrl",
+                        font_weight="bold",
+                    ),
+                ],
+            },
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {
+            "spec": compact(spec),
+            "hideWarnings": True,
+        },
+        "aggs": [],
+    }
+    return _visualization(
+        title=title, data_view=data_view, vis_state=vis_state, query=query
+    )
+
+
 def log_avg_metric_visualization(
     *,
     title: str,
@@ -1101,6 +1407,16 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 query=LOG_SIGNAL_LUCENE,
             ),
         ),
+        (
+            "visualization",
+            "logs-signal-stream",
+            log_signal_stream_visualization(
+                title="Signal stream — doc + surrounding on each row",
+                data_view=LOGS_VIEW,
+                query=LOG_SIGNAL_LUCENE,
+                size=40,
+            ),
+        ),
     ]
     objects.extend(_saved_search_scopes())
     objects.append(
@@ -1109,9 +1425,10 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="Logs",
             description=(
                 "Companion overview with HTTP triage (top paths, status table + "
-                "pie, avg latency). Open Discover for the field sidebar and saved "
-                "searches (Signal / HTTP / Errors / Auth / BFF / Runtime noise). "
-                "Epoll and memory are dropped at the collector; rare "
+                "pie, avg latency) and a signal stream with per-row Discover "
+                "doc/surrounding links. Open Discover for the field sidebar and "
+                "saved searches (Signal / HTTP / Errors / Auth / BFF / Runtime "
+                "noise). Epoll and memory are dropped at the collector; rare "
                 "lifecycle/config noise is selectable via Runtime noise. "
                 f"Managed by {MANAGED_BY}"
             ),
@@ -1122,7 +1439,7 @@ def _logs_explore_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 ("visualization", "logs-http-status-codes", 28, 17, 10, 7),
                 ("visualization", "logs-http-status-codes-pie", 28, 24, 10, 7),
                 ("visualization", "logs-http-avg-duration", 38, 17, 10, 14),
-                ("search", "logs-explore-stream", 0, 31, 48, 24),
+                ("visualization", "logs-signal-stream", 0, 31, 48, 24),
             ],
             panel_ref_prefix="logs_explore",
             time_from="now-15m",

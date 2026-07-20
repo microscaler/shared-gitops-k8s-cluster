@@ -33,7 +33,9 @@ Updated: 2026-07-19 (DataPersistence Lifeguard cutover on main@ae05c5b)
 - Pre-pipeline docs lack short fields (empty cells until they age out).
 
 ## Detail view tip
-Expand row → Table/JSON. Look for `body` / `log.attributes.message` plus `log.attributes.method|path|status|duration_ms`.
+Discover still has expand → Table/JSON. On the Logs dashboard, the **Signal stream**
+Vega panel exposes **doc** / **around** on every row (same as View single document /
+View surrounding documents) so you do not need to expand first.
 
 ## Top paths RPS + pSLO (done)
 - Vega panel `logs-http-top-paths`: path | count | rps/15m | p95 ms | SLO ms (500) | pSLO (ok/breach).

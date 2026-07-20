@@ -228,8 +228,12 @@ def test_dashboard_includes_http_triage_panels() -> None:
         "logs-http-status-codes",
         "logs-http-status-codes-pie",
         "logs-http-avg-duration",
-        "logs-explore-stream",
+        "logs-signal-stream",
     }.issubset(ref_ids)
+    # Saved search kept for Discover; dashboard stream is the Vega panel.
+    assert ("search", "logs-explore-stream") in {
+        (object_type, object_id) for object_type, object_id, _ in objects
+    }
 
 
 def test_status_codes_pie_shows_percentages() -> None:
@@ -264,3 +268,20 @@ def test_top_paths_includes_rps_and_pslo() -> None:
     assert "p95" in spec["data"][0]["url"]["body"]["aggs"]["paths"]["aggs"]
     assert "datum.p95 < 1" in vis_state["params"]["spec"]
     assert ".3f" in vis_state["params"]["spec"]
+
+
+def test_signal_stream_has_row_discover_links() -> None:
+    stream = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "visualization" and object_id == "logs-signal-stream"
+    )
+    vis_state = json.loads(stream["attributes"]["visState"])
+    assert vis_state["type"] == "vega"
+    spec_text = vis_state["params"]["spec"]
+    assert "#/doc/shared-observability-logs/" in spec_text
+    assert "#/context/shared-observability-logs/" in spec_text
+    assert "hits.hits" in spec_text
+    assert "docUrl" in spec_text
+    assert "ctxUrl" in spec_text
+    assert "otel-v1-apm-logs-*" in spec_text
