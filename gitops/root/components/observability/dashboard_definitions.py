@@ -1997,52 +1997,9 @@ def log_http_path_p95_timeline_vega(
     )
 
 
-def http_latency_guide_markdown() -> dict[str, Any]:
-    """Banner for the HTTP latency investigation board."""
-    http_route = _discover_route_for_query(LOG_HTTP_LUCENE)
-    slow_route = _discover_route_for_query(LOG_HTTP_SLOW_LUCENE)
-    markdown = (
-        "## HTTP latency — investigation room\n\n"
-        f"[**Logs**](/app/dashboards#/view/{LOGS_DASHBOARD_ID}) — triage / smoke "
-        "alarm (top paths Δ + status).\n"
-        f"[**Logs / HTTP**]({http_route}) — Discover access logs.\n"
-        f"[**Slow requests (≥{HTTP_P95_SLO_MS} ms)**]({slow_route}) — "
-        "Discover filter on duration.\n\n"
-        f"SLO: **p95 ≤ {HTTP_P95_SLO_MS} ms** (BFF edge design target).\n"
-        "Use this board for trends and path timelines; use Logs when you only "
-        "need “is anything hot / breached right now?”.\n\n"
-        f"Managed by {MANAGED_BY}."
-    )
-    vis_state = {
-        "title": "HTTP latency guide",
-        "type": "markdown",
-        "params": {
-            "fontSize": 12,
-            "openLinksInNewTab": False,
-            "markdown": markdown,
-        },
-        "aggs": [],
-    }
-    return {
-        "attributes": {
-            "title": "HTTP latency guide",
-            "description": f"Managed by {MANAGED_BY}",
-            "visState": compact(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": compact(
-                    {"query": {"query": "", "language": "lucene"}, "filter": []}
-                )
-            },
-        },
-        "references": [],
-    }
-
-
 def _http_latency_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     """Dedicated HTTP latency investigation dashboard."""
     objects: list[tuple[str, str, dict[str, Any]]] = [
-        ("visualization", "http-latency-guide", http_latency_guide_markdown()),
         (
             "visualization",
             "http-latency-req-count",
@@ -2140,19 +2097,19 @@ def _http_latency_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             title="HTTP latency",
             description=(
                 "HTTP latency investigation: overall p50/p95, path timelines, "
-                "top-path Δ vs prior window, and slow-request Discover. "
+                "top-path Δ vs prior window, and slow-request Discover "
+                f"(≥{HTTP_P95_SLO_MS}ms). SLO p95 ≤ {HTTP_P95_SLO_MS}ms. "
                 f"Companion to Logs triage. Managed by {MANAGED_BY}"
             ),
             panels=[
-                ("visualization", "http-latency-guide", 0, 0, 48, 6),
-                ("visualization", "http-latency-req-count", 0, 6, 12, 6),
-                ("visualization", "http-latency-p50-now", 12, 6, 12, 6),
-                ("visualization", "http-latency-p95-now", 24, 6, 12, 6),
-                ("visualization", "http-latency-avg", 36, 6, 12, 6),
-                ("visualization", "http-latency-p50-p95-timeline", 0, 12, 24, 14),
-                ("visualization", "http-latency-path-p95-timeline", 24, 12, 24, 14),
-                ("visualization", "http-latency-top-paths", 0, 26, 48, 16),
-                ("search", "http-latency-slow", 0, 42, 48, 14),
+                ("visualization", "http-latency-req-count", 0, 0, 12, 6),
+                ("visualization", "http-latency-p50-now", 12, 0, 12, 6),
+                ("visualization", "http-latency-p95-now", 24, 0, 12, 6),
+                ("visualization", "http-latency-avg", 36, 0, 12, 6),
+                ("visualization", "http-latency-p50-p95-timeline", 0, 6, 24, 14),
+                ("visualization", "http-latency-path-p95-timeline", 24, 6, 24, 14),
+                ("visualization", "http-latency-top-paths", 0, 20, 48, 16),
+                ("search", "http-latency-slow", 0, 36, 48, 14),
             ],
             panel_ref_prefix="http_latency",
             time_from="now-1h",
@@ -4137,6 +4094,7 @@ DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
 }
 
 DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [
+    ("visualization", "http-latency-guide"),
     ("dashboard", "shared-observability-overview"),
     ("dashboard", "shared-postgres-connections"),
     ("dashboard", "shared-data-platform"),

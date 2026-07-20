@@ -71,7 +71,7 @@ Vega `href` requires `vis_type_vega.enableExternalUrls: true` in Dashboards
 - Status-codes panel empty until access logs carry `log.attributes.status` (rebuild on BRRTRouter `d0b931a`).
 
 ## HTTP latency board (done)
-- Dashboard `http-latency`: guide, request count, p50/p95/avg KPIs, overall p50/p95 timeline + SLO line, top-path p95 timeline, top-paths Δ table, slow (≥500ms) saved search.
+- Dashboard `http-latency`: request count, p50/p95/avg KPIs, overall p50/p95 timeline + SLO line, top-path p95 timeline, top-paths Δ table, slow (≥500ms) saved search — no markdown guide panel (space).
 - Default time `now-1h`; linked from Logs guide.
 
 ## Status colors + volume click-zoom (done)

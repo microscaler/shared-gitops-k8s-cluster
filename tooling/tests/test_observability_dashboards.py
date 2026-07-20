@@ -38,13 +38,14 @@ def test_http_latency_dashboard_and_logs_delta() -> None:
     assert dashboard["attributes"]["title"] == "HTTP latency"
     ref_ids = {ref["id"] for ref in dashboard["references"]}
     assert {
-        "http-latency-guide",
+        "http-latency-req-count",
         "http-latency-p95-now",
         "http-latency-p50-p95-timeline",
         "http-latency-path-p95-timeline",
         "http-latency-top-paths",
         "http-latency-slow",
     }.issubset(ref_ids)
+    assert "http-latency-guide" not in ref_ids
     path = DASHBOARDS / "http-latency.ndjson"
     assert path.is_file()
     top_paths = next(
