@@ -46,11 +46,13 @@ ports:
 
 resources:
   requests:
-    cpu: 50m
-    memory: 64Mi
+    cpu: 100m
+    memory: 256Mi
   limits:
-    cpu: 500m
-    memory: 512Mi
+    # k3s scrapes (node-exporter + kube-state) + OTLP logs need headroom;
+    # 512Mi + limiter 384Mi was refusing all scrapes under load.
+    cpu: "1"
+    memory: 1536Mi
 
 config:
   receivers:
@@ -152,22 +154,26 @@ config:
               - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
                 regex: kube-state-metrics
                 action: keep
-              # k8s_sd sets __address__ from pod IP + containerPort (8080).
+              # Drop the telemetry port (8081); only scrape metrics :8080.
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "8080"
+                action: keep
               - target_label: platform_component
                 replacement: k3s
               - target_label: service
                 replacement: kube-state-metrics
             metric_relabel_configs:
               - source_labels: [__name__]
-                regex: kube_node_info|kube_node_status_condition|kube_pod_info|kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas_available|kube_deployment_status_replicas_unavailable|kube_daemonset_status_number_unavailable
+                # Drop kube_pod_info (high-card labels); phase/restarts cover dashboards.
+                regex: kube_node_info|kube_node_status_condition|kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas_available|kube_deployment_status_replicas_unavailable|kube_daemonset_status_number_unavailable
                 action: keep
   processors:
     batch: {}
     memory_limiter:
       check_interval: 1s
-      # Stay below the pod's 256 MiB cgroup limit so the limiter acts before OOM.
-      limit_mib: 384
-      spike_limit_mib: 96
+      # Soft refuse before cgroup OOM (pod limit 1536Mi).
+      limit_mib: 1152
+      spike_limit_mib: 256
     # Drop DEBUG/TRACE except request access lines (BRRTRouter demoted those to
     # debug; sesame RUST_LOG=debug still emits them — keep for Discover detail).
     filter/drop-low-severity:

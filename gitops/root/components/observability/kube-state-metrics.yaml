@@ -121,7 +121,7 @@ spec:
             - --telemetry-port=8081
             # Limit collectors so we do not need webhook/CSR RBAC.
             - --resources=nodes,pods,deployments,daemonsets,namespaces
-            - --metric-allowlist=kube_node_info,kube_node_status_condition,kube_pod_info,kube_pod_status_phase,kube_pod_container_status_restarts_total,kube_deployment_status_replicas_available,kube_deployment_status_replicas_unavailable,kube_daemonset_status_number_unavailable
+            - --metric-allowlist=kube_node_info,kube_node_status_condition,kube_pod_status_phase,kube_pod_container_status_restarts_total,kube_deployment_status_replicas_available,kube_deployment_status_replicas_unavailable,kube_daemonset_status_number_unavailable
           ports:
             - name: http-metrics
               containerPort: 8080

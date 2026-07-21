@@ -1,6 +1,6 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-20 (removed all dashboard guide panels)
+Updated: 2026-07-21 (OTel memory pressure — ingest stall)
 
 ## Status
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
