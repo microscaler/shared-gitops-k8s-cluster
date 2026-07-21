@@ -64,8 +64,9 @@ pipelineConfig:
 
 resources:
   requests:
-    cpu: 50m
-    memory: 256Mi
+    cpu: 200m
+    memory: 512Mi
   limits:
-    cpu: 500m
-    memory: 768Mi
+    # Was pegged at 500m CPU → OTel export DeadlineExceeded / empty dashboards.
+    cpu: "2"
+    memory: 1536Mi
