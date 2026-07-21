@@ -4,8 +4,10 @@ Updated: 2026-07-21 (OTel memory pressure — ingest stall)
 
 ## Status
 - **2026-07-21:** Empty dashboards — OTel `memory_limiter` refused scrapes
-  (`data refused due to high memory usage`). Raised pod 512→1536Mi, limiter
-  384→1152Mi; scrape only kube-state `:8080`; drop `kube_pod_info` (`6e7fb6f`).
+  (`data refused due to high memory usage`), then Data Prepper CPU-throttled
+  at 500m (`DeadlineExceeded` exports). Raised OTel 512→1536Mi / limiter
+  1152Mi (`6e7fb6f`); Prepper CPU 500m→2 / mem 768→1536Mi (`f3cc51c`);
+  scrape only kube-state `:8080`; drop `kube_pod_info`.
 - Epoll + memory dropped at collector; health-probe Request logs dropped.
 - Request completed/received kept (DEBUG exception) with method/path/duration; tagged `event_category:http`.
 - `time_unix_nano` repaired from observed time (no more 1970 in detail).
