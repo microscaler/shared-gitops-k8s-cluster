@@ -227,13 +227,14 @@ spec:
                   mountPath: /housekeeping
           containers:
             - name: garbage-collect
-              image: bitnami/kubectl:1.31
+              # bitnami/kubectl version tags 404; rancher/kubectl is shell-less.
+              image: alpine/k8s:1.31.13
               imagePullPolicy: IfNotPresent
               command:
-                - /bin/bash
+                - /bin/sh
                 - -ec
                 - |
-                  set -euo pipefail
+                  set -eu
                   echo "Running registry garbage-collect inside docker-registry..."
                   kubectl -n registry exec deploy/docker-registry -- \
                     registry garbage-collect --delete-untagged /etc/distribution/config.yml
