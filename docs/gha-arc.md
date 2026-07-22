@@ -16,7 +16,7 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 
 | Piece | Where |
 |--------|--------|
-| Nodes | Multipass `k8s-runner-*` (Day-0 `K8S_RUNNERS`) — 4 CPU / 16G / 100G |
+| Nodes | Multipass `k8s-runner-*` (Day-0 `K8S_RUNNERS`) — 4 CPU / 12G / 100G |
 | Node label | `node.microscaler.io/role=gha-runner` |
 | Node taint | `node.microscaler.io/gha-runner=true:NoSchedule` |
 | Controller | namespace `arc-systems` (HelmRelease `arc`, chart `0.14.2`) |
