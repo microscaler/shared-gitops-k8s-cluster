@@ -95,7 +95,8 @@ vm-create-runners:
 
 # Build + push ARC runner image (gcc/pip/mold toolchain) to in-cluster registry.
 arc_runner_version := "2.336.0"
-arc_runner_tag := arc_runner_version + "-ci"
+# Bump -ciN when toolchain changes so IfNotPresent nodes pull the new digest.
+arc_runner_tag := arc_runner_version + "-ci2"
 arc_runner_image := "10.177.76.220:5000/microscaler/actions-runner:" + arc_runner_tag
 
 arc-runner-image-build:

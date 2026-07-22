@@ -123,7 +123,7 @@ spec:
       initContainers:
         - name: init-dind-externals
           # Must match runner image (copies /home/runner/externals).
-          image: 10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci
+          image: 10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci2
           imagePullPolicy: IfNotPresent
           command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
           volumeMounts:
@@ -165,7 +165,7 @@ spec:
         - name: runner
           # Custom image: official actions-runner + build-essential/pip/mold/…
           # Rebuild: just arc-runner-image-build (or import to node if registry full)
-          image: 10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci
+          image: 10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci2
           imagePullPolicy: IfNotPresent
           command: ["/home/runner/run.sh"]
           env:

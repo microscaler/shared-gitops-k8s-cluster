@@ -38,7 +38,7 @@ just --justfile day0.justfile vm-create-runners
 
 Stock `ghcr.io/actions/actions-runner` lacks `gcc`/`pip`. We bake them into:
 
-`10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci`
+`10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci2`
 
 Dockerfile: `gitops/root/components/arc/runner-image/Dockerfile`
 
@@ -50,9 +50,11 @@ just arc-runner-rollout       # recreate AutoscalingRunnerSet pods
 If the in-cluster registry PVC is full, the build recipe imports the image into
 each `k8s-runner-*` node via `k3s ctr` (scale set uses `imagePullPolicy: IfNotPresent`).
 
-Packages: `build-essential`, `pkg-config`, `libssl-dev`, `python3-pip`,
+Packages / tools: `build-essential`, `pkg-config`, `libssl-dev`, `python3-pip`,
 `python3-venv`, `jq`, `uuid-runtime`, `mold`, `curl`, `git`,
-`docker-compose-plugin` (fallback `docker-compose-v2`).
+Docker Compose v2 CLI plugin (`/usr/local/lib/docker/cli-plugins/docker-compose`),
+Helm 3.16.4. Apt `docker-compose-v2` is **not** used — it does not register with
+the actions-runner docker client plugin path.
 
 Runner Multipass nodes (`multipass/cloud-init-k3s-runner.yaml`) also install
 `docker.io` + Compose so host-side tooling matches; Day-0 uses
