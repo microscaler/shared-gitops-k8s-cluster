@@ -97,7 +97,9 @@ spec:
     - linux
     - x64
   minRunners: 1
-  maxRunners: 3
+  # Pool cap. Per-node ~6 is enforced via memory requests (~2Gi/pod on 12G nodes)
+  # plus topology spread across k8s-runner-* hostnames.
+  maxRunners: 12
   template:
     spec:
       serviceAccountName: microscaler-gha-rs-no-permission
@@ -108,6 +110,15 @@ spec:
           operator: Equal
           value: "true"
           effect: NoSchedule
+      topologySpreadConstraints:
+        # Prefer even spread; memory requests (~2Gi/pod) hard-cap ~6/node.
+        # ScheduleAnyway so one node down does not stall the pool.
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              actions.github.com/scale-set-name: microscaler
       restartPolicy: Never
       initContainers:
         - name: init-dind-externals
@@ -131,6 +142,13 @@ spec:
             privileged: true
           # Native sidecar (k8s 1.29+): keep dockerd up for the runner container.
           restartPolicy: Always
+          # ~2Gi request/pod → ≤6 runners per 12G node (allocatable ~11.7Gi).
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1536Mi
+            limits:
+              memory: 4Gi
           startupProbe:
             exec:
               command: ["docker", "info"]
@@ -155,6 +173,12 @@ spec:
               value: unix:///var/run/docker.sock
             - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
               value: "120"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
           volumeMounts:
             - name: work
               mountPath: /home/runner/_work
