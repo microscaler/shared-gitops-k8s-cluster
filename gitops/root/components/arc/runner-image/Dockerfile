@@ -22,6 +22,8 @@ RUN apt-get update \
       curl \
       git \
       ca-certificates \
+ && (apt-get install -y --no-install-recommends docker-compose-plugin \
+     || apt-get install -y --no-install-recommends docker-compose-v2) \
  && rm -rf /var/lib/apt/lists/*
 
 USER runner

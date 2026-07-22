@@ -129,7 +129,7 @@ vm-create-runners: vm-create-cp
     mkdir -p .multipass .cluster
     for runner in ${K8S_RUNNERS//,/ }; do
         if ! multipass info "${runner}" &>/dev/null; then
-            python3 tools/render_cloud_init.py agent \
+            python3 tools/render_cloud_init.py runner \
                 --worker-ip "0.0.0.0" \
                 --k3s-token "${token}" \
                 --output ".multipass/${runner}-cloud-init.yaml"

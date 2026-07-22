@@ -51,7 +51,12 @@ If the in-cluster registry PVC is full, the build recipe imports the image into
 each `k8s-runner-*` node via `k3s ctr` (scale set uses `imagePullPolicy: IfNotPresent`).
 
 Packages: `build-essential`, `pkg-config`, `libssl-dev`, `python3-pip`,
-`python3-venv`, `jq`, `uuid-runtime`, `mold`, `curl`, `git`.
+`python3-venv`, `jq`, `uuid-runtime`, `mold`, `curl`, `git`,
+`docker-compose-plugin` (fallback `docker-compose-v2`).
+
+Runner Multipass nodes (`multipass/cloud-init-k3s-runner.yaml`) also install
+`docker.io` + Compose so host-side tooling matches; Day-0 uses
+`render_cloud_init.py runner`.
 
 ## Bootstrap (ms02)
 

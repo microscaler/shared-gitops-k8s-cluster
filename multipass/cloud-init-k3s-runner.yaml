@@ -1,0 +1,39 @@
+#cloud-config
+# k3s ARC GHA runner node — agent base + Docker Compose for host-side CI tooling.
+# Used by Day-0 `vm-create-runners` (role=runner). Regular workers keep agent.yaml.
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - curl
+  - jq
+  - open-iscsi
+  - nfs-common
+  # Ubuntu archive: docker-compose-plugin is Docker Inc only; v2 pulls docker.io.
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  - path: /etc/rancher/k3s/registries.yaml
+    permissions: "0644"
+    content: |
+      mirrors:
+        "{{REGISTRY_HOST_ALIAS}}":
+          endpoint:
+            - "http://{{REGISTRY_LB_IP}}:5000"
+        "registry.shared-k8s.local:5000":
+          endpoint:
+            - "http://{{REGISTRY_LB_IP}}:5000"
+      configs:
+        "{{REGISTRY_LB_IP}}:5000":
+          tls:
+            insecure_skip_verify: true
+
+runcmd:
+  - modprobe br_netfilter
+  - echo br_netfilter > /etc/modules-load.d/br_netfilter.conf
+  - sysctl -w net.ipv4.ip_forward=1
+  # Prefer compose plugin when Docker Inc packages exist; else keep ubuntu v2.
+  - [bash, -lc, "apt-get install -y docker-compose-plugin || apt-get install -y docker-compose-v2 || true"]
+  - systemctl enable --now docker || true

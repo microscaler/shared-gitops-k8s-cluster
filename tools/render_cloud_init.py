@@ -20,7 +20,7 @@ def render(template: Path, output: Path, replacements: dict[str, str]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("role", choices=("server", "agent"))
+    parser.add_argument("role", choices=("server", "agent", "runner"))
     parser.add_argument(
         "--template-dir",
         type=Path,
@@ -35,8 +35,8 @@ def main() -> int:
     parser.add_argument("--worker-ip", default=os.environ.get("WORKER_IP", ""))
     args = parser.parse_args()
 
-    if args.role == "agent" and not args.k3s_token.strip():
-        print("K3S_TOKEN required for agent cloud-init", file=sys.stderr)
+    if args.role in ("agent", "runner") and not args.k3s_token.strip():
+        print("K3S_TOKEN required for agent/runner cloud-init", file=sys.stderr)
         return 1
 
     env = os.environ
