@@ -47,12 +47,12 @@ ports:
 resources:
   requests:
     cpu: 100m
-    memory: 256Mi
+    memory: 512Mi
   limits:
     # k3s scrapes (node-exporter + kube-state) + OTLP logs need headroom;
-    # 512Mi + limiter 384Mi was refusing all scrapes under load.
+    # 1536Mi + limiter 1152Mi still refused scrapes under load (2026-07-22).
     cpu: "1"
-    memory: 1536Mi
+    memory: 3072Mi
 
 config:
   receivers:
@@ -171,9 +171,9 @@ config:
     batch: {}
     memory_limiter:
       check_interval: 1s
-      # Soft refuse before cgroup OOM (pod limit 1536Mi).
-      limit_mib: 1152
-      spike_limit_mib: 256
+      # Soft refuse before cgroup OOM (pod limit 3072Mi).
+      limit_mib: 2304
+      spike_limit_mib: 512
     # Drop DEBUG/TRACE except request access lines (BRRTRouter demoted those to
     # debug; sesame RUST_LOG=debug still emits them — keep for Discover detail).
     filter/drop-low-severity:

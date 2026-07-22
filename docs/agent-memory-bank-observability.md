@@ -1,8 +1,12 @@
 # Agent memory — observability log signal
 
-Updated: 2026-07-21 (OTel memory pressure — ingest stall)
+Updated: 2026-07-22 (OTel memory pressure — doubled again)
 
 ## Status
+- **2026-07-22:** Same soft-refuse pattern recurred — OTel at ~1147Mi against
+  limiter 1152Mi / pod 1536Mi (~300 refuses / 15m). Prepper healthy (~647Mi,
+  0 restarts). Doubled OTel pod 1536→3072Mi, limiter 1152→2304Mi,
+  spike 256→512Mi. Observe before further scrape cuts.
 - **2026-07-21:** Empty dashboards — OTel `memory_limiter` refused scrapes
   (`data refused due to high memory usage`), then Data Prepper CPU-throttled
   at 500m (`DeadlineExceeded` exports). Raised OTel 512→1536Mi / limiter
