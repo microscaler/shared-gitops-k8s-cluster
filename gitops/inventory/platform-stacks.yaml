@@ -114,3 +114,9 @@ stacks:
     path: ./gitops/root/components/envoy-gateway
     description: Envoy Gateway edge for *.dev.microscaler.local (MetalLB .234); HTTPRoutes are GitOps
     depends_on: [namespaces, platform-dev-tls]
+
+  - name: arc
+    path: ./gitops/root/components/arc
+    description: GitHub Actions Runner Controller + org scale set (labels self-hosted/linux/x64/microscaler)
+    depends_on: [namespaces]
+    profile: arc

@@ -1,0 +1,19 @@
+# Profile: ARC scale-set Helm values + GitHub credentials secret.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: arc-runners
+
+configMapGenerator:
+  - name: arc-helm-values
+    files:
+      - values.yaml=helm-values.yaml
+
+secretGenerator:
+  - name: github-arc-credentials
+    envs:
+      - application.secrets.env
+
+generatorOptions:
+  disableNameSuffixHash: true
+  immutable: false

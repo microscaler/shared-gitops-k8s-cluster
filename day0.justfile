@@ -6,11 +6,14 @@ set shell := ["bash", "-uc"]
 set dotenv-path := "config/cluster.env"
 set dotenv-load
 
+# Nested `just …` must target this file (cwd justfile is the main Flux justfile).
+j := "just --justfile " + justfile() + " --working-directory " + justfile_directory()
+
 default:
-    @just --list
+    @{{j}} --list
 
 # -----------------------------------------------------------------------------
-# Multipass VMs — 1 control plane + 3 workers
+# Multipass VMs — 1 control plane + workers + ARC runner pool
 # -----------------------------------------------------------------------------
 
 # Launch control plane VM and install k3s server.
@@ -29,7 +32,7 @@ vm-create-cp:
     else
         echo "Control plane ${K8S_CP} already exists."
     fi
-    just k3s-install-server
+    {{j}} k3s-install-server
     multipass list
 
 # Install k3s server on control plane (idempotent).
@@ -37,7 +40,7 @@ k3s-install-server:
     #!/usr/bin/env bash
     set -euo pipefail
     source config/cluster.env
-    ip="$(just _vm-ipv4 "${K8S_CP}")"
+    ip="$({{j}} _vm-ipv4 "${K8S_CP}")"
     echo "Control plane ${K8S_CP} at ${ip}"
     mkdir -p .cluster
     echo "K8S_CP_IP=${ip}" > .cluster/runtime.env
@@ -81,7 +84,7 @@ vm-create-workers: vm-create-cp
     set -euo pipefail
     source config/cluster.env
     token="$(multipass exec "${K8S_CP}" -- sudo cat /var/lib/rancher/k3s/server/node-token)"
-    cp_ip="$(just _vm-ipv4 "${K8S_CP}")"
+    cp_ip="$({{j}} _vm-ipv4 "${K8S_CP}")"
     for worker in ${K8S_WORKERS//,/ }; do
         if ! multipass info "${worker}" &>/dev/null; then
             python3 tools/render_cloud_init.py agent \
@@ -97,19 +100,67 @@ vm-create-workers: vm-create-cp
         else
             echo "Worker ${worker} already exists."
         fi
-        worker_ip="$(just _vm-ipv4 "${worker}")"
+        worker_ip="$({{j}} _vm-ipv4 "${worker}")"
         echo "${worker}=${worker_ip}" >> .cluster/runtime.env
-        just k3s-install-agent "${worker}" "${worker_ip}" "${token}" "${cp_ip}"
+        {{j}} k3s-install-agent "${worker}" "${worker_ip}" "${token}" "${cp_ip}"
     done
-    just cluster-fetch-kubeconfig
-    echo "Waiting for 4 Ready nodes..."
+    {{j}} cluster-fetch-kubeconfig
+    echo "Waiting for Ready workers..."
     export KUBECONFIG="$(pwd)/kubeconfig/shared-k8s.yaml"
+    expected=$((1 + $(echo "${K8S_WORKERS}" | tr ',' '\n' | grep -c .)))
     for i in $(seq 1 90); do
         ready="$(kubectl get nodes --no-headers 2>/dev/null | grep -c ' Ready ' || true)"
-        if [[ "${ready}" -ge 4 ]]; then break; fi
+        if [[ "${ready}" -ge "${expected}" ]]; then break; fi
         sleep 5
     done
     kubectl get nodes -o wide
+
+# Launch dedicated ARC runner nodes (labeled + tainted). Idempotent.
+vm-create-runners: vm-create-cp
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source config/cluster.env
+    if [[ -z "${K8S_RUNNERS:-}" ]]; then
+        echo "K8S_RUNNERS empty — nothing to create."
+        exit 0
+    fi
+    token="$(multipass exec "${K8S_CP}" -- sudo cat /var/lib/rancher/k3s/server/node-token)"
+    cp_ip="$({{j}} _vm-ipv4 "${K8S_CP}")"
+    mkdir -p .multipass .cluster
+    for runner in ${K8S_RUNNERS//,/ }; do
+        if ! multipass info "${runner}" &>/dev/null; then
+            python3 tools/render_cloud_init.py agent \
+                --worker-ip "0.0.0.0" \
+                --k3s-token "${token}" \
+                --output ".multipass/${runner}-cloud-init.yaml"
+            multipass launch 24.04 \
+                --name "${runner}" \
+                --cpus "${K8S_RUNNER_CPUS}" \
+                --memory "${K8S_RUNNER_MEM}" \
+                --disk "${K8S_RUNNER_DISK}" \
+                --cloud-init ".multipass/${runner}-cloud-init.yaml"
+        else
+            echo "Runner node ${runner} already exists."
+        fi
+        runner_ip="$({{j}} _vm-ipv4 "${runner}")"
+        echo "${runner}=${runner_ip}" >> .cluster/runtime.env
+        {{j}} k3s-install-agent-runner "${runner}" "${runner_ip}" "${token}" "${cp_ip}"
+    done
+    {{j}} cluster-fetch-kubeconfig
+    export KUBECONFIG="$(pwd)/kubeconfig/shared-k8s.yaml"
+    for runner in ${K8S_RUNNERS//,/ }; do
+        for i in $(seq 1 60); do
+            if kubectl get node "${runner}" --no-headers 2>/dev/null | grep -q ' Ready '; then
+                echo "OK: ${runner} Ready"
+                break
+            fi
+            sleep 5
+        done
+        kubectl label node "${runner}" "${K8S_RUNNER_NODE_LABEL%%=*}=${K8S_RUNNER_NODE_LABEL#*=}" --overwrite
+        # taint is applied at k3s join; reinforce via kubectl for existing agents
+        kubectl taint nodes "${runner}" "${K8S_RUNNER_NODE_TAINT}" --overwrite || true
+    done
+    kubectl get nodes -o wide --show-labels | grep -E 'NAME|gha-runner|k8s-runner' || kubectl get nodes -o wide
 
 # Join a worker to the cluster (idempotent).
 k3s-install-agent worker ip token cp_ip:
@@ -129,6 +180,36 @@ k3s-install-agent worker ip token cp_ip:
     echo "Installing k3s agent on ${worker} (${ip})..."
     multipass exec "${worker}" -- sudo bash -c \
         "curl -sfL https://get.k3s.io | K3S_URL=https://${cp_ip}:6443 K3S_TOKEN='${token}' INSTALL_K3S_EXEC='agent --node-ip ${ip}' sh -"
+    for i in $(seq 1 60); do
+        if multipass exec "${worker}" -- systemctl is-active --quiet k3s-agent 2>/dev/null; then
+            echo "k3s agent ready on ${worker}."
+            exit 0
+        fi
+        sleep 5
+    done
+    echo "ERROR: k3s agent did not start on ${worker}" >&2
+    exit 1
+
+# Join an ARC runner node (label + taint at agent install).
+k3s-install-agent-runner worker ip token cp_ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source config/cluster.env
+    worker="{{worker}}"
+    ip="{{ip}}"
+    token="{{token}}"
+    cp_ip="{{cp_ip}}"
+    label="${K8S_RUNNER_NODE_LABEL}"
+    taint="${K8S_RUNNER_NODE_TAINT}"
+    if multipass exec "${worker}" -- test -f /etc/rancher/k3s/k3s-agent.env 2>/dev/null; then
+        if multipass exec "${worker}" -- systemctl is-active --quiet k3s-agent 2>/dev/null; then
+            echo "k3s agent already running on ${worker}."
+            exit 0
+        fi
+    fi
+    echo "Installing k3s agent (ARC runner) on ${worker} (${ip}) label=${label} taint=${taint}..."
+    multipass exec "${worker}" -- sudo bash -c \
+        "curl -sfL https://get.k3s.io | K3S_URL=https://${cp_ip}:6443 K3S_TOKEN='${token}' INSTALL_K3S_EXEC=\"agent --node-ip ${ip} --node-label ${label} --node-taint ${taint}\" sh -"
     for i in $(seq 1 60); do
         if multipass exec "${worker}" -- systemctl is-active --quiet k3s-agent 2>/dev/null; then
             echo "k3s agent ready on ${worker}."
@@ -168,7 +249,8 @@ vm-delete:
     set -euo pipefail
     source config/cluster.env
     echo "WARNING: deleting Multipass VMs for shared-k8s cluster."
-    for vm in ${K8S_CP} ${K8S_WORKERS//,/ }; do
+    for vm in ${K8S_CP} ${K8S_WORKERS//,/ } ${K8S_RUNNERS//,/ }; do
+        [[ -z "${vm}" ]] && continue
         multipass stop "${vm}" 2>/dev/null || true
         multipass delete "${vm}" --purge 2>/dev/null || true
     done
@@ -314,9 +396,9 @@ platform-kustomize-build:
 
 # Create VMs, fetch kubeconfig, install MetalLB + registry seed, mount workspace.
 # Namespaces / postgres / redis / observability → Flux (`just bootstrap-dev`).
-cluster-create: vm-create-workers vm-mount-workspace cluster-bootstrap
+cluster-create: vm-create-workers vm-create-runners vm-mount-workspace cluster-bootstrap
     @echo ""
-    @echo "Day 0 complete (VMs + k3s + MetalLB/registry seed)."
+    @echo "Day 0 complete (VMs + k3s + ARC runner nodes + MetalLB/registry seed)."
     @echo "Next (GitOps):"
     @echo "  just bootstrap-dev"
     @echo "  just cluster-edge-apply"

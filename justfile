@@ -89,6 +89,67 @@ tilt-remote-cycle app resource:
 restart-tilt-apps:
 	just --justfile day0.justfile --working-directory "{{repo_root}}" restart-tilt-apps
 
+# Dedicated Multipass nodes for ARC (labeled + tainted). See docs/gha-arc.md
+vm-create-runners:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" vm-create-runners
+
+# Build + push ARC runner image (gcc/pip/mold toolchain) to in-cluster registry.
+arc_runner_version := "2.336.0"
+arc_runner_tag := arc_runner_version + "-ci"
+arc_runner_image := "10.177.76.220:5000/microscaler/actions-runner:" + arc_runner_tag
+
+arc-runner-image-build:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	source "{{repo_root}}/config/cluster.env"
+	cd "{{repo_root}}/gitops/root/components/arc/runner-image"
+	docker build \
+	  --build-arg "RUNNER_VERSION={{arc_runner_version}}" \
+	  -t "{{arc_runner_image}}" \
+	  .
+	# Prefer registry; if full, import into each ARC node’s containerd instead.
+	if docker push "{{arc_runner_image}}"; then
+	  echo "Pushed {{arc_runner_image}}"
+	else
+	  echo "WARN: registry push failed — importing into K8S_RUNNERS containerd"
+	  mkdir -p "{{repo_root}}/.multipass"
+	  TAR="{{repo_root}}/.multipass/actions-runner-ci.tar"
+	  docker save -o "${TAR}" "{{arc_runner_image}}"
+	  for runner in ${K8S_RUNNERS//,/ }; do
+	    [[ -z "${runner}" ]] && continue
+	    multipass transfer "${TAR}" "${runner}:/home/ubuntu/actions-runner-ci.tar"
+	    multipass exec "${runner}" -- sudo k3s ctr -n k8s.io images import /home/ubuntu/actions-runner-ci.tar
+	    multipass exec "${runner}" -- rm -f /home/ubuntu/actions-runner-ci.tar
+	    echo "Imported on ${runner}"
+	  done
+	  rm -f "${TAR}"
+	fi
+	echo "Roll runners: just arc-runner-rollout"
+
+# Recreate AutoscalingRunnerSet so pods pick up the image in runner-scale-set.yaml
+arc-runner-rollout:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	export KUBECONFIG="${KUBECONFIG:-{{day0_kubeconfig}}}"
+	kubectl -n arc-systems get autoscalinglistener -o name 2>/dev/null \
+	  | while read -r n; do kubectl -n arc-systems patch "$n" -p '{"metadata":{"finalizers":[]}}' --type=merge; done
+	kubectl -n arc-runners get autoscalingrunnerset,ephemeralrunnerset,ephemeralrunner -o name 2>/dev/null \
+	  | while read -r n; do kubectl -n arc-runners patch "$n" -p '{"metadata":{"finalizers":[]}}' --type=merge 2>/dev/null || true; done
+	kubectl -n arc-systems delete autoscalinglistener --all --wait=false --ignore-not-found
+	kubectl -n arc-runners delete ephemeralrunner,ephemeralrunnerset,autoscalingrunnerset --all --wait=false --ignore-not-found
+	sleep 3
+	kubectl apply -f "{{repo_root}}/gitops/root/components/arc/runner-scale-set.yaml"
+	echo "Waiting for a runner pod..."
+	for i in $(seq 1 60); do
+	  if kubectl -n arc-runners get pods --no-headers 2>/dev/null | grep -q Running; then
+	    kubectl -n arc-runners get pods -o wide
+	    exit 0
+	  fi
+	  sleep 5
+	done
+	kubectl -n arc-runners get pods -o wide || true
+	exit 1
+
 # Schema-check inventory YAML (+ generated stacks.yaml drift)
 validate-inventory:
 	cd {{repo_root}} && (test -x .venv/bin/python || python3 -m venv .venv)
@@ -319,6 +380,14 @@ secrets-apply env component:
 	  cp "$PROFILE/application.properties" "$TMP/"
 	fi
 	shopt -s nullglob
+	# Non-secret overlays referenced by configMapGenerator (helm-values*.yaml, etc.)
+	for f in "$PROFILE"/*.yaml "$PROFILE"/*.yml "$PROFILE"/*.properties; do
+	  base="$(basename "$f")"
+	  case "$base" in
+	    kustomization.yaml|*.secret.yaml) continue ;;
+	  esac
+	  cp "$f" "$TMP/"
+	done
 	for f in "$PROFILE"/*.secrets.env; do
 	  sops -d "$f" > "$TMP/$(basename "$f")"
 	done

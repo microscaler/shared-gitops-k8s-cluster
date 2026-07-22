@@ -1,0 +1,6 @@
+# Reserved for future Helm overlays. The AutoscalingRunnerSet is applied as
+# raw YAML in gitops/root/components/arc/runner-scale-set.yaml (chart 0.14.x
+# breaks image tags under server-side apply). Capacity/labels live there.
+#
+# Target runs-on: [self-hosted, linux, x64, microscaler]
+{}

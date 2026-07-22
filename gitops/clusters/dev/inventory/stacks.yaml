@@ -9,6 +9,12 @@ stacks:
   description: Shared LLMRouter
   depends:
   - name: stack-namespaces
+- name: arc
+  path: ./gitops/root/components/arc
+  description: GitHub Actions Runner Controller + org scale set (labels self-hosted/linux/x64/microscaler)
+  depends:
+  - name: stack-namespaces
+  - name: profile-config-arc
 - name: cluster
   path: ./gitops/root/components/cluster
   description: In-cluster OCI registry (twuni helm) + tag-prune CronJob; MetalLB .220

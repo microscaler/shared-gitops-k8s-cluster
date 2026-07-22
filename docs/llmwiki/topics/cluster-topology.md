@@ -18,12 +18,16 @@ This cluster uses **real nodes** on the Multipass L2 bridge with **MetalLB** and
 
 ```
 ms02 host (10.177.76.1 gateway)
-├── k8s-cp-1      10.177.76.210   API :6443
-├── k8s-worker-*  .211–.213       workloads
+├── k8s-cp-1      10.177.76.x     API :6443
+├── k8s-worker-*                  platform workloads
+├── k8s-runner-*                  ARC GHA node pool (tainted gha-runner)
 ├── registry LB   10.177.76.220   :5000 OCI
 ├── MetalLB pool  .220–.239
-└── resurrection-node-1  .108     FAR (not a k8s node)
+└── resurrection-node-1           FAR (not a k8s node)
 ```
+
+ARC / self-hosted CI: [`docs/gha-arc.md`](../../gha-arc.md). Classic Multipass
+`gha-runner-1` is **deprecated**.
 
 ## Registry
 

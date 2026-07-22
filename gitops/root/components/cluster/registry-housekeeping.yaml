@@ -1,80 +1,193 @@
-# Registry housekeeping — nightly tag prune + blob garbage-collect.
+# Registry housekeeping — tag prune (HTTP API) + blob garbage-collect (kubectl exec).
 #
-# Why: Tilt pushes a unique tag per build and never deletes old ones. The tags
-# pile up on the registry PVC until the node hits DiskPressure (postmortem
-# 2026-07-09: worker-3 filled up, kubelet tainted the node and evicted the
-# registry pod, blocking all image pushes cluster-wide).
+# Why not mount the PVC: registry-data is RWO (iSCSI). While docker-registry holds
+# the volume, a CronJob Multi-Attach fails (failed since ~2026-07-17). API delete
+# + exec GC avoids a second mount.
 #
-# How: a CronJob mounts the same RWO PVC (scheduled onto the registry's node by
-# the local-path PV node affinity):
-#   1. initContainer (python): delete tag references older than the newest
-#      KEEP_TAGS per repository (manifests/blobs untouched at this stage).
-#   2. main container (registry:2): `registry garbage-collect --delete-untagged`
-#      reclaims the now-unreferenced blobs.
+# Flow:
+#   1. prune-tags: DELETE old tag manifests via Registry v2 API (KEEP_TAGS newest
+#      by Last-Modified per repository).
+#   2. garbage-collect: kubectl exec into the running registry Deployment and run
+#      `registry garbage-collect --delete-untagged`.
 #
-# Caveat (acceptable for dev): GC racing a concurrent push can orphan an
-# in-flight upload — the schedule (03:30) avoids active Tilt hours. A pruned
-# tag only matters if a pod restarts and re-pulls it; KEEP_TAGS=2 keeps the
-# currently-running tag plus the previous one per image, which is enough to
-# keep Helm/Tilt deployments (and one rollback) stable in a dev cluster.
+# Schedule 03:30 avoids peak Tilt hours. delete must stay enabled
+# (REGISTRY_STORAGE_DELETE_ENABLED on the registry Deployment).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: registry-housekeeping
+  namespace: registry
+  labels:
+    app: registry-housekeeping
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: registry-housekeeping
+  namespace: registry
+  labels:
+    app: registry-housekeeping
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: registry-housekeeping
+  namespace: registry
+  labels:
+    app: registry-housekeeping
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: registry-housekeeping
+subjects:
+  - kind: ServiceAccount
+    name: registry-housekeeping
+    namespace: registry
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: registry-housekeeping
   namespace: registry
+  labels:
+    app: registry-housekeeping
 data:
   prune_tags.py: |
-    """Prune old tag references in a docker registry v2 filesystem layout.
+    """Prune old tags via Registry HTTP API (no PVC mount).
 
-    Keeps the newest KEEP_TAGS (by directory mtime) per repository and removes
-    the rest. Blobs are reclaimed afterwards by `registry garbage-collect`.
+    Keeps the newest KEEP_TAGS per repository (by Last-Modified on the
+    manifest HEAD). Blobs are reclaimed afterwards by garbage-collect in-pod.
     """
+    from __future__ import annotations
+
+    import json
     import os
-    import shutil
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    from email.utils import parsedate_to_datetime
 
-    ROOT = os.environ.get("REGISTRY_ROOT", "/var/lib/registry")
+    REGISTRY = os.environ.get("REGISTRY_URL", "http://docker-registry:5000").rstrip("/")
     KEEP = int(os.environ.get("KEEP_TAGS", "2"))
-    repositories = os.path.join(ROOT, "docker", "registry", "v2", "repositories")
+    ACCEPT = (
+        "application/vnd.oci.image.index.v1+json,"
+        "application/vnd.docker.distribution.manifest.list.v2+json,"
+        "application/vnd.oci.image.manifest.v1+json,"
+        "application/vnd.docker.distribution.manifest.v2+json"
+    )
 
-    def tag_dirs(repo_path):
-        tags = os.path.join(repo_path, "_manifests", "tags")
-        if not os.path.isdir(tags):
-            return []
-        entries = [os.path.join(tags, t) for t in os.listdir(tags)]
-        return sorted(entries, key=os.path.getmtime, reverse=True)
+    def _request(method: str, path: str, headers: dict | None = None):
+        req = urllib.request.Request(
+            f"{REGISTRY}{path}",
+            method=method,
+            headers=headers or {},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = resp.read()
+                return resp.status, dict(resp.headers), body
+        except urllib.error.HTTPError as exc:
+            body = exc.read() if exc.fp else b""
+            return exc.code, dict(exc.headers), body
 
-    def walk_repos(base, prefix=""):
-        """Yield repository dirs (contain _manifests); recurse into nested names."""
-        for name in os.listdir(base):
-            if name.startswith("_"):
-                continue
-            path = os.path.join(base, name)
-            if not os.path.isdir(path):
-                continue
-            if os.path.isdir(os.path.join(path, "_manifests")):
-                yield prefix + name, path
-            else:
-                yield from walk_repos(path, prefix + name + "/")
+    def _paginated(path: str, list_key: str):
+        items: list[str] = []
+        link_path = path
+        while link_path:
+            status, headers, body = _request("GET", link_path)
+            if status != 200:
+                raise RuntimeError(f"GET {link_path} -> {status}: {body[:200]!r}")
+            payload = json.loads(body.decode() or "{}")
+            items.extend(payload.get(list_key) or [])
+            link = headers.get("Link") or headers.get("link") or ""
+            # Link: </v2/_catalog?n=100&last=foo>; rel="next"
+            next_path = None
+            if 'rel="next"' in link:
+                start = link.find("<")
+                end = link.find(">")
+                if start >= 0 and end > start:
+                    next_url = link[start + 1 : end]
+                    next_path = urllib.parse.urlparse(next_url).path
+                    if urllib.parse.urlparse(next_url).query:
+                        next_path += "?" + urllib.parse.urlparse(next_url).query
+            link_path = next_path
+        return items
 
-    def main():
-        if not os.path.isdir(repositories):
-            print(f"no repositories dir at {repositories}; nothing to do")
+    def tag_mtime(repo: str, tag: str) -> float:
+        path = f"/v2/{repo}/manifests/{urllib.parse.quote(tag, safe='')}"
+        status, headers, _ = _request("HEAD", path, headers={"Accept": ACCEPT})
+        if status not in (200, 202):
+            # Fall back to GET for registries that dislike HEAD
+            status, headers, _ = _request("GET", path, headers={"Accept": ACCEPT})
+        if status not in (200, 202):
+            return 0.0
+        lm = headers.get("Last-Modified") or headers.get("last-modified")
+        if not lm:
+            return 0.0
+        try:
+            return parsedate_to_datetime(lm).timestamp()
+        except (TypeError, ValueError, IndexError):
+            return 0.0
+
+    def manifest_digest(repo: str, tag: str) -> str | None:
+        path = f"/v2/{repo}/manifests/{urllib.parse.quote(tag, safe='')}"
+        status, headers, _ = _request("HEAD", path, headers={"Accept": ACCEPT})
+        if status not in (200, 202):
+            status, headers, _ = _request("GET", path, headers={"Accept": ACCEPT})
+        if status not in (200, 202):
+            return None
+        digest = headers.get("Docker-Content-Digest") or headers.get("docker-content-digest")
+        return digest
+
+    def delete_tag(repo: str, tag: str) -> None:
+        digest = manifest_digest(repo, tag)
+        if not digest:
+            print(f"skip {repo}:{tag} (no digest)")
             return
+        path = f"/v2/{repo}/manifests/{digest}"
+        status, _, body = _request(
+            "DELETE",
+            path,
+            headers={"Accept": ACCEPT},
+        )
+        if status in (202, 200):
+            print(f"pruned {repo}:{tag} ({digest[:19]}…)")
+        else:
+            print(f"WARN delete {repo}:{tag} -> {status}: {body[:160]!r}")
+
+    def main() -> None:
+        print(f"registry={REGISTRY} keep={KEEP}")
+        repos = _paginated("/v2/_catalog?n=100", "repositories")
+        print(f"repositories={len(repos)}")
         removed = 0
-        for repo, path in walk_repos(repositories):
-            for stale in tag_dirs(path)[KEEP:]:
-                shutil.rmtree(stale, ignore_errors=True)
+        for repo in repos:
+            enc = "/".join(urllib.parse.quote(p, safe="") for p in repo.split("/"))
+            tags = _paginated(f"/v2/{enc}/tags/list?n=100", "tags")
+            if not tags:
+                continue
+            ranked = sorted(
+                ((tag_mtime(enc, t), t) for t in tags),
+                key=lambda x: x[0],
+                reverse=True,
+            )
+            for _, tag in ranked[KEEP:]:
+                delete_tag(enc, tag)
                 removed += 1
-                print(f"pruned {repo}:{os.path.basename(stale)}")
-        print(f"done: pruned {removed} tag references (kept newest {KEEP} per repo)")
+        print(f"done: pruned {removed} tags (kept newest {KEEP} per repo)")
 
     if __name__ == "__main__":
         main()
-  gc-config.yml: |
-    version: 0.1
-    storage:
-      filesystem:
-        rootdirectory: /var/lib/registry
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -97,38 +210,36 @@ spec:
           labels:
             app: registry-housekeeping
         spec:
+          serviceAccountName: registry-housekeeping
           restartPolicy: Never
           initContainers:
             - name: prune-tags
               image: python:3.12-alpine
+              imagePullPolicy: IfNotPresent
               command: ["python", "/housekeeping/prune_tags.py"]
               env:
                 - name: KEEP_TAGS
                   value: "2"
+                - name: REGISTRY_URL
+                  value: http://docker-registry:5000
               volumeMounts:
-                - name: data
-                  mountPath: /var/lib/registry
                 - name: scripts
                   mountPath: /housekeeping
           containers:
             - name: garbage-collect
-              # Must be registry:3 — the v2 GC deletes child manifests of
-              # multi-arch/OCI indexes (distribution#3178), corrupting images.
-              image: registry:3
+              image: bitnami/kubectl:1.31
+              imagePullPolicy: IfNotPresent
               command:
-                - registry
-                - garbage-collect
-                - --delete-untagged
-                - /housekeeping/gc-config.yml
-              volumeMounts:
-                - name: data
-                  mountPath: /var/lib/registry
-                - name: scripts
-                  mountPath: /housekeeping
+                - /bin/bash
+                - -ec
+                - |
+                  set -euo pipefail
+                  echo "Running registry garbage-collect inside docker-registry..."
+                  kubectl -n registry exec deploy/docker-registry -- \
+                    registry garbage-collect --delete-untagged /etc/distribution/config.yml
+                  echo "garbage-collect finished"
+                  kubectl -n registry exec deploy/docker-registry -- df -h /var/lib/registry || true
           volumes:
-            - name: data
-              persistentVolumeClaim:
-                claimName: registry-data
             - name: scripts
               configMap:
                 name: registry-housekeeping

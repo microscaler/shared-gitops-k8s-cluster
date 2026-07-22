@@ -1,0 +1,169 @@
+# Org AutoscalingRunnerSet (static YAML).
+# Chart gha-runner-scale-set 0.14.x renders image/SA fields via `toYaml|nindent`
+# which breaks tags containing ':' under Kubernetes SSA — do not Helm-install it.
+# Controller remains a HelmRelease; this CR matches chart 0.14.2 shape.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: microscaler-gha-rs-no-permission
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: microscaler
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: arc
+    actions.github.com/scale-set-name: microscaler
+  finalizers:
+    - actions.github.com/cleanup-protection
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: microscaler-gha-rs-manager
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: microscaler
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: arc
+    actions.github.com/scale-set-name: microscaler
+  finalizers:
+    - actions.github.com/cleanup-protection
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [create, delete, get]
+  - apiGroups: [""]
+    resources: [pods/status]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, delete, get, list, patch, update]
+  - apiGroups: [""]
+    resources: [serviceaccounts]
+    verbs: [create, delete, get, list, patch, update]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [rolebindings, roles]
+    verbs: [create, delete, get, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: microscaler-gha-rs-manager
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: microscaler
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: arc
+    actions.github.com/scale-set-name: microscaler
+  finalizers:
+    - actions.github.com/cleanup-protection
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: microscaler-gha-rs-manager
+subjects:
+  - kind: ServiceAccount
+    name: arc-controller
+    namespace: arc-systems
+---
+apiVersion: actions.github.com/v1alpha1
+kind: AutoscalingRunnerSet
+metadata:
+  name: microscaler
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/name: microscaler
+    app.kubernetes.io/part-of: gha-rs
+    app.kubernetes.io/component: autoscaling-runner-set
+    app.kubernetes.io/version: "0.14.2"
+    gitops.microscaler.io/stack: arc
+    actions.github.com/scale-set-name: microscaler
+    actions.github.com/scale-set-namespace: arc-runners
+
+  annotations:
+    actions.github.com/cleanup-github-secret-name: github-arc-credentials
+    actions.github.com/cleanup-manager-role-binding: microscaler-gha-rs-manager
+    actions.github.com/cleanup-manager-role-name: microscaler-gha-rs-manager
+    actions.github.com/cleanup-no-permission-service-account-name: microscaler-gha-rs-no-permission
+  finalizers:
+    - actions.github.com/cleanup-protection
+spec:
+  githubConfigUrl: https://github.com/microscaler
+  githubConfigSecret: github-arc-credentials
+  runnerScaleSetName: microscaler
+  # Extra labels so workflows keep: runs-on: [self-hosted, linux, x64, microscaler]
+  runnerScaleSetLabels:
+    - self-hosted
+    - linux
+    - x64
+  minRunners: 1
+  maxRunners: 3
+  template:
+    spec:
+      serviceAccountName: microscaler-gha-rs-no-permission
+      nodeSelector:
+        node.microscaler.io/role: gha-runner
+      tolerations:
+        - key: node.microscaler.io/gha-runner
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      restartPolicy: Never
+      initContainers:
+        - name: init-dind-externals
+          # Must match runner image (copies /home/runner/externals).
+          image: 10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+          volumeMounts:
+            - name: dind-externals
+              mountPath: /home/runner/tmpDir
+        - name: dind
+          image: docker:27-dind
+          args:
+            - dockerd
+            - --host=unix:///var/run/docker.sock
+            - --group=123
+          env:
+            - name: DOCKER_GROUP_GID
+              value: "123"
+          securityContext:
+            privileged: true
+          # Native sidecar (k8s 1.29+): keep dockerd up for the runner container.
+          restartPolicy: Always
+          startupProbe:
+            exec:
+              command: ["docker", "info"]
+            failureThreshold: 24
+            periodSeconds: 5
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/_work
+            - name: dind-sock
+              mountPath: /var/run
+            - name: dind-externals
+              mountPath: /home/runner/externals
+      containers:
+        - name: runner
+          # Custom image: official actions-runner + build-essential/pip/mold/…
+          # Rebuild: just arc-runner-image-build (or import to node if registry full)
+          image: 10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci
+          imagePullPolicy: IfNotPresent
+          command: ["/home/runner/run.sh"]
+          env:
+            - name: DOCKER_HOST
+              value: unix:///var/run/docker.sock
+            - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+              value: "120"
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/_work
+            - name: dind-sock
+              mountPath: /var/run
+      volumes:
+        - name: work
+          emptyDir: {}
+        - name: dind-sock
+          emptyDir: {}
+        - name: dind-externals
+          emptyDir: {}

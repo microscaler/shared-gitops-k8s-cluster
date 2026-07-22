@@ -13,8 +13,8 @@ def render(template: Path, output: Path, replacements: dict[str, str]) -> None:
     text = template.read_text()
     for key, value in replacements.items():
         text = text.replace(f"{{{{{key}}}}}", value)
-    output.write_text(text)
     output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(text)
     output.chmod(0o644)
 
 

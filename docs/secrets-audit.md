@@ -17,6 +17,7 @@
 | postgres-ha | — | `postgres-ha-helm-values` | `postgres-credentials` | OK |
 | minio | — | `minio-helm-values` | `minio-credentials` | OK |
 | redis | — | `redis-helm-values` | — | OK |
+| arc | — | stub `arc-helm-values` | `github-arc-credentials` | OK — PAT (admin:org) or GitHub App |
 
 Flux: GitOpsSet `profile-config` (replaces `profile-secrets`).
 
