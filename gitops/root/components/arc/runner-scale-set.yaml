@@ -131,13 +131,45 @@ spec:
               mountPath: /home/runner/tmpDir
         - name: dind
           image: docker:27-dind
+          # Bootstrap proxy CA then start dockerd. Classic --registry-mirror is
+          # Docker Hub only; this MITM proxy caches ghcr.io (and hub) pulls.
+          # Revert: restore plain `args: [dockerd, --host=..., --group=123]`.
+          command: ["sh", "-c"]
           args:
-            - dockerd
-            - --host=unix:///var/run/docker.sock
-            - --group=123
+            - |
+              set -eu
+              PROXY_HOST=dind-registry-proxy.arc-runners.svc.cluster.local
+              PROXY_URL="http://${PROXY_HOST}:3128"
+              CA=/usr/local/share/ca-certificates/dind-registry-proxy.crt
+              i=0
+              # Must not use HTTP_PROXY when fetching the CA (chicken/egg).
+              while [ "$i" -lt 60 ]; do
+                if env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
+                  wget -q -O "$CA" "${PROXY_URL}/ca.crt"; then
+                  break
+                fi
+                i=$((i + 1))
+                sleep 2
+              done
+              if [ ! -s "$CA" ]; then
+                echo "dind-registry-proxy CA not available; starting dockerd without mirror" >&2
+              else
+                update-ca-certificates 2>/dev/null \
+                  || cat "$CA" >> /etc/ssl/certs/ca-certificates.crt
+              fi
+              exec dockerd-entrypoint.sh dockerd \
+                --host=unix:///var/run/docker.sock \
+                --group=123
           env:
             - name: DOCKER_GROUP_GID
               value: "123"
+            # Transparent registry cache (see dind-registry-proxy.yaml).
+            - name: HTTP_PROXY
+              value: http://dind-registry-proxy.arc-runners.svc.cluster.local:3128
+            - name: HTTPS_PROXY
+              value: http://dind-registry-proxy.arc-runners.svc.cluster.local:3128
+            - name: NO_PROXY
+              value: localhost,127.0.0.1,10.0.0.0/8,10.177.76.0/24,.svc,.cluster.local,registry.shared-k8s.local,registry.registry.svc
           securityContext:
             privileged: true
           # Native sidecar (k8s 1.29+): keep dockerd up for the runner container.

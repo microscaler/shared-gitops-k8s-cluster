@@ -23,6 +23,7 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 | Scale set | namespace `arc-runners` — raw `AutoscalingRunnerSet` (`runner-scale-set.yaml`) |
 | Mode | Docker-in-Docker (native sidecar `restartPolicy: Always`) |
 | Parallelism | `minRunners: 1`, `maxRunners: 30` pool (~15/node via ~768Mi/250m requests + topology spread) |
+| DinD pull cache | `dind-registry-proxy` in `arc-runners` (MITM HTTPS proxy) — DinD uses `HTTP(S)_PROXY` + proxy CA. Caches `ghcr.io` / Docker Hub. Classic `--registry-mirror` is Hub-only, so not used alone. |
 
 > Chart `gha-runner-scale-set` 0.14.x is **not** used for the scale set: its
 > `toYaml\|nindent` rendering breaks image tags under Kubernetes SSA. Controller
@@ -110,8 +111,31 @@ just purge
 
 Do not schedule new work on `gha-runner-1`.
 
+## DinD registry proxy (revertible)
+
+Ephemeral DinD has an empty image store each job. To cache `ghcr.io` / Hub pulls:
+
+1. `dind-registry-proxy` Deployment (MITM on `:3128`, PVC `20Gi`)
+2. DinD sidecar installs `/ca.crt` into trust store and sets `HTTP(S)_PROXY`
+
+Verify:
+
+```bash
+kubectl -n arc-runners get deploy,svc,pvc dind-registry-proxy
+# From a runner job / DinD: second pull of ghcr.io/octopilot/op should be LAN-fast
+kubectl -n arc-runners logs deploy/dind-registry-proxy --tail=50
+```
+
+Revert:
+
+1. Remove `dind-registry-proxy.yaml` from `gitops/root/components/arc/kustomization.yaml`
+2. Restore DinD `args: [dockerd, --host=unix:///var/run/docker.sock, --group=123]` (drop `command` / PROXY env)
+3. Delete Deployment/Service/PVC `dind-registry-proxy` if Flux does not prune
+
 ## Agent status (capacity)
 
+- **2026-07-23:** DinD OCI pull cache via `rpardini/docker-registry-proxy` (MITM).
+  Classic `--registry-mirror` is Hub-only; this path covers `ghcr.io/octopilot/op`.
 - **2026-07-23:** Pool raised to `maxRunners: 30` (`4b32dd3` / `9962f2c`).
   Per-pod requests retuned to ~768Mi + 250m CPU so two 12G/4CPU
   `k8s-runner-*` nodes can pack ~15 each under topology spread. Limits stay

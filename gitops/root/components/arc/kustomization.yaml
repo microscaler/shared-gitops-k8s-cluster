@@ -3,5 +3,7 @@ kind: Kustomization
 resources:
   - helmrepository.yaml
   - helm-release-controller.yaml
+  # Transparent OCI pull cache for DinD (ghcr.io / docker.io / …)
+  - dind-registry-proxy.yaml
   # Scale set is raw YAML (chart 0.14.x SSA/image bug) — see runner-scale-set.yaml
   - runner-scale-set.yaml
