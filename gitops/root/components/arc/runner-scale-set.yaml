@@ -97,9 +97,9 @@ spec:
     - linux
     - x64
   minRunners: 1
-  # Pool cap. Per-node ~15 via requests (~768Mi + 250m CPU/pod on 12G/4CPU
+  # Pool cap. ~9/node via requests (~768Mi + 250m CPU/pod on 12G/4CPU
   # nodes) plus topology spread across k8s-runner-* hostnames.
-  maxRunners: 30
+  maxRunners: 18
   template:
     spec:
       serviceAccountName: microscaler-gha-rs-no-permission
@@ -111,7 +111,7 @@ spec:
           value: "true"
           effect: NoSchedule
       topologySpreadConstraints:
-        # Prefer even spread; requests hard-cap ~15/node on current sizing.
+        # Prefer even spread; requests allow ~9/node at pool max 18.
         # ScheduleAnyway so one node down does not stall the pool.
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

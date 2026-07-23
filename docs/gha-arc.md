@@ -22,7 +22,7 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 | Controller | namespace `arc-systems` (HelmRelease `arc`, chart `0.14.2`) |
 | Scale set | namespace `arc-runners` — raw `AutoscalingRunnerSet` (`runner-scale-set.yaml`) |
 | Mode | Docker-in-Docker (native sidecar `restartPolicy: Always`) |
-| Parallelism | `minRunners: 1`, `maxRunners: 30` pool (~15/node via ~768Mi/250m requests + topology spread) |
+| Parallelism | `minRunners: 1`, `maxRunners: 18` pool (~9/node via ~768Mi/250m requests + topology spread) |
 | DinD pull cache | `dind-registry-proxy` in `arc-runners` (MITM HTTPS proxy) — DinD uses `HTTP(S)_PROXY` + proxy CA. Caches `ghcr.io` / Docker Hub. Classic `--registry-mirror` is Hub-only, so not used alone. |
 
 > Chart `gha-runner-scale-set` 0.14.x is **not** used for the scale set: its
@@ -134,10 +134,8 @@ Revert:
 
 ## Agent status (capacity)
 
+- **2026-07-23:** Pool lowered to `maxRunners: 18` — 30 was too high in practice.
 - **2026-07-23:** DinD OCI pull cache via `rpardini/docker-registry-proxy` (MITM).
   Classic `--registry-mirror` is Hub-only; this path covers `ghcr.io/octopilot/op`.
-- **2026-07-23:** Pool raised to `maxRunners: 30` (`4b32dd3` / `9962f2c`).
-  Per-pod requests retuned to ~768Mi + 250m CPU so two 12G/4CPU
-  `k8s-runner-*` nodes can pack ~15 each under topology spread. Limits stay
-  higher (DinD 3Gi / runner 2Gi) for burst when the pool is not full. Watch for
-  OOM under heavy Docker builds at peak concurrency.
+- **2026-07-23:** Per-pod requests ~768Mi + 250m CPU (limits DinD 3Gi / runner 2Gi)
+  on two 12G/4CPU `k8s-runner-*` nodes with topology spread.
