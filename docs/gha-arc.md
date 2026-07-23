@@ -141,7 +141,9 @@ Revert:
   Flux-suspended `stack-cylon-infra`, `stack-ai`, `stack-pipeline` (+ profiles);
   scaled cylon/ai/pipeline/fleetingdns/netbox to 0; stopped `resurrection-node-1`;
   removed stale `act-*`, `kind-registry`, `test-deps-postgres-1`.
-  Resume Flux: `flux -n flux-system resume kustomization <name>` then scale deploys back.
+  Resume Flux: remove annotate `kustomize.toolkit.fluxcd.io/reconcile=disabled`,
+  then `flux -n flux-system resume kustomization <name>` and scale deploys back
+  (plain `flux suspend` alone is overwritten by GitOpsSets reconcile).
 - **2026-07-23:** Added `k8s-runner-3` (4 CPU / 12G); resurrection-node-1 parked at
   1 CPU / 2G while Cylon FAR is idle. Pool still `maxRunners: 18` (~6/node).
 - **2026-07-23:** Pool lowered to `maxRunners: 18` — 30 was too high in practice.
