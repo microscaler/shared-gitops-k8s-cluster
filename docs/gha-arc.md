@@ -22,7 +22,7 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 | Controller | namespace `arc-systems` (HelmRelease `arc`, chart `0.14.2`) |
 | Scale set | namespace `arc-runners` — raw `AutoscalingRunnerSet` (`runner-scale-set.yaml`) |
 | Mode | Docker-in-Docker (native sidecar `restartPolicy: Always`) |
-| Parallelism | `minRunners: 1`, `maxRunners: 18` pool (~9/node via ~768Mi/250m requests + topology spread) |
+| Parallelism | `minRunners: 1`, `maxRunners: 20` pool (~4/node on five runners; hauliage `integration_max_parallel: 20`) |
 | DinD pull cache | `dind-registry-proxy` in `arc-runners` (MITM HTTPS proxy) — DinD uses `HTTP(S)_PROXY` + proxy CA. Caches `ghcr.io` / Docker Hub. Classic `--registry-mirror` is Hub-only, so not used alone. |
 
 > Chart `gha-runner-scale-set` 0.14.x is **not** used for the scale set: its
@@ -136,8 +136,9 @@ Revert:
 
 ## Agent status (capacity)
 
-- **2026-07-23:** Expanded ARC pool to five nodes (`k8s-runner-1`…`5`);
-  `maxRunners` still 18 (~3–4/node).
+- **2026-07-23:** `maxRunners: 20` + hauliage `integration_max_parallel: 20`
+  (observe load on five-node pool).
+- **2026-07-23:** Expanded ARC pool to five nodes (`k8s-runner-1`…`5`).
 - **2026-07-23:** Host focus cut for hauliage/sesame (+ rerp + opengroupware):
   stopped Tilt aether/brrtrouter/cylon/dcops/fleetingdns/lifeguard + hermes-gateway;
   Flux-suspended `stack-cylon-infra`, `stack-ai`, `stack-pipeline` (+ profiles);
