@@ -29,11 +29,13 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 > `toYaml\|nindent` rendering breaks image tags under Kubernetes SSA. Controller
 > stays Helm; the AutoscalingRunnerSet is GitOps YAML.
 
-Add a second node: append `k8s-runner-2` to `K8S_RUNNERS` in `config/cluster.env`, then:
+Add another node: append `k8s-runner-N` to `K8S_RUNNERS` in `config/cluster.env`, then:
 
 ```bash
 just --justfile day0.justfile vm-create-runners
 ```
+
+Current pool: `k8s-runner-1` … `k8s-runner-3` (4 CPU / 12G each).
 
 ## Runner image (toolchain)
 
@@ -134,8 +136,10 @@ Revert:
 
 ## Agent status (capacity)
 
+- **2026-07-23:** Added `k8s-runner-3` (4 CPU / 12G); resurrection-node-1 parked at
+  1 CPU / 2G while Cylon FAR is idle. Pool still `maxRunners: 18` (~6/node).
 - **2026-07-23:** Pool lowered to `maxRunners: 18` — 30 was too high in practice.
 - **2026-07-23:** DinD OCI pull cache via `rpardini/docker-registry-proxy` (MITM).
   Classic `--registry-mirror` is Hub-only; this path covers `ghcr.io/octopilot/op`.
 - **2026-07-23:** Per-pod requests ~768Mi + 250m CPU (limits DinD 3Gi / runner 2Gi)
-  on two 12G/4CPU `k8s-runner-*` nodes with topology spread.
+  on `k8s-runner-*` nodes with topology spread.
