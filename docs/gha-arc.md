@@ -22,7 +22,7 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 | Controller | namespace `arc-systems` (HelmRelease `arc`, chart `0.14.2`) |
 | Scale set | namespace `arc-runners` — raw `AutoscalingRunnerSet` (`runner-scale-set.yaml`) |
 | Mode | Docker-in-Docker (native sidecar `restartPolicy: Always`) |
-| Parallelism | `minRunners: 1`, `maxRunners: 12` pool (~6/node via 2Gi requests + topology spread) |
+| Parallelism | `minRunners: 1`, `maxRunners: 30` pool (~15/node via ~768Mi/250m requests + topology spread) |
 
 > Chart `gha-runner-scale-set` 0.14.x is **not** used for the scale set: its
 > `toYaml\|nindent` rendering breaks image tags under Kubernetes SSA. Controller
