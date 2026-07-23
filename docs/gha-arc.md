@@ -35,7 +35,7 @@ Add another node: append `k8s-runner-N` to `K8S_RUNNERS` in `config/cluster.env`
 just --justfile day0.justfile vm-create-runners
 ```
 
-Current pool: `k8s-runner-1` … `k8s-runner-3` (4 CPU / 12G each).
+Current pool: `k8s-runner-1` … `k8s-runner-5` (4 CPU / 12G each).
 
 ## Runner image (toolchain)
 
@@ -136,6 +136,8 @@ Revert:
 
 ## Agent status (capacity)
 
+- **2026-07-23:** Expanded ARC pool to five nodes (`k8s-runner-1`…`5`);
+  `maxRunners` still 18 (~3–4/node).
 - **2026-07-23:** Host focus cut for hauliage/sesame (+ rerp + opengroupware):
   stopped Tilt aether/brrtrouter/cylon/dcops/fleetingdns/lifeguard + hermes-gateway;
   Flux-suspended `stack-cylon-infra`, `stack-ai`, `stack-pipeline` (+ profiles);
