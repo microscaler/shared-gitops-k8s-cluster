@@ -136,6 +136,12 @@ Revert:
 
 ## Agent status (capacity)
 
+- **2026-07-23:** Host focus cut for hauliage/sesame (+ rerp + opengroupware):
+  stopped Tilt aether/brrtrouter/cylon/dcops/fleetingdns/lifeguard + hermes-gateway;
+  Flux-suspended `stack-cylon-infra`, `stack-ai`, `stack-pipeline` (+ profiles);
+  scaled cylon/ai/pipeline/fleetingdns/netbox to 0; stopped `resurrection-node-1`;
+  removed stale `act-*`, `kind-registry`, `test-deps-postgres-1`.
+  Resume Flux: `flux -n flux-system resume kustomization <name>` then scale deploys back.
 - **2026-07-23:** Added `k8s-runner-3` (4 CPU / 12G); resurrection-node-1 parked at
   1 CPU / 2G while Cylon FAR is idle. Pool still `maxRunners: 18` (~6/node).
 - **2026-07-23:** Pool lowered to `maxRunners: 18` — 30 was too high in practice.
