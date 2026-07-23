@@ -109,3 +109,11 @@ just purge
 ```
 
 Do not schedule new work on `gha-runner-1`.
+
+## Agent status (capacity)
+
+- **2026-07-23:** Pool raised to `maxRunners: 30` (`4b32dd3` / `9962f2c`).
+  Per-pod requests retuned to ~768Mi + 250m CPU so two 12G/4CPU
+  `k8s-runner-*` nodes can pack ~15 each under topology spread. Limits stay
+  higher (DinD 3Gi / runner 2Gi) for burst when the pool is not full. Watch for
+  OOM under heavy Docker builds at peak concurrency.
