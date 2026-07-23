@@ -38,7 +38,7 @@ just --justfile day0.justfile vm-create-runners
 
 Stock `ghcr.io/actions/actions-runner` lacks `gcc`/`pip`. We bake them into:
 
-`10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci2`
+`10.177.76.220:5000/microscaler/actions-runner:2.336.0-ci3`
 
 Dockerfile: `gitops/root/components/arc/runner-image/Dockerfile`
 
@@ -50,11 +50,19 @@ just arc-runner-rollout       # recreate AutoscalingRunnerSet pods
 If the in-cluster registry PVC is full, the build recipe imports the image into
 each `k8s-runner-*` node via `k3s ctr` (scale set uses `imagePullPolicy: IfNotPresent`).
 
-Packages / tools: `build-essential`, `pkg-config`, `libssl-dev`, `python3-pip`,
-`python3-venv`, `jq`, `uuid-runtime`, `mold`, `curl`, `git`,
-Docker Compose v2 CLI plugin (`/usr/local/lib/docker/cli-plugins/docker-compose`),
-Helm 3.16.4. Apt `docker-compose-v2` is **not** used — it does not register with
-the actions-runner docker client plugin path.
+### Tools (from `octopilot/actions` requirements)
+
+| Tool | Why |
+|------|-----|
+| Docker Compose v2 CLI plugin | `test` → `hack/test-deps` (`docker compose up`) |
+| Helm 3.16.4 | `lint` / `test` Helm chart paths |
+| mold, pkg-config, libssl-dev, build-essential | Rust `-sys` crates + fast link |
+| python3-full, python3-venv, pipx | PEP 668 — no system `pip install --user` |
+| pre-commit (via pipx → `/usr/local/bin`) | `lint` Install pre-commit step |
+| jq, curl, git, uuid-runtime | general CI |
+
+Language toolchains (Rust/Node/Go/Python versions) stay on `actions/setup-*`
++ caches; do not bake every SDK into the image.
 
 Runner Multipass nodes (`multipass/cloud-init-k3s-runner.yaml`) also install
 `docker.io` + Compose so host-side tooling matches; Day-0 uses
