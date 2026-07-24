@@ -8,10 +8,16 @@
 #   1. prune-tags: DELETE old tag manifests via Registry v2 API (KEEP_TAGS newest
 #      by Last-Modified per repository).
 #   2. garbage-collect: kubectl exec into the running registry Deployment and run
-#      `registry garbage-collect --delete-untagged`.
+#      `registry garbage-collect` (NO --delete-untagged: with tagged multi-arch
+#      OCI indexes it deletes child-manifest blobs still in use —
+#      2026-07-24 postmortem, distribution/distribution#3178).
+#   3. rollout restart the registry: exec-GC bypasses the in-memory
+#      blob-descriptor cache, which otherwise keeps serving deleted blobs as
+#      200/zero-bytes AND makes pushes skip re-upload.
 #
-# Schedule 03:30 avoids peak Tilt hours. delete must stay enabled
-# (REGISTRY_STORAGE_DELETE_ENABLED on the registry Deployment).
+# Schedule 03:30 avoids peak Tilt hours (GC against a live registry still races
+# concurrent pushes in the mark phase; the restart + re-push path recovers).
+# delete must stay enabled (REGISTRY_STORAGE_DELETE_ENABLED on the Deployment).
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -31,13 +37,18 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [pods]
-    verbs: [get, list]
+    verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [pods/exec]
     verbs: [create]
+  # patch: `kubectl rollout restart` (post-GC registry bounce — the
+  # in-memory blob-descriptor cache otherwise keeps serving deleted blobs).
   - apiGroups: [apps]
     resources: [deployments]
-    verbs: [get]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -235,11 +246,28 @@ spec:
                 - -ec
                 - |
                   set -eu
+                  # POSTMORTEM 2026-07-24: --delete-untagged is REMOVED. With
+                  # multi-arch OCI indexes (Tilt pushes them), distribution's
+                  # --delete-untagged treats the CHILD manifests of a tagged
+                  # index as untagged and deletes their blobs — the registry
+                  # then serves 200/zero-bytes for layers every image needs
+                  # (distribution/distribution#3178). Plain GC only reclaims
+                  # blobs orphaned by prune-tags' manifest deletes, which is
+                  # the entire point of this job.
                   echo "Running registry garbage-collect inside docker-registry..."
                   kubectl -n registry exec deploy/docker-registry -- \
-                    registry garbage-collect --delete-untagged /etc/distribution/config.yml
+                    registry garbage-collect /etc/distribution/config.yml
                   echo "garbage-collect finished"
                   kubectl -n registry exec deploy/docker-registry -- df -h /var/lib/registry || true
+                  # The registry's in-memory blob-descriptor cache does not see
+                  # exec-GC deletions: it keeps answering "blob exists" (HEAD
+                  # 200 / GET 200 with 0 bytes) AND makes pushes skip
+                  # re-upload. Always bounce after GC (strategy=Recreate, so
+                  # no RWO Multi-Attach deadlock).
+                  echo "Restarting registry to drop the blob-descriptor cache..."
+                  kubectl -n registry rollout restart deploy/docker-registry
+                  kubectl -n registry rollout status deploy/docker-registry --timeout=5m
+                  echo "housekeeping complete"
           volumes:
             - name: scripts
               configMap:

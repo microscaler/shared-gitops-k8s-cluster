@@ -8,6 +8,13 @@ image:
 
 replicaCount: 1
 
+# RWO PVC (iSCSI): RollingUpdate deadlocks every restart — the new pod
+# Multi-Attach-fails while the old one holds the volume (observed
+# 2026-07-24). Recreate stops the old pod first; brief registry blip is
+# acceptable for a dev registry.
+updateStrategy:
+  type: Recreate
+
 persistence:
   enabled: true
   existingClaim: registry-data
