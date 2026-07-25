@@ -3878,11 +3878,271 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     return objects
 
 
+# ---------------------------------------------------------------------------
+# loadlinker-services — BRRTRouter / Lifeguard / dependency drilldown
+# (replaces deprecated loadlinker-health + Hauliage Grafana overview/bff/lifeguard)
+# ---------------------------------------------------------------------------
+
+LOADLINKER_SERVICES_DASHBOARD_ID = "loadlinker-services"
+LOADLINKER_METRICS_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: (brrtrouter_* OR lifeguard_* OR hauliage_dependency_*) AND '
+    f'metric.attributes.platform_component: loadlinker'
+)
+LOADLINKER_PODS_LUCENE = (
+    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+    f'{METRICS_NAMESPACE_KEYWORD}: loadlinker AND '
+    f"metric.attributes.platform_component: k3s"
+)
+# OTel prometheus scrape sets top-level serviceName to the job name
+# (`loadlinker-pods`); the app label is on metric.attributes.service /
+# metric.attributes.serviceName from relabel_configs.
+LOADLINKER_SERVICE_FIELD = "metric.attributes.service.keyword"
+LOADLINKER_DEP_FIELD = "metric.attributes.dependency.keyword"
+METRICS_APP_SERVICE_FIELD = "metric.attributes.service.keyword"
+
+
+def _loadlinker_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            "loadlinker-services-pods-running",
+            metrics_cardinality_metric_visualization(
+                title="Loadlinker pods Running",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f'{METRICS_NAMESPACE_KEYWORD}: loadlinker AND '
+                    f'{METRICS_PHASE_KEYWORD}: Running AND value: 1 AND '
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_POD_KEYWORD,
+                custom_label="pods Running",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-deploy-unavailable",
+            metrics_instant_sum_vega(
+                title="Loadlinker deploy replicas unavailable",
+                metric_name="kube_deployment_status_replicas_unavailable",
+                series_field=METRICS_DEPLOYMENT_KEYWORD,
+                custom_label="unavailable",
+                # Filter namespace via Lucene on the dashboard query; series still by deploy.
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-dep-up",
+            metrics_line_visualization(
+                title="Dependency up (hauliage_dependency_up)",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "hauliage_dependency_up" AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                split_field=LOADLINKER_DEP_FIELD,
+                split_size=6,
+                y_label="up (0/1)",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-active-requests",
+            metrics_line_visualization(
+                title="Active requests by service",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "brrtrouter_active_requests" AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                split_field=LOADLINKER_SERVICE_FIELD,
+                split_size=16,
+                y_label="active",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-request-counter",
+            metrics_line_visualization(
+                title="Request counter by service (brrtrouter_requests_total)",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "brrtrouter_requests_total" AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                split_field=LOADLINKER_SERVICE_FIELD,
+                split_size=16,
+                y_label="counter",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-5xx-counter",
+            metrics_line_visualization(
+                title="5xx request counter by service",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "brrtrouter_requests_total" AND '
+                    f"metric.attributes.platform_component: loadlinker AND "
+                    f'{METRICS_STATUS_KEYWORD}: /5.*/'
+                ),
+                split_field=LOADLINKER_SERVICE_FIELD,
+                split_size=16,
+                y_label="5xx counter",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-bff-active",
+            metrics_line_visualization(
+                title="BFF active requests",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "brrtrouter_active_requests" AND '
+                    f'{METRICS_APP_SERVICE_FIELD}: bff AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                y_label="active",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-bff-5xx",
+            metrics_line_visualization(
+                title="BFF 5xx request counter",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "brrtrouter_requests_total" AND '
+                    f'{METRICS_APP_SERVICE_FIELD}: bff AND '
+                    f'{METRICS_STATUS_KEYWORD}: /5.*/ AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                y_label="5xx counter",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-pool-size",
+            metrics_line_visualization(
+                title="Lifeguard pool size by service",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "lifeguard_pool_size" AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                split_field=LOADLINKER_SERVICE_FIELD,
+                split_size=16,
+                y_label="slots",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-query-errors",
+            metrics_line_visualization(
+                title="Lifeguard query errors by service",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "lifeguard_query_errors_total" AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                split_field=LOADLINKER_SERVICE_FIELD,
+                split_size=16,
+                y_label="errors",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-acquire-timeouts",
+            metrics_line_visualization(
+                title="Lifeguard acquire timeouts by service",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "lifeguard_pool_acquire_timeout_total" AND '
+                    f"metric.attributes.platform_component: loadlinker"
+                ),
+                split_field=LOADLINKER_SERVICE_FIELD,
+                split_size=16,
+                y_label="timeouts",
+            ),
+        ),
+        (
+            "visualization",
+            "loadlinker-services-pods-by-phase",
+            metrics_cardinality_table_visualization(
+                title="Loadlinker pods by phase",
+                query=f"{LOADLINKER_PODS_LUCENE} AND value: 1",
+                bucket_field=METRICS_PHASE_KEYWORD,
+                cardinality_field=METRICS_POD_KEYWORD,
+                size=8,
+                bucket_label="phase",
+                metric_label="pods",
+            ),
+        ),
+        (
+            "search",
+            "loadlinker-services-metrics",
+            saved_search(
+                title="Loadlinker / Service metrics",
+                data_view=METRICS_VIEW,
+                time_field=METRICS_TIME_FIELD,
+                columns=METRICS_COLUMNS,
+                query=LOADLINKER_METRICS_LUCENE,
+                filters=[],
+            ),
+        ),
+        (
+            "search",
+            "loadlinker-services-error-logs",
+            saved_search(
+                title="Loadlinker / Error logs",
+                data_view=LOGS_VIEW,
+                time_field=LOGS_TIME_FIELD,
+                columns=LOG_STREAM_COLUMNS,
+                query=(
+                    f'{LOG_NAMESPACE_FIELD}: "loadlinker" AND '
+                    f"({LOG_SIGNAL_LUCENE}) AND severityText:(ERROR OR FATAL OR WARN)"
+                ),
+                filters=[],
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id=LOADLINKER_SERVICES_DASHBOARD_ID,
+            title="Loadlinker / Services",
+            description=(
+                "Per-service loadlinker health: kube pods, BRRTRouter RED counters, "
+                "Lifeguard pool/errors, and hauliage_dependency_up (Postgres/Sesame). "
+                "Postgres exporter KPIs live on DataPersistence; HTTP p95 from access "
+                "logs on http-latency. Discover: Loadlinker / Error logs. "
+                f"Managed by {MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "loadlinker-services-pods-running", 0, 0, 12, 6),
+                ("visualization", "loadlinker-services-deploy-unavailable", 12, 0, 12, 6),
+                ("visualization", "loadlinker-services-dep-up", 24, 0, 24, 6),
+                ("visualization", "loadlinker-services-active-requests", 0, 6, 24, 12),
+                ("visualization", "loadlinker-services-request-counter", 24, 6, 24, 12),
+                ("visualization", "loadlinker-services-5xx-counter", 0, 18, 24, 12),
+                ("visualization", "loadlinker-services-pods-by-phase", 24, 18, 24, 12),
+                ("visualization", "loadlinker-services-bff-active", 0, 30, 24, 12),
+                ("visualization", "loadlinker-services-bff-5xx", 24, 30, 24, 12),
+                ("visualization", "loadlinker-services-pool-size", 0, 42, 16, 12),
+                ("visualization", "loadlinker-services-query-errors", 16, 42, 16, 12),
+                ("visualization", "loadlinker-services-acquire-timeouts", 32, 42, 16, 12),
+                ("search", "loadlinker-services-metrics", 0, 54, 24, 14),
+                ("search", "loadlinker-services-error-logs", 24, 54, 24, 14),
+            ],
+            panel_ref_prefix="loadlinker_services",
+            time_from="now-1h",
+            refresh_ms=30000,
+            query=(
+                f"({LOADLINKER_METRICS_LUCENE}) OR ({LOADLINKER_PODS_LUCENE}) OR "
+                f'({METRICS_NAME_KEYWORD}: "kube_deployment_status_replicas_unavailable" AND '
+                f"metric.attributes.platform_component: k3s)"
+            ),
+            filters=[],
+        )
+    )
+    return objects
+
+
 DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "logs-explore": _logs_explore_bundle(),
     "http-latency": _http_latency_bundle(),
     "data-persistence": _data_persistence_bundle(),
     "k3s-dev": _k3s_dev_bundle(),
+    "loadlinker-services": _loadlinker_services_bundle(),
 }
 
 DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [

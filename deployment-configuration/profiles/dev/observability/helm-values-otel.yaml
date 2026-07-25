@@ -167,6 +167,39 @@ config:
                 # Drop kube_pod_info (high-card labels); phase/restarts cover dashboards.
                 regex: kube_node_info|kube_node_status_condition|kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_deployment_status_replicas_available|kube_deployment_status_replicas_unavailable|kube_daemonset_status_number_unavailable
                 action: keep
+    # Loadlinker BRRTRouter + Lifeguard /metrics (annotation scrape).
+    # Avoid $1/$2 replacements — OTel env-expands them and crashes the collector.
+    prometheus/loadlinker:
+      config:
+        scrape_configs:
+          - job_name: loadlinker-pods
+            scrape_interval: 15s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [loadlinker]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                regex: "true"
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                separator: ":"
+                target_label: __address__
+                action: replace
+              - target_label: __metrics_path__
+                replacement: /metrics
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                target_label: service
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                target_label: serviceName
+              - source_labels: [__meta_kubernetes_namespace]
+                target_label: namespace
+              - target_label: platform_component
+                replacement: loadlinker
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: brrtrouter_requests_total|brrtrouter_request_duration_seconds_bucket|brrtrouter_request_duration_seconds_sum|brrtrouter_request_duration_seconds_count|brrtrouter_active_requests|brrtrouter_auth_failures_total|brrtrouter_top_level_requests_total|brrtrouter_worker_pool_queue_depth|brrtrouter_worker_pool_shed_total|brrtrouter_worker_pool_dispatched_total|brrtrouter_worker_pool_completed_total|lifeguard_pool_size|lifeguard_pool_workers|lifeguard_active_connections|lifeguard_connection_wait_time_seconds_bucket|lifeguard_connection_wait_time_seconds_sum|lifeguard_connection_wait_time_seconds_count|lifeguard_query_duration_seconds_bucket|lifeguard_query_duration_seconds_sum|lifeguard_query_duration_seconds_count|lifeguard_query_errors_total|lifeguard_pool_acquire_timeout_total|lifeguard_pool_slot_heal_total|lifeguard_pool_connection_rotated_total|lifeguard_wal_monitor_replica_routing_disabled|hauliage_dependency_up|hauliage_dependency_check_seconds
+                action: keep
   processors:
     batch: {}
     memory_limiter:
@@ -186,7 +219,7 @@ config:
       error_mode: ignore
       logs:
         log_record:
-          - 'IsMatch(attributes["path"], "^/(health|readyz|livez|healthz)$") and IsMatch(body, "(?i)^Request (completed|received)$")'
+          - 'IsMatch(attributes["path"], "^/(health|ready|readyz|livez|healthz)$") and IsMatch(body, "(?i)^Request (completed|received)$")'
     # High-churn runtime I/O / metrics drown application signal. Drop at the
     # collector (source reader) before classify/export. Lifecycle/config noise
     # stays indexed for explicit selection via Logs / Runtime noise.
@@ -268,7 +301,7 @@ config:
         processors: [memory_limiter, batch]
         exporters: [otlp/traces]
       metrics:
-        receivers: [otlp, prometheus/data, prometheus/k3s]
+        receivers: [otlp, prometheus/data, prometheus/k3s, prometheus/loadlinker]
         processors: [memory_limiter, filter/drop-no-recorded-value, batch]
         exporters: [otlp/metrics, prometheus]
       logs:

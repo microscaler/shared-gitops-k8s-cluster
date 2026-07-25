@@ -555,12 +555,57 @@ def desired_monitors() -> list[dict[str, Any]]:
             }
         },
     }
+    loadlinker_brrtrouter_metrics = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"time": {"gte": "now-10m", "lte": "now"}}},
+                    {"term": {"name.keyword": "brrtrouter_requests_total"}},
+                    {
+                        "term": {
+                            "metric.attributes.platform_component.keyword": "loadlinker"
+                        }
+                    },
+                ]
+            }
+        },
+    }
+    loadlinker_postgres_dep_down = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"time": {"gte": "now-5m", "lte": "now"}}},
+                    {"term": {"name.keyword": "hauliage_dependency_up"}},
+                    {"term": {"metric.attributes.dependency.keyword": "postgres"}},
+                    {"term": {"value": 0}},
+                ]
+            }
+        },
+    }
     return [
         monitor_payload(
             name="Telemetry metrics stale",
             indices=[METRICS_PATTERN],
             query=metrics_recent,
             condition="ctx.results[0].hits.total.value == 0",
+            severity="1",
+        ),
+        monitor_payload(
+            name="Loadlinker metrics stale",
+            indices=[METRICS_PATTERN],
+            query=loadlinker_brrtrouter_metrics,
+            condition="ctx.results[0].hits.total.value == 0",
+            severity="1",
+        ),
+        monitor_payload(
+            name="Loadlinker postgres dependency down",
+            indices=[METRICS_PATTERN],
+            query=loadlinker_postgres_dep_down,
+            condition="ctx.results[0].hits.total.value > 0",
             severity="1",
         ),
         monitor_payload(

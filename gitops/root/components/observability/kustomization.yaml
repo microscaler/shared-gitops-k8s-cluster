@@ -28,3 +28,4 @@ configMapGenerator:
       - dashboards/http-latency.ndjson
       - dashboards/data-persistence.ndjson
       - dashboards/k3s-dev.ndjson
+      - dashboards/loadlinker-services.ndjson

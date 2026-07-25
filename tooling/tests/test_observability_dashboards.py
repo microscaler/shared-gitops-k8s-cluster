@@ -25,7 +25,26 @@ def test_dashboard_bundles() -> None:
         "http-latency",
         "data-persistence",
         "k3s-dev",
+        "loadlinker-services",
     }
+
+
+def test_loadlinker_services_dashboard() -> None:
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "loadlinker-services"
+    )
+    assert dashboard["attributes"]["title"] == "Loadlinker / Services"
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "loadlinker-services-active-requests",
+        "loadlinker-services-dep-up",
+        "loadlinker-services-pool-size",
+        "loadlinker-services-error-logs",
+    }.issubset(ref_ids)
+    assert (DASHBOARDS / "loadlinker-services.ndjson").is_file()
 
 
 def test_no_guide_panels_on_managed_dashboards() -> None:

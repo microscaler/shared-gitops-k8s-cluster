@@ -137,6 +137,7 @@ Direct URLs:
 | **Discover (field sidebar)** | `http://opensearch.dev.microscaler.local/app/data-explorer/discover` |
 | Dashboard (Logs) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/logs-explore` |
 | Dashboard (DataPersistence) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/data-persistence` |
+| Dashboard (Loadlinker services) | `http://opensearch.dev.microscaler.local/app/dashboards#/view/loadlinker-services` |
 
 **Example Lucene queries** (search bar):
 
@@ -166,7 +167,9 @@ OpenSearch Alerting evaluates these query-level monitors every five minutes:
 - `Telemetry error logs detected` — ERROR/FATAL records in five minutes;
 - `RERP API metrics stale` — no `api_requests_total` records in ten minutes;
 - `Postgres metrics stale` — no `pg_*` metric documents in ten minutes;
-- `Redis metrics stale` — no `redis_*` metric documents in ten minutes.
+- `Redis metrics stale` — no `redis_*` metric documents in ten minutes;
+- `Loadlinker metrics stale` — no `brrtrouter_requests_total` from loadlinker scrapes in ten minutes;
+- `Loadlinker postgres dependency down` — any `hauliage_dependency_up{dependency=postgres}=0` in five minutes.
 
 Alerts are visible and acknowledgeable in OpenSearch Dashboards. Notification
 actions are intentionally empty until a secret-backed email/webhook channel and
@@ -188,7 +191,7 @@ just observability-provision-now
 Expected terminal line:
 
 ```text
-observability provisioning passed: retention=7d monitors=9 dashboard_bundles=2 saved_objects=…
+observability provisioning passed: retention=7d monitors=11 dashboard_bundles=5 saved_objects=…
 ```
 
 Cluster health may show **yellow** on a single-node dev cluster because
