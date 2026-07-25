@@ -1,37 +1,61 @@
 # Split-horizon dev DNS on ms02 (rendered by tools/configure_dev_dns.py).
 #
-# LAN zone (Mac / 192.168.1.x): *.dev.microscaler.local → MS02_LAN_IP
+# LAN zones (Mac / 192.168.1.x): every zone below → MS02_LAN_IP
 #   (haproxy :80/:443 → Envoy). Wildcard covers all hosts; extras are explicit A records.
 # MetalLB zone (ms02 / Multipass bridge): *.metallb.dev → fixed LoadBalancer IPs.
+#
+# lan_zones is a list — one entry per DNS zone the LAN edge owns:
+#   - name:      the zone apex. Always gets an A record, and dnsmasq's
+#                `address=/<name>/<ip>` wildcards the whole subtree, so any host
+#                under it resolves whether or not it is listed below.
+#     hostnames: explicit names for docs / non-wildcard resolvers (rendered as
+#                <hostname>.<name>). Optional.
+#     proxy_hostnames: true pulls the proxy names from config/lan-exposure.yaml
+#                into this zone. Exactly one zone should set it — those names are
+#                the shared platform services, and they live in one zone only.
+# Each zone gets its own /etc/resolver/<name> file on the Mac and its own
+# `local=/<name>/` line in dnsmasq (see `just dev-dns-mac-install`).
 
-lan_zone: dev.microscaler.local
+lan_zones:
+  # Shared platform + app estate.
+  - name: dev.microscaler.local
+    proxy_hostnames: true
+    hostnames:
+      # Apps
+      - hauliage
+      - loadlinker
+      # Platform UIs (HTTPRoute in envoy-gateway)
+      - opensearch
+      - grafana
+      - mailpit
+      - minio
+      - pact
+      - faktory
+      - routellm
+      - resurrection
+      # Tilt (haproxy → localhost; ports in lan-http-vhosts.yaml)
+      - tilt-rerp
+      - tilt-sesame
+      - tilt-hauliage
+      - tilt-brrtrouter
+      - tilt-dcops
+      - tilt-lifeguard
+      - tilt-cylon
+      - tilt-fleetingdns
+      - tilt-aether
+      - tilt-opengroupware
+      # Reserved (no HTTPRoute yet — will 404 until product adds one)
+      - sesame-idam
+      - cylon
+
+  # sesame-idam dev estate — mirrors the public sesameidentity.com hostname split
+  # (ADR-013) so dev and prod URLs differ only by domain. The apex is served too.
+  - name: sesameidentity.dev.local
+    hostnames:
+      - platform
+      - app
+      - auth
+      - api
+      - id
+
 metallb_zone: metallb.dev
-
-# Explicit names for docs / non-wildcard resolvers. All browser UIs → Envoy.
-extra_lan_hostnames:
-  # Apps
-  - hauliage
-  - loadlinker
-  # Platform UIs (HTTPRoute in envoy-gateway)
-  - opensearch
-  - grafana
-  - mailpit
-  - minio
-  - pact
-  - faktory
-  - routellm
-  - resurrection
-  # Tilt (haproxy → localhost; ports in lan-http-vhosts.yaml)
-  - tilt-rerp
-  - tilt-sesame
-  - tilt-hauliage
-  - tilt-brrtrouter
-  - tilt-dcops
-  - tilt-lifeguard
-  - tilt-cylon
-  - tilt-fleetingdns
-  - tilt-aether
-  - tilt-opengroupware
-  # Reserved (no HTTPRoute yet — will 404 until product adds one)
-  - sesame-idam
-  - cylon

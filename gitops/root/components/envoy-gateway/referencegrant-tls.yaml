@@ -1,4 +1,10 @@
-# Allow Gateway in envoy-gateway-system to use the wildcard TLS Secret in cert-manager.
+# Allow Gateway in envoy-gateway-system to use the wildcard TLS Secrets in cert-manager.
+#
+# Cross-namespace certificateRefs are denied unless granted HERE, in the Secret's
+# namespace — so a listener added to gateway.yaml without a matching `to:` entry
+# below comes up ResolvedRefs=False and serves nothing. Named explicitly rather
+# than granting all Secrets in cert-manager: this grant is readable as the list
+# of certs the edge is allowed to hold.
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:
@@ -18,3 +24,8 @@ spec:
     - group: ""
       kind: Secret
       name: dev-microscaler-local-tls
+    # ADR-013 dev zone. One Secret serves both the wildcard and the apex
+    # listeners, so it must carry both names as SANs.
+    - group: ""
+      kind: Secret
+      name: sesameidentity-dev-local-tls

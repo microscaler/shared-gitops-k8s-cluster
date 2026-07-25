@@ -161,11 +161,24 @@ def _slug(name: str) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in name)
 
 
+def _tls_pem_files(tls: dict) -> list[str]:
+    return [
+        str((item or {}).get("pem_file") or "").strip()
+        for item in (tls.get("certificates") or [])
+        if str((item or {}).get("pem_file") or "").strip()
+    ]
+
+
 def _tls_pem_ready(raw_vhosts: dict) -> bool:
+    """True once at least one configured pem is on disk.
+
+    `bind ... ssl crt <dir>/` loads every pem in the directory and picks per-SNI, so the
+    https frontend is worth emitting as soon as one zone has synced; a zone whose cert is
+    still being issued simply keeps serving on :80 until sync_haproxy_tls.py catches up.
+    """
     tls = raw_vhosts.get("tls") or {}
     sync_dir = Path(str(tls.get("sync_dir") or TLS_SYNC_DIR))
-    pem_file = str(tls.get("pem_file") or "dev.microscaler.local.pem")
-    return (sync_dir / pem_file).is_file()
+    return any((sync_dir / pem).is_file() for pem in _tls_pem_files(tls))
 
 
 def render_haproxy(

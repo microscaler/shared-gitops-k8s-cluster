@@ -6,3 +6,4 @@ resources:
   - certificate-ca.yaml
   - clusterissuer-ca.yaml
   - certificate-wildcard.yaml
+  - certificate-sesameidentity.yaml

@@ -9,11 +9,17 @@
 http_port: 80
 https_port: 443
 
+# One certificate entry per LAN DNS zone (config/dev-dns.yaml `lan_zones`).
+# haproxy binds the whole sync_dir (`ssl crt <dir>/`) and picks the pem per
+# connection by SNI, so a new zone needs an entry here and nothing else in haproxy.
 tls:
   namespace: cert-manager
-  secret_name: dev-microscaler-local-tls
   sync_dir: /etc/microscaler/haproxy/certs
-  pem_file: dev.microscaler.local.pem
+  certificates:
+    - secret_name: dev-microscaler-local-tls
+      pem_file: dev.microscaler.local.pem
+    - secret_name: sesameidentity-dev-local-tls
+      pem_file: sesameidentity.dev.local.pem
 
 # Catch-all for any *.dev host that is not listed in vhosts below.
 default_backend:

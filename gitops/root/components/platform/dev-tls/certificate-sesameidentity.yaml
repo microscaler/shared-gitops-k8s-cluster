@@ -1,0 +1,23 @@
+# Cert for the sesameidentity.dev.local LAN zone (config/dev-dns.yaml `lan_zones`).
+# Separate Certificate, not extra SANs on the *.dev.microscaler.local wildcard: zones are
+# independent, so one zone's renewal or rotation must not churn the other's secret.
+# Same dev-microscaler-ca ClusterIssuer, so the CA already trusted on the Mac covers it.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sesameidentity-dev-local-wildcard
+  namespace: cert-manager
+spec:
+  secretName: sesameidentity-dev-local-tls
+  issuerRef:
+    name: dev-microscaler-ca
+    kind: ClusterIssuer
+  dnsNames:
+    # Both entries are required — a wildcard SAN does not match the apex it hangs off.
+    - sesameidentity.dev.local
+    - "*.sesameidentity.dev.local"
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256

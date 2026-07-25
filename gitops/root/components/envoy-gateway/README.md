@@ -32,7 +32,12 @@ controller stays inert (ADDRESS empty, Host → Envoy 404).
 2. Add an `HTTPRoute` in the **owning app** (preferred) or under `httproutes/` with:
    - `annotations.gitops.microscaler.io/hostname`
    - `annotations.gitops.microscaler.io/gateway: microscaler-dev`
-   - `parentRefs` → `envoy-gateway-system/microscaler-dev` (`http` + `https`)
+   - `parentRefs` → `envoy-gateway-system/microscaler-dev`, naming the listener
+     pair for the host's **zone** — a listener has one hostname, so the wrong
+     pair means the route attaches to nothing:
+     `*.dev.microscaler.local` → `http`/`https`;
+     `*.sesameidentity.dev.local` → `sesameidentity-http`/`-https`;
+     `sesameidentity.dev.local` (apex) → `sesameidentity-apex-http`/`-https`
    - `hostnames` + `backendRefs`
 3. Optional: mirror the same annotations on the Service for discovery.
 4. Commit; Flux/Tilt reconciles. No lan-proxy vhost edit.
@@ -52,3 +57,9 @@ just sync-stack-inventory dev
 ```
 
 Depends on `namespaces` + `platform-dev-tls` (wildcard Secret `cert-manager/dev-microscaler-local-tls`).
+
+The Gateway also fronts a second zone, `sesameidentity.dev.local` — the dev mirror
+of the public domain (sesame-idam ADR-013) — on Secret
+`cert-manager/sesameidentity-dev-local-tls`, which must carry both the wildcard and
+the apex as SANs. Every cert the edge holds needs an entry in
+`referencegrant-tls.yaml`, or the listener comes up `ResolvedRefs=False`.

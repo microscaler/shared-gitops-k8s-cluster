@@ -1,6 +1,11 @@
 # Shared edge Gateway — HTTP(S) for *.dev + TCP/UDP L4 ports (GitOps).
 # LAN: haproxy owns *.dev.microscaler.local (Tilt local; else → Envoy :80).
 # L4: haproxy TCP → this VIP’s matching ports → TCPRoute/UDPRoute → Service.
+#
+# Two DNS zones terminate here now: the original *.dev.microscaler.local, and
+# sesameidentity.dev.local (ADR-013 in sesame-idam) — the dev mirror of the one
+# public domain, so cookie scoping and origin separation are exercised where
+# people work rather than first observed in production.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -10,7 +15,10 @@ metadata:
     app.kubernetes.io/part-of: shared-gitops-k8s-cluster
     gitops.microscaler.io/stack: envoy-gateway
   annotations:
-    gitops.microscaler.io/edge: "*.dev.microscaler.local"
+    # Every hostname this Gateway will answer for. Kept exhaustive on purpose:
+    # it is the only place a reader can see the edge's whole surface without
+    # counting listeners.
+    gitops.microscaler.io/edge: "*.dev.microscaler.local,*.sesameidentity.dev.local,sesameidentity.dev.local"
 spec:
   gatewayClassName: microscaler-dev
   listeners:
@@ -35,6 +43,68 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+
+    # --- sesameidentity.dev.local (ADR-013 dev mirror of the public domain) ---
+    #
+    # FOUR listeners, not two, and that is the minimum rather than belt-and-braces.
+    # A Gateway API listener carries exactly ONE hostname, and a wildcard matches
+    # exactly one label: `*.sesameidentity.dev.local` covers `platform.`, `app.`,
+    # `auth.` — but NOT the bare apex, which is where the brochure lives. Serving
+    # only subdomains in dev was the other option and was rejected: it would leave
+    # the apex 404ing, which is precisely the host a person types first, and dev
+    # exists to mirror the shape (ADR-013 "Consequences").
+    #
+    # Both HTTPS listeners point at ONE Secret, so that cert must carry BOTH
+    # `*.sesameidentity.dev.local` and `sesameidentity.dev.local` as SANs — a
+    # wildcard alone does not cover its own apex.
+    #
+    # `from: All` matches the two listeners above: routes are owned by the product
+    # repos (sesame-idam), not by this one.
+    - name: sesameidentity-http
+      hostname: "*.sesameidentity.dev.local"
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: sesameidentity-https
+      hostname: "*.sesameidentity.dev.local"
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            group: ""
+            name: sesameidentity-dev-local-tls
+            namespace: cert-manager
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: sesameidentity-apex-http
+      hostname: "sesameidentity.dev.local"
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: sesameidentity-apex-https
+      hostname: "sesameidentity.dev.local"
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            group: ""
+            name: sesameidentity-dev-local-tls
+            namespace: cert-manager
+      allowedRoutes:
+        namespaces:
+          from: All
+    # No listener is needed for `api.` or `id.` — the wildcard pair above already
+    # covers those hostnames the moment something serves them. Neither has a
+    # backend yet: the API edge is task 50, the issuer/BFF work is task 54.
 
     # --- L4 (lan-proxy forwards these ports to ENVOY_GATEWAY_LB_IP) ---
     - name: tcp-k8s-api

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Sync cert-manager TLS secrets from the cluster to ms02 haproxy cert directory."""
+"""Sync cert-manager TLS secrets from the cluster to ms02 haproxy cert directory.
+
+One secret → one pem per LAN DNS zone; haproxy selects between them by SNI.
+Certificates are listed in config/lan-http-vhosts.yaml under `tls.certificates`.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -17,10 +22,46 @@ ROOT = Path(__file__).resolve().parents[1]
 VHOSTS_CONFIG = ROOT / "config" / "lan-http-vhosts.yaml"
 
 
+@dataclass(frozen=True)
+class TlsCertificate:
+    secret_name: str
+    pem_file: str
+
+
 def load_vhosts_config() -> dict:
     if not VHOSTS_CONFIG.is_file():
         raise FileNotFoundError(f"Missing {VHOSTS_CONFIG}")
     return yaml.safe_load(VHOSTS_CONFIG.read_text()) or {}
+
+
+def load_tls_certificates(tls: dict) -> list[TlsCertificate]:
+    """Read `tls.certificates` — the multi-zone replacement for the old singular keys."""
+    entries = tls.get("certificates")
+    if not entries:
+        # Silently syncing only the first zone would leave the other zones' vhosts on
+        # plaintext with no obvious cause, so refuse the superseded single-cert shape.
+        raise ValueError(
+            f"{VHOSTS_CONFIG} has no `tls.certificates:` list.\n"
+            "The single `secret_name:`/`pem_file:` shape is gone. Replace:\n"
+            "  tls:\n"
+            "    secret_name: dev-microscaler-local-tls\n"
+            "    pem_file: dev.microscaler.local.pem\n"
+            "with:\n"
+            "  tls:\n"
+            "    certificates:\n"
+            "      - secret_name: dev-microscaler-local-tls\n"
+            "        pem_file: dev.microscaler.local.pem"
+        )
+    certs: list[TlsCertificate] = []
+    for item in entries:
+        secret_name = str((item or {}).get("secret_name") or "").strip()
+        pem_file = str((item or {}).get("pem_file") or "").strip()
+        if not secret_name or not pem_file:
+            raise ValueError(
+                f"{VHOSTS_CONFIG}: each tls.certificates entry needs secret_name and pem_file"
+            )
+        certs.append(TlsCertificate(secret_name=secret_name, pem_file=pem_file))
+    return certs
 
 
 def kubeconfig_env() -> dict[str, str]:
@@ -75,19 +116,34 @@ def cmd_sync(_: argparse.Namespace) -> int:
     cfg = load_vhosts_config()
     tls = cfg.get("tls") or {}
     namespace = str(tls.get("namespace") or "cert-manager")
-    secret_name = str(tls.get("secret_name") or "dev-microscaler-local-tls")
     sync_dir = Path(str(tls.get("sync_dir") or "/etc/microscaler/haproxy/certs"))
-    pem_file = str(tls.get("pem_file") or "dev.microscaler.local.pem")
+    certificates = load_tls_certificates(tls)
 
-    secret = fetch_secret(namespace, secret_name)
-    cert_pem = secret.get("tls.crt")
-    key_pem = secret.get("tls.key")
-    if not cert_pem or not key_pem:
-        print(f"secret {namespace}/{secret_name} missing tls.crt or tls.key", file=sys.stderr)
+    failures = 0
+    for cert in certificates:
+        # Keep going after a miss: zones are independent, and one cert-manager
+        # Certificate still being issued must not block the zones that are ready.
+        try:
+            secret = fetch_secret(namespace, cert.secret_name)
+        except RuntimeError as exc:
+            print(f"{namespace}/{cert.secret_name}: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        cert_pem = secret.get("tls.crt")
+        key_pem = secret.get("tls.key")
+        if not cert_pem or not key_pem:
+            print(
+                f"secret {namespace}/{cert.secret_name} missing tls.crt or tls.key",
+                file=sys.stderr,
+            )
+            failures += 1
+            continue
+        out = write_combined_pem(sync_dir, cert.pem_file, cert_pem, key_pem)
+        print(f"Wrote {out}")
+
+    if failures:
+        print(f"{failures}/{len(certificates)} certificate(s) not synced", file=sys.stderr)
         return 1
-
-    out = write_combined_pem(sync_dir, pem_file, cert_pem, key_pem)
-    print(f"Wrote {out}")
     return 0
 
 
@@ -112,7 +168,7 @@ def cmd_export_ca(_: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("sync", help="Sync wildcard TLS secret to haproxy cert dir").set_defaults(
+    sub.add_parser("sync", help="Sync per-zone TLS secrets to haproxy cert dir").set_defaults(
         func=cmd_sync
     )
     sub.add_parser("export-ca", help="Export dev CA cert for Mac trust").set_defaults(
