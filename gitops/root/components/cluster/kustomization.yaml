@@ -3,14 +3,13 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - claim.yaml
-  - docker-registry-gitrepository.yaml
-  - helm-release-registry.yaml
-  # LB must be Flux-owned (see service-registry.yaml) — Helm ClusterIP is docker-registry.
+  # Zot OCI registry (2026-08-01): replaces twuni/docker-registry HelmRelease,
+  # its GitRepository, the registry-data claim, and the registry-housekeeping
+  # CronJob. Retention + GC are built into zot (see zot-registry.yaml).
+  - zot-registry.yaml
+  # LB must be Flux-owned (see service-registry.yaml) — selects app=registry pods.
   - service-registry.yaml
   - service-registry-cluster.yaml
-  # Site-specific tag prune + GC (chart GC alone does not prune tags).
-  - registry-housekeeping.yaml
   - local-registry-hosting.yaml
   - metallb/ipaddresspool.yaml
 

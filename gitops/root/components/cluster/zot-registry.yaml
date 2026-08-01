@@ -1,0 +1,204 @@
+# Zot OCI registry — replaces twuni/docker-registry (distribution) + the
+# registry-housekeeping CronJob (2026-08-01).
+#
+# Why: distribution has NO built-in tag retention; GC is offline-only, races
+# live pushes, and its --delete-untagged corrupts tagged multi-arch OCI
+# indexes (distribution/distribution#3178 — 2026-07-24 postmortem). The
+# housekeeping CronJob that papered over this failed whenever the registry
+# flapped (2026-07-29..08-01 disk-full incident).
+#
+# Zot gives us, in-process and online (no exec, no restart, no cronjob):
+#   - declarative tag retention (keep newest 5 dev-* per repo, keep all else)
+#   - index-aware online GC (child manifests of tagged indexes are safe)
+#   - blob dedupe (hard links) across repos
+#   - web UI + search at http://10.177.76.220:5000/
+#
+# Cutover notes:
+#   - Fresh PVC (zot-data). Old registry-data PVC is pruned; its PV is
+#     retained (zfs-iscsi reclaimPolicy=Retain) for emergency rollback.
+#     Repos repopulate on the next Tilt build/push per project.
+#   - Pod keeps labels app=registry,release=registry so the Flux-owned
+#     LB Service `registry` (10.177.76.220:5000) and `registry-cluster`
+#     select it unchanged. A `docker-registry` ClusterIP alias is kept
+#     below for anything still using the old chart's Service DNS name.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zot-data
+  namespace: registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: zfs-iscsi
+  resources:
+    requests:
+      storage: 60Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zot-config
+  namespace: registry
+  labels:
+    app: registry
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: cluster
+data:
+  config.json: |
+    {
+      "distSpecVersion": "1.1.1",
+      "storage": {
+        "rootDirectory": "/var/lib/zot",
+        "dedupe": true,
+        "gc": true,
+        "gcDelay": "1h",
+        "gcInterval": "6h",
+        "retention": {
+          "dryRun": false,
+          "delay": "24h",
+          "policies": [
+            {
+              "repositories": ["**"],
+              "deleteReferrers": true,
+              "deleteUntagged": true,
+              "keepTags": [
+                {
+                  "patterns": ["dev-\\d+"],
+                  "mostRecentlyPushedCount": 5
+                },
+                {
+                  "patterns": [".*"]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "http": {
+        "address": "0.0.0.0",
+        "port": "5000"
+      },
+      "log": {
+        "level": "info"
+      },
+      "extensions": {
+        "search": {
+          "enable": true
+        },
+        "ui": {
+          "enable": true
+        },
+        "metrics": {
+          "enable": true,
+          "prometheus": {
+            "path": "/metrics"
+          }
+        }
+      }
+    }
+  # Retention semantics (zot v2.1.x):
+  #   - keepTags is fail-safe by construction: the trailing {".*"} rule keeps
+  #     every tag not matched by an earlier rule (mirrors the 2026-07-24
+  #     "fail safe, not fail destructive" postmortem rule).
+  #   - dev-\d+ (Tilt's dev-<epoch-nanos>) keeps only the 5 most recently
+  #     PUSHED per repo — push time from zot's metadata DB, not Last-Modified
+  #     (which distribution never returned for OCI manifests).
+  #   - delay 24h: untagged manifests are only reaped when older than 24h,
+  #     so in-flight multi-arch pushes (children briefly untagged) are safe.
+  #   - Retention + GC run in-process on gcInterval; no restart needed, no
+  #     blob-descriptor cache staleness (that was a distribution artifact).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zot
+  namespace: registry
+  labels:
+    app: registry
+    release: registry
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: cluster
+spec:
+  replicas: 1
+  # RWO iSCSI volume — never two pods at once (Multi-Attach).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: registry
+      release: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+        release: registry
+      annotations:
+        checksum/config-note: "bump on zot-config changes to force rollout"
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: zot
+          image: ghcr.io/project-zot/zot:v2.1.17
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "/etc/zot/config.json"]
+          ports:
+            - name: http
+              containerPort: 5000
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/zot
+            - name: config
+              mountPath: /etc/zot
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: zot-data
+        - name: config
+          configMap:
+            name: zot-config
+---
+# DNS alias preserving the old chart's Service name (docker-registry:5000).
+# The housekeeping CronJob was the only known consumer; kept one release as
+# a safety net for anything unnoticed. Remove after a quiet month.
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-registry
+  namespace: registry
+  labels:
+    app: registry
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: cluster
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
+  selector:
+    app: registry
+    release: registry
