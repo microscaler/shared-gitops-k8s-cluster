@@ -12,6 +12,7 @@ resources:
   - service-registry-cluster.yaml
   - local-registry-hosting.yaml
   - metallb/ipaddresspool.yaml
+  - coredns-custom.yaml
 
 # Migrated from shared-k8s-cluster/k8s/cluster (Phase 3).
 # MetalLB operator itself remains Day-0; this manages the IPAddressPool + L2Advertisement.

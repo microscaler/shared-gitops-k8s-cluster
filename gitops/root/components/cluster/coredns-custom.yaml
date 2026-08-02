@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  sesameidentity.server: |
+    sesameidentity.dev.local:53 {
+      errors
+      cache 30
+      hosts {
+        10.177.76.234 api.sesameidentity.dev.local
+        10.177.76.234 auth.sesameidentity.dev.local
+        10.177.76.234 id.sesameidentity.dev.local
+        fallthrough
+      }
+    }
