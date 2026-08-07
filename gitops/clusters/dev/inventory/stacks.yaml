@@ -9,6 +9,14 @@ stacks:
   description: Shared LLMRouter
   depends:
   - name: stack-namespaces
+- name: airflow
+  path: ./gitops/root/components/airflow
+  description: Apache Airflow 2.10.5 (sam-airflow-dags DAGs baked in image; fork chart
+    via zot OCI)
+  depends:
+  - name: stack-namespaces
+  - name: stack-postgres
+  - name: profile-config-airflow
 - name: arc
   path: ./gitops/root/components/arc
   description: GitHub Actions Runner Controller + org scale set (labels self-hosted/linux/x64/microscaler)

@@ -1,0 +1,101 @@
+# Dev overlay for the Airflow chart (casibbald/airflow fork 1.16.0-dev, Flux valuesFrom).
+# Image: sam-airflow-dags (apache/airflow:2.10.5 + requirements + baked DAGs in
+# /opt/airflow/dags), pushed to zot: just -f <sam-airflow-dags>/… or skaffold.
+# AIRFLOW_VAR_* mirror sam-airflow-dags/deployment-configuration/profiles/dev/airflow/variables.yaml.
+
+airflowVersion: "2.10.5"
+executor: LocalExecutor
+
+defaultAirflowRepository: 10.177.76.220:5000/sam-airflow-dags
+defaultAirflowTag: "dev"
+images:
+  airflow:
+    repository: 10.177.76.220:5000/sam-airflow-dags
+    tag: "dev"
+    pullPolicy: Always
+
+# Metadata DB: shared postgres stack — see airflow.secret.yaml + db-init Job.
+data:
+  metadataSecretName: airflow-metadata
+postgresql:
+  enabled: false
+
+fernetKeySecretName: airflow-fernet-key
+webserverSecretKeySecretName: airflow-webserver-secret-key
+
+# DAGs are baked into the image — no gitSync, no PVC (airgap-compatible).
+dags:
+  gitSync:
+    enabled: false
+  persistence:
+    enabled: false
+
+config:
+  core:
+    dags_folder: /opt/airflow/dags
+    load_examples: "False"
+  webserver:
+    expose_config: "True"
+    # Edge: HTTPRoute airflow.dev.microscaler.local (envoy-gateway stack).
+    base_url: https://airflow.dev.microscaler.local
+    enable_proxy_fix: "True"
+
+env:
+  # DAG modules import siblings (configs, schedule_config) from the dags folder.
+  - name: PYTHONPATH
+    value: /opt/airflow/dags
+  - name: AIRFLOW_VAR_GCP_CONFIG
+    value: '{"artifactBucket":"gs://job_artifacts_dev","env":"dev","projectId":"metro-bi-wb-salesiq-s00","subnetUri":"https://www.googleapis.com/compute/v1/projects/metro-bi-network/regions/europe-west1/subnetworks/metro-bi-wb-salesiq-s00-2","samCiProjectId":"cf-sam-ci-d0"}'
+  - name: AIRFLOW_VAR_KAFKA_BROKERS
+    value: node0.opqs.samw.test2.mcc.be-gcw1.metroscales.io:9093,node1.opqs.samw.test2.mcc.be-gcw1.metroscales.io:9093,node2.opqs.samw.test2.mcc.be-gcw1.metroscales.io:9093
+  - name: AIRFLOW_VAR_CUSTOMER_MATRIX_ORGANISATIONS
+    value: ita
+  - name: AIRFLOW_VAR_GCP_PREFERRED_STORES
+    value: ita
+  - name: AIRFLOW_VAR_LAST_BUYING_DATE_GCP_SF_ORGANISATIONS
+    value: ita
+  - name: AIRFLOW_VAR_METRO_MARKETS_ORGANISATIONS
+    value: ita
+  - name: AIRFLOW_VAR_PROFIT_SIMULATION_ORGANISATIONS
+    value: ita
+  - name: AIRFLOW_VAR_REVENUE_GCP_SF_ORGANISATIONS
+    value: ita
+  - name: AIRFLOW_VAR_SF_ORG_OVERDUE
+    value: ita
+  # GCP connection used by BigQuery/Dataflow operators (JSON conn format).
+  - name: AIRFLOW_CONN_BIGQUERY_CONNECTION_RECOMMENDATION_SERVICE_ACC
+    value: '{"conn_type":"google_cloud_platform","extra":{"scope":"https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/compute.readonly","num_retries":5,"project":"metro-bi-wb-salesiq-s00"}}'
+
+# Keep dev light.
+statsd:
+  enabled: false
+triggerer:
+  enabled: true
+  persistence:
+    enabled: false
+
+scheduler:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+webserver:
+  service:
+    type: ClusterIP
+  resources:
+    requests:
+      cpu: 100m
+      memory: 768Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+# Task/scheduler logs: no shared volume in dev (LocalExecutor logs live with the
+# scheduler pod; webserver fetches over :8793 where applicable).
+logs:
+  persistence:
+    enabled: false

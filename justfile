@@ -419,3 +419,47 @@ heal-hostpath-pvc name:
 	kubectl -n data scale "deploy/$DEPLOY" --replicas=1 || true
 	kubectl -n data rollout status "deploy/$DEPLOY" --timeout=180s
 	echo "Healed {{name}} (Retain hostPath)."
+
+# ── Airflow stack ────────────────────────────────────────────────────────────
+
+# Local clone of the casibbald/airflow fork (chart lives in <dir>/chart).
+airflow_fork_dir := env_var_or_default("AIRFLOW_FORK_DIR", "~/Workspace/remote/metro/airflow")
+
+# Package the Airflow chart from the local fork clone and push it to the
+# in-cluster zot registry as an OCI artifact. No network beyond the registry
+# LB required (airgap-friendly). Requires helm >= 3.8.
+airflow-chart-push:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	source "{{repo_root}}/config/cluster.env"
+	CHART_DIR="$(eval echo {{airflow_fork_dir}})/chart"
+	test -f "$CHART_DIR/Chart.yaml" || { echo "no chart at $CHART_DIR (set AIRFLOW_FORK_DIR)" >&2; exit 1; }
+	echo "Chart source: $CHART_DIR ($(git -C "$CHART_DIR" branch --show-current 2>/dev/null || echo '?') @ $(git -C "$CHART_DIR" rev-parse --short HEAD 2>/dev/null || echo '?'))"
+	WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+	helm package "$CHART_DIR" -d "$WORK"
+	CHART_TGZ="$(ls "$WORK"/airflow-*.tgz)"
+	helm push "$CHART_TGZ" "oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts" --plain-http
+	echo "Pushed $(basename "$CHART_TGZ") → oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts/airflow"
+
+# SOPS-encrypt any plaintext airflow *.secret.yaml in place (age key per .sops.yaml).
+airflow-encrypt-secrets env="dev":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	for F in "{{repo_root}}/deployment-configuration/profiles/{{env}}/airflow/"*.secret.yaml; do
+	  if grep -q "ENC\[" "$F"; then echo "already encrypted: $(basename "$F")"; continue; fi
+	  sops --encrypt --in-place "$F"
+	  echo "Encrypted $(basename "$F")"
+	done
+
+# Render the full airflow stack to rendered-airflow.yaml for review (no cluster).
+airflow-render env="dev":
+	#!/usr/bin/env bash
+	set -euo pipefail
+	CHART_DIR="$(eval echo {{airflow_fork_dir}})/chart"
+	test -f "$CHART_DIR/Chart.yaml" || { echo "no chart at $CHART_DIR (set AIRFLOW_FORK_DIR)" >&2; exit 1; }
+	helm template airflow "$CHART_DIR" \
+	  --namespace airflow \
+	  -f "{{repo_root}}/deployment-configuration/profiles/{{env}}/airflow/helm-values.yaml" \
+	  --set fullnameOverride=airflow \
+	  > "{{repo_root}}/rendered-airflow.yaml"
+	echo "Wrote {{repo_root}}/rendered-airflow.yaml"

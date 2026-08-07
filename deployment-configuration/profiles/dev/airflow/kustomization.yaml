@@ -1,0 +1,21 @@
+# Airflow dev profile. Helm overlay: helm-values.yaml → ConfigMap airflow-helm-values.
+# Secrets: *.secret.yaml (SOPS age, data/stringData encrypted per .sops.yaml).
+# No global namespace: resources span airflow (release) and data (db-init creds).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - airflow-db-credentials.secret.yaml
+  - airflow-metadata.secret.yaml
+  - airflow-fernet-key.secret.yaml
+  - airflow-webserver-secret-key.secret.yaml
+
+configMapGenerator:
+  - name: airflow-helm-values
+    namespace: airflow
+    files:
+      - values.yaml=helm-values.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+  immutable: false

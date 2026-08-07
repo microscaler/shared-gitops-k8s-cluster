@@ -120,3 +120,9 @@ stacks:
     description: GitHub Actions Runner Controller + org scale set (labels self-hosted/linux/x64/microscaler)
     depends_on: [namespaces]
     profile: arc
+
+  - name: airflow
+    path: ./gitops/root/components/airflow
+    description: Apache Airflow 2.10.5 (sam-airflow-dags DAGs baked in image; fork chart via zot OCI)
+    depends_on: [namespaces, postgres]
+    profile: airflow

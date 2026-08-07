@@ -9,6 +9,7 @@ resources:
   - referencegrant-tls.yaml
   - clienttrafficpolicy.yaml
   # loadlinker/hauliage hosts: product HTTPRoute (hauliage/k8s/frontend/httproute.yaml)
+  - httproutes/airflow.yaml
   - httproutes/opensearch.yaml
   - httproutes/platform-uis.yaml
   # Tilt UIs stay on ms02 haproxy (outside Envoy) — see config/lan-http-vhosts.yaml

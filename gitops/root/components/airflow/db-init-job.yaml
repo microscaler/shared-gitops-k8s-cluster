@@ -1,0 +1,74 @@
+# Creates the airflow role + database on the shared postgres stack.
+# Runs in the data namespace so it can read postgres-credentials (admin) and
+# airflow-db-credentials (from the airflow profile). Idempotent.
+# Jobs are immutable — if this script changes, bump the name suffix or
+# `kubectl -n data delete job airflow-db-init` and let Flux recreate it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-db-init
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: airflow
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: airflow-db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: db-init
+          image: postgres:15-alpine
+          env:
+            - name: PGHOST
+              value: postgres.data.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: postgres-password
+            - name: AIRFLOW_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-db-credentials
+                  key: username
+            - name: AIRFLOW_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-db-credentials
+                  key: password
+          command:
+            - sh
+            - -ec
+            - |
+              until pg_isready -h "$PGHOST" -p "$PGPORT"; do sleep 2; done
+              psql -v ON_ERROR_STOP=1 postgres <<SQL
+              DO \$\$
+              BEGIN
+                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${AIRFLOW_DB_USER}') THEN
+                  CREATE ROLE "${AIRFLOW_DB_USER}" LOGIN PASSWORD '${AIRFLOW_DB_PASSWORD}';
+                ELSE
+                  ALTER ROLE "${AIRFLOW_DB_USER}" LOGIN PASSWORD '${AIRFLOW_DB_PASSWORD}';
+                END IF;
+              END
+              \$\$;
+              SQL
+              if ! psql -tAc "SELECT 1 FROM pg_database WHERE datname='airflow'" | grep -q 1; then
+                createdb -O "${AIRFLOW_DB_USER}" airflow
+              fi
+              psql -v ON_ERROR_STOP=1 -d airflow -c 'GRANT ALL ON SCHEMA public TO "'"${AIRFLOW_DB_USER}"'";'
+              echo "airflow db ready"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

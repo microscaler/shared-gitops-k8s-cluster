@@ -1,0 +1,38 @@
+# Apache Airflow 2.10.5 (casibbald/airflow fork chart 1.16.0-dev via zot OCI).
+# Env knobs: profile helm-values.yaml (deployment-configuration/profiles/<env>/airflow).
+# DAGs are baked into the sam-airflow-dags image (no gitSync — airgap-compatible).
+# Metadata DB: shared postgres stack (postgres.data.svc), db/role created by
+# airflow-db-init Job (db-init-job.yaml).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: airflow
+  namespace: airflow
+  labels:
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    gitops.microscaler.io/stack: airflow
+spec:
+  interval: 30m
+  timeout: 20m
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      remediateLastFailure: false
+      retries: 3
+  chart:
+    spec:
+      chart: airflow
+      version: "1.16.0-dev"
+      sourceRef:
+        kind: HelmRepository
+        name: zot-charts
+        namespace: airflow
+      interval: 24h
+  valuesFrom:
+    - kind: ConfigMap
+      name: airflow-helm-values
+      valuesKey: values.yaml
+  values:
+    fullnameOverride: airflow
