@@ -19,15 +19,17 @@ config:
     discovery.type: single-node
     plugins.security.disabled: true
 
-opensearchJavaOpts: "-Xmx768M -Xms768M"
+# Heap ≈ 50% of cgroup. Prior 768M/2Gi left almost no Lucene/off-heap room and
+# the pod sat at 100% cgroup memory until exit 255 kills.
+opensearchJavaOpts: "-Xmx1536M -Xms1536M"
 
 resources:
   requests:
     cpu: 200m
-    memory: 1Gi
+    memory: 2Gi
   limits:
     cpu: "2"
-    memory: 2Gi
+    memory: 4Gi
 
 persistence:
   enabled: true

@@ -143,11 +143,15 @@ def upsert_policy_payload(
 
 
 def trace_lifecycle_policy(retention_days: int) -> dict[str, Any]:
-    """Extend Data Prepper's raw-span rollover policy with bounded retention."""
+    """Extend Data Prepper's raw-span rollover policy with bounded retention.
+
+    Rollover is size-only. A daily ``min_index_age`` created empty write indices
+    whenever the collector stopped exporting spans.
+    """
     return {
         "policy": {
             "description": (
-                "Roll raw spans daily and delete dev telemetry after "
+                "Roll raw spans at 50gb and delete dev telemetry after "
                 f"{retention_days} days; managed by {MANAGED_BY}"
             ),
             "default_state": "current_write_index",
@@ -163,7 +167,6 @@ def trace_lifecycle_policy(retention_days: int) -> dict[str, Any]:
                             },
                             "rollover": {
                                 "min_size": "50gb",
-                                "min_index_age": "24h",
                                 "copy_alias": False,
                             },
                         }

@@ -4,17 +4,35 @@ mode: deployment
 fullnameOverride: otel-collector
 replicaCount: 1
 
-# Inject k8s.namespace.name / pod metadata onto OTLP resource attributes so
-# Discover can filter namespace → application → time (not the hardcoded
-# service.namespace=microscaler from app binaries).
+# Do NOT use the chart preset: it prepends k8sattributes before filters and
+# enriches DEBUG/probe/epoll volume. Configure k8sattributes explicitly after
+# cheap drop filters instead. Keep ClusterRole rules so Prometheus k8s_sd and
+# k8sattributes keep working after the preset is disabled.
 presets:
   kubernetesAttributes:
-    enabled: true
+    enabled: false
+
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "namespaces"]
+      verbs: ["get", "watch", "list"]
+    - apiGroups: ["apps"]
+      resources: ["replicasets"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["extensions"]
+      resources: ["replicasets"]
+      verbs: ["get", "list", "watch"]
 
 image:
   repository: otel/opentelemetry-collector-contrib
   tag: "0.114.0"
   pullPolicy: IfNotPresent
+
+# Chart auto-injects GOMEMLIMIT ≈ 80% of resources.limits.memory (~2457MiB for
+# 3072Mi). Do not also set it in extraEnvs — SSA rejects duplicate env keys.
+# memory_limiter.limit_mib below that soft target refuses data before GC thrash.
 
 ports:
   otlp:
@@ -38,19 +56,16 @@ ports:
     enabled: false
   metrics:
     enabled: false
+  # Unused: nothing scrapes :9464, and resource_to_telemetry_conversion held
+  # a second full copy of every metric point in memory.
   prometheus:
-    enabled: true
-    containerPort: 9464
-    servicePort: 9464
-    protocol: TCP
+    enabled: false
 
 resources:
   requests:
     cpu: 100m
     memory: 512Mi
   limits:
-    # k3s scrapes (node-exporter + kube-state) + OTLP logs need headroom;
-    # 1536Mi + limiter 1152Mi still refused scrapes under load (2026-07-22).
     cpu: "1"
     memory: 3072Mi
 
@@ -204,9 +219,16 @@ config:
     batch: {}
     memory_limiter:
       check_interval: 1s
-      # Soft refuse before cgroup OOM (pod limit 3072Mi).
-      limit_mib: 2304
-      spike_limit_mib: 512
+      # Soft refuse below GOMEMLIMIT (2048MiB) and well under the 3072Mi cgroup.
+      limit_mib: 1800
+      spike_limit_mib: 400
+    k8sattributes:
+      extract:
+        metadata:
+          - k8s.namespace.name
+          - k8s.pod.name
+          - k8s.deployment.name
+          - k8s.node.name
     # Drop DEBUG/TRACE except request access lines (BRRTRouter demoted those to
     # debug; sesame RUST_LOG=debug still emits them — keep for Discover detail).
     filter/drop-low-severity:
@@ -240,8 +262,8 @@ config:
       metrics:
         datapoint:
           - flags == 1
-    # Tag remaining logs with event_class + event_category. Epoll/memory are
-    # dropped upstream; lifecycle/config runtime_noise stays selectable.
+    # Tag remaining logs with event_class + event_category. Epoll/memory/DEBUG
+    # are dropped upstream; lifecycle/config runtime_noise stays selectable.
     # Prefer k8s namespace over app defaults.
     transform/classify-log-signal:
       error_mode: ignore
@@ -286,10 +308,6 @@ config:
       endpoint: data-prepper.observability.svc.cluster.local:21892
       tls:
         insecure: true
-    prometheus:
-      endpoint: ${env:MY_POD_IP}:9464
-      resource_to_telemetry_conversion:
-        enabled: true
   extensions:
     health_check:
       endpoint: ${env:MY_POD_IP}:13133
@@ -298,16 +316,14 @@ config:
     pipelines:
       traces:
         receivers: [otlp]
-        processors: [memory_limiter, batch]
+        processors: [memory_limiter, k8sattributes, batch]
         exporters: [otlp/traces]
       metrics:
         receivers: [otlp, prometheus/data, prometheus/k3s, prometheus/loadlinker]
-        processors: [memory_limiter, filter/drop-no-recorded-value, batch]
-        exporters: [otlp/metrics, prometheus]
+        processors: [memory_limiter, filter/drop-no-recorded-value, k8sattributes, batch]
+        exporters: [otlp/metrics]
       logs:
         receivers: [otlp]
-        # k8sattributes is injected by presets.kubernetesAttributes before this list
-        # is merged; transform overwrites service.namespace from k8s.namespace.name.
-        # Drop epoll/memory/probes before classify so volume never reaches OpenSearch.
-        processors: [memory_limiter, filter/drop-epoll-io, filter/drop-health-probes, transform/classify-log-signal, filter/drop-low-severity, batch]
+        # Drop volume before k8sattributes/transform so noise never costs enrichment.
+        processors: [memory_limiter, filter/drop-epoll-io, filter/drop-health-probes, filter/drop-low-severity, k8sattributes, transform/classify-log-signal, batch]
         exporters: [otlp/logs]

@@ -35,15 +35,26 @@ def test_trace_policy_keeps_rollover_and_adds_seven_day_delete() -> None:
 
     current = policy["states"][0]
     assert current["name"] == "current_write_index"
+    # Size-only rollover: daily min_index_age created empty span indices when
+    # the collector stopped exporting traces.
     assert current["actions"][0]["rollover"] == {
         "min_size": "50gb",
-        "min_index_age": "24h",
         "copy_alias": False,
     }
+    assert "min_index_age" not in current["actions"][0]["rollover"]
     assert current["transitions"] == [
         {"state_name": "delete", "conditions": {"min_index_age": "7d"}}
     ]
     assert policy["states"][1]["actions"] == [{"delete": {}}]
+
+
+def test_opensearch_heap_leaves_offheap_headroom() -> None:
+    profile = ROOT / "deployment-configuration/profiles/dev/observability"
+    opensearch = yaml.safe_load((profile / "helm-values-opensearch.yaml").read_text())
+
+    assert opensearch["opensearchJavaOpts"] == "-Xmx1536M -Xms1536M"
+    assert opensearch["resources"]["limits"]["memory"] == "4Gi"
+    assert opensearch["resources"]["requests"]["memory"] == "2Gi"
 
 
 def test_correlation_queries_reference_trace_fields() -> None:
@@ -127,6 +138,8 @@ def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
         "Postgres metrics stale",
         "Redis metrics stale",
         "Loadlinker P0 error burst",
+        "Loadlinker metrics stale",
+        "Loadlinker postgres dependency down",
         "Sesame auth error logs",
         "Loadlinker P0 traces stale",
         "Sesame auth traces stale",
@@ -184,8 +197,19 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
 
     assert prepper["image"]["tag"] == "2.11.0"
 
+    # Chart preset prepends k8sattributes before filters; disable and place it
+    # after cheap drops so DEBUG/probes never get enriched.
+    assert otel["presets"]["kubernetesAttributes"]["enabled"] is False
+    assert otel["clusterRole"]["create"] is True
+    assert {"pods", "namespaces"} <= {
+        resource
+        for rule in otel["clusterRole"]["rules"]
+        for resource in rule.get("resources", [])
+    }
     processors = otel["config"]["processors"]
-    assert processors["memory_limiter"]["limit_mib"] == 384
+    assert processors["memory_limiter"]["limit_mib"] == 1800
+    assert processors["memory_limiter"]["spike_limit_mib"] == 400
+    assert "k8sattributes" in processors
     assert "filter/drop-low-severity" in processors
     assert processors["filter/drop-no-recorded-value"]["metrics"]["datapoint"] == [
         "flags == 1"
@@ -194,19 +218,32 @@ def test_collector_filters_debug_and_data_prepper_rotates_daily() -> None:
         "memory_limiter",
         "filter/drop-epoll-io",
         "filter/drop-health-probes",
-        "transform/classify-log-signal",
         "filter/drop-low-severity",
+        "k8sattributes",
+        "transform/classify-log-signal",
         "batch",
     ]
     assert "filter/drop-epoll-io" in processors
     assert "filter/drop-health-probes" in processors
     assert "transform/classify-log-signal" in processors
     assert "debug" not in otel["config"]["exporters"]
+    assert "prometheus" not in otel["config"]["exporters"]
+    assert otel["ports"]["prometheus"]["enabled"] is False
+    assert otel["config"]["service"]["pipelines"]["metrics"]["exporters"] == [
+        "otlp/metrics"
+    ]
     assert otel["config"]["service"]["pipelines"]["metrics"]["processors"] == [
         "memory_limiter",
         "filter/drop-no-recorded-value",
+        "k8sattributes",
         "batch",
     ]
+    # Chart injects GOMEMLIMIT from the memory limit; do not duplicate it.
+    assert "extraEnvs" not in otel or not any(
+        env.get("name") == "GOMEMLIMIT" for env in otel.get("extraEnvs") or []
+    )
+    # Soft refuse below chart GOMEMLIMIT (~80% of 3072Mi ≈ 2457MiB).
+    assert processors["memory_limiter"]["limit_mib"] < 2457
     metrics_receivers = otel["config"]["service"]["pipelines"]["metrics"]["receivers"]
     assert "otlp" in metrics_receivers
     assert "prometheus/data" in metrics_receivers

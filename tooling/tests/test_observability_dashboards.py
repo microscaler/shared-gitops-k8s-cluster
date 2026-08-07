@@ -26,7 +26,60 @@ def test_dashboard_bundles() -> None:
         "data-persistence",
         "k3s-dev",
         "loadlinker-services",
+        "sesame-idam-services",
     }
+
+
+def test_sesame_idam_services_dashboard() -> None:
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "sesame-idam-services"
+    )
+    assert dashboard["attributes"]["title"] == "Sesame-IDAM / Services"
+    assert "12 deployments" in dashboard["attributes"]["description"]
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "sesame-idam-services-pods-running",
+        "sesame-idam-services-deploy-unavailable",
+        "sesame-idam-services-replicas-by-deployment",
+        "sesame-idam-services-pods-by-phase",
+        "sesame-idam-services-top-restarts",
+        "sesame-idam-services-http-by-service",
+        "sesame-idam-services-errors-by-service",
+        "sesame-idam-services-postgres-connections",
+        "sesame-idam-services-error-logs",
+    }.issubset(ref_ids)
+    assert (DASHBOARDS / "sesame-idam-services.ndjson").is_file()
+
+    source = json.loads(
+        dashboard["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"]
+    )
+    assert (
+        "metric.attributes.namespace.keyword: sesame-idam"
+        in source["query"]["query"]
+    )
+    assert (
+        'resource.attributes.k8s@namespace@name: "sesame-idam"'
+        in source["query"]["query"]
+    )
+
+
+def test_loadlinker_unavailable_replicas_are_namespace_scoped() -> None:
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "dashboard" and object_id == "loadlinker-services"
+    )
+    source = json.loads(
+        dashboard["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"]
+    )
+    query = source["query"]["query"]
+    unavailable_scope = query.split(
+        'name.keyword: "kube_deployment_status_replicas_unavailable"', 1
+    )[1]
+    assert "metric.attributes.namespace.keyword: loadlinker" in unavailable_scope
 
 
 def test_loadlinker_services_dashboard() -> None:
@@ -45,6 +98,26 @@ def test_loadlinker_services_dashboard() -> None:
         "loadlinker-services-error-logs",
     }.issubset(ref_ids)
     assert (DASHBOARDS / "loadlinker-services.ndjson").is_file()
+
+
+def test_error_log_queries_include_http_5xx_access_lines() -> None:
+    """BRRTRouter logs 5xx as INFO Request completed; severity-only misses them."""
+    assert "log.attributes.status:>=500" in definitions.LOG_ERRORS_LUCENE
+    assert "severityText: (ERROR OR FATAL OR WARN)" in definitions.LOG_ERRORS_LUCENE
+
+    loadlinker_errors = next(
+        payload
+        for object_type, object_id, payload in definitions.all_dashboard_objects()
+        if object_type == "search" and object_id == "loadlinker-services-error-logs"
+    )
+    source = json.loads(
+        loadlinker_errors["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"]
+    )
+    query = source["query"]["query"]
+    assert "log.attributes.status:>=500" in query
+    assert "severityText:(ERROR OR FATAL OR WARN)" in query or (
+        "severityText: (ERROR OR FATAL OR WARN)" in query
+    )
 
 
 def test_no_guide_panels_on_managed_dashboards() -> None:
@@ -177,13 +250,14 @@ def test_dashboard_references_are_complete_and_stable() -> None:
     identities = {(object_type, object_id) for object_type, object_id, _ in objects}
     assert len(identities) == len(objects)
 
-    dashboard = next(
+    dashboards = [
         payload
-        for object_type, object_id, payload in objects
-        if object_type == "dashboard" and object_id == "logs-explore"
-    )
-    for reference in dashboard["references"]:
-        assert (reference["type"], reference["id"]) in identities
+        for object_type, _object_id, payload in objects
+        if object_type == "dashboard"
+    ]
+    for dashboard in dashboards:
+        for reference in dashboard["references"]:
+            assert (reference["type"], reference["id"]) in identities
 
 
 def test_ndjson_bundle_exists_and_parses() -> None:
