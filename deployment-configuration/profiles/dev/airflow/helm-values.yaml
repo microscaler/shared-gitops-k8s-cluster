@@ -66,6 +66,16 @@ env:
   - name: AIRFLOW_CONN_BIGQUERY_CONNECTION_RECOMMENDATION_SERVICE_ACC
     value: '{"conn_type":"google_cloud_platform","extra":{"scope":"https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/compute,https://www.googleapis.com/auth/compute.readonly","num_retries":5,"project":"metro-bi-wb-salesiq-s00"}}'
 
+# Flux/helm-controller: hook-based jobs deadlock against install wait
+# (pods wait for migrations; migration job would only run post-install).
+# Run them as regular release resources instead.
+migrateDatabaseJob:
+  useHelmHooks: false
+  applyCustomEnv: false
+createUserJob:
+  useHelmHooks: false
+  applyCustomEnv: false
+
 # Keep dev light.
 statsd:
   enabled: false
