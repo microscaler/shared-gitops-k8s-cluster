@@ -167,6 +167,27 @@ images:
   - name: hauliage-bff
     image: 10.177.76.220:5000/hauliage-bff
     product: hauliage
+  - name: hauliage-frontend
+    image: 10.177.76.220:5000/hauliage-frontend
+    product: hauliage
+  - name: hauliage-iot-worker
+    image: 10.177.76.220:5000/hauliage-iot-worker
+    product: hauliage
+  - name: hauliage-notifications-sweep-worker
+    image: 10.177.76.220:5000/hauliage-notifications-sweep-worker
+    product: hauliage
+  - name: hauliage-escrow-drawdown-worker
+    image: 10.177.76.220:5000/hauliage-escrow-drawdown-worker
+    product: hauliage
+  - name: hauliage-notifications-dispatcher
+    image: 10.177.76.220:5000/hauliage-notifications-dispatcher
+    product: hauliage
+  - name: hauliage-demo-telemetry-publisher
+    image: 10.177.76.220:5000/hauliage-demo-telemetry-publisher
+    product: hauliage
+  - name: searates-terminal-mock
+    image: 10.177.76.220:5000/searates-terminal-mock
+    product: hauliage
 
 automations:
   - name: rerp-dev-images
