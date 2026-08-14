@@ -1,7 +1,9 @@
-# Airflow chart from the local casibbald/airflow fork clone
-# (~/Workspace/remote/metro/airflow, branch 2.10.5-Beta1, chart 1.16.0-dev),
-# packaged and pushed to the in-cluster zot registry as an OCI artifact:
-#   just airflow-chart-push   (AIRFLOW_FORK_DIR overrides the clone path)
+# Official apache airflow helm chart (helm-chart/1.16.0), mirrored
+# unmodified from https://airflow.apache.org into the in-cluster zot
+# registry as an OCI artifact:
+#   just airflow-chart-push
+# (The casibbald/airflow chart fork is retired — it was cut from the
+# v2-10-stable dev snapshot; all its patches are unnecessary vs the release.)
 # Airgap-compatible: the cluster only ever pulls from zot (10.177.76.220:5000).
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository

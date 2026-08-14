@@ -24,7 +24,10 @@ spec:
   chart:
     spec:
       chart: airflow
-      version: "1.16.0-dev"
+      # Official apache helm-chart/1.16.0 (appVersion 2.10.5), mirrored
+      # unmodified into zot via `just airflow-chart-push`. The casibbald
+      # chart fork (1.16.0-dev) is retired.
+      version: "1.16.0"
       sourceRef:
         kind: HelmRepository
         name: zot-charts

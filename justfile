@@ -422,24 +422,17 @@ heal-hostpath-pvc name:
 
 # ── Airflow stack ────────────────────────────────────────────────────────────
 
-# Local clone of the casibbald/airflow fork (chart lives in <dir>/chart).
-airflow_fork_dir := env_var_or_default("AIRFLOW_FORK_DIR", "~/Workspace/remote/metro/airflow")
-
-# Package the Airflow chart from the local fork clone and push it to the
-# in-cluster zot registry as an OCI artifact. No network beyond the registry
-# LB required (airgap-friendly). Requires helm >= 3.8.
-airflow-chart-push:
+# Mirror the OFFICIAL apache airflow helm chart (unmodified) into the
+# in-cluster zot registry. Run outside the airgap (needs airflow.apache.org)
+# or from any host that can reach both. The fork is retired.
+airflow-chart-push version="1.16.0":
 	#!/usr/bin/env bash
 	set -euo pipefail
 	source "{{repo_root}}/config/cluster.env"
-	CHART_DIR="$(eval echo {{airflow_fork_dir}})/chart"
-	test -f "$CHART_DIR/Chart.yaml" || { echo "no chart at $CHART_DIR (set AIRFLOW_FORK_DIR)" >&2; exit 1; }
-	echo "Chart source: $CHART_DIR ($(git -C "$CHART_DIR" branch --show-current 2>/dev/null || echo '?') @ $(git -C "$CHART_DIR" rev-parse --short HEAD 2>/dev/null || echo '?'))"
 	WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-	helm package "$CHART_DIR" -d "$WORK"
-	CHART_TGZ="$(ls "$WORK"/airflow-*.tgz)"
-	helm push "$CHART_TGZ" "oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts" --plain-http
-	echo "Pushed $(basename "$CHART_TGZ") → oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts/airflow"
+	helm pull airflow --repo https://airflow.apache.org --version "{{version}}" -d "$WORK"
+	helm push "$WORK/airflow-{{version}}.tgz" "oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts" --plain-http
+	echo "Mirrored official airflow-{{version}} → oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts/airflow:{{version}}"
 
 # SOPS-encrypt any plaintext airflow *.secret.yaml in place (age key per .sops.yaml).
 airflow-encrypt-secrets env="dev":
@@ -452,12 +445,12 @@ airflow-encrypt-secrets env="dev":
 	done
 
 # Render the full airflow stack to rendered-airflow.yaml for review (no cluster).
-airflow-render env="dev":
+airflow-render env="dev" version="1.16.0":
 	#!/usr/bin/env bash
 	set -euo pipefail
-	CHART_DIR="$(eval echo {{airflow_fork_dir}})/chart"
-	test -f "$CHART_DIR/Chart.yaml" || { echo "no chart at $CHART_DIR (set AIRFLOW_FORK_DIR)" >&2; exit 1; }
-	helm template airflow "$CHART_DIR" \
+	WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+	helm pull airflow --repo https://airflow.apache.org --version "{{version}}" -d "$WORK"
+	helm template airflow "$WORK/airflow-{{version}}.tgz" \
 	  --namespace airflow \
 	  -f "{{repo_root}}/deployment-configuration/profiles/{{env}}/airflow/helm-values.yaml" \
 	  --set fullnameOverride=airflow \
