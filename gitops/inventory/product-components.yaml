@@ -17,6 +17,10 @@ sources:
     url: ssh://git@github.com/microscaler/haulage.git
     branch: main
     secret_ref: gitops-auth
+  - name: pricewhisperer
+    url: ssh://git@github.com/microscaler/PriceWhisperer.git
+    branch: main
+    secret_ref: gitops-auth
 
 components:
   # --- RERP Accounting ---
@@ -80,6 +84,16 @@ components:
     depends_on: hauliage-core
     wait: true
     force: false
+
+  # --- PriceWhisperer ---
+  - name: pricewhisperer-core
+    source: pricewhisperer
+    product: pricewhisperer
+    suite: core
+    path: ./deployment-configuration/profiles/dev/pricewhisperer/core
+    depends_on: stack-namespaces
+    wait: true
+    force: true
 
 # Image discovery is cluster integration; update markers stay beside Helm
 # releases in each product repository. Tags: dev-<nanoseconds>.
@@ -189,6 +203,16 @@ images:
     image: 10.177.76.220:5000/searates-terminal-mock
     product: hauliage
 
+  - name: pricewhisperer-website
+    image: 10.177.76.220:5000/pricewhisperer-website
+    product: pricewhisperer
+  - name: pricewhisperer-trader
+    image: 10.177.76.220:5000/pricewhisperer-trader
+    product: pricewhisperer
+  - name: pricewhisperer-platform
+    image: 10.177.76.220:5000/pricewhisperer-platform
+    product: pricewhisperer
+
 automations:
   - name: rerp-dev-images
     source: rerp
@@ -211,3 +235,10 @@ automations:
     path: ./deployment-configuration/profiles/dev/hauliage
     author_name: Hauliage Flux image automation
     author_email: flux-hauliage@microscaler.local
+  - name: pricewhisperer-dev-images
+    source: pricewhisperer
+    product: pricewhisperer
+    branch: main
+    path: ./deployment-configuration/profiles/dev/pricewhisperer
+    author_name: PriceWhisperer Flux image automation
+    author_email: flux-pricewhisperer@microscaler.local

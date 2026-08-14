@@ -77,3 +77,8 @@ vhosts:
     name: tilt-opengroupware
     target_host: 127.0.0.1
     target_port: 10852
+
+  - host: tilt-pricewhisperer.dev.microscaler.local
+    name: tilt-pricewhisperer
+    target_host: 127.0.0.1
+    target_port: 10356

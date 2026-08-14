@@ -89,6 +89,18 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: pw
+  labels:
+    app: pricewhisperer
+    app.kubernetes.io/part-of: shared-gitops-k8s-cluster
+    managed-by: cluster-bootstrap
+    gitops.microscaler.io/stack: namespaces
+  annotations:
+    description: "PriceWhisperer portal UIs (website, trader, platform)"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: sesame-idam
   labels:
     app: sesame-idam

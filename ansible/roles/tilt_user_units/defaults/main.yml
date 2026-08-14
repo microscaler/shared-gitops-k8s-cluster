@@ -100,6 +100,16 @@ tilt_user_units_apps:
     workdir: opengroupware
     enable: true
 
+  - unit: tilt-pricewhisperer
+    description: PriceWhisperer Tilt (portal UIs; port 10356)
+    port: 10356
+    workdir: PriceWhisperer
+    # Root Tiltfile may be regenerating; UI portals live in Tiltfile.ui.
+    exec_args: "-f Tiltfile.ui"
+    use_preflight: false
+    use_cluster_env: false
+    enable: true
+
 # Legacy Kind / retired platform-Tilt units to remove
 tilt_user_units_legacy_remove:
   - microscaler-shared-kind-infra.service

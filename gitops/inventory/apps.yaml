@@ -20,6 +20,10 @@ apps:
     port: 10352
     repo: hauliage
     aliases: [hauliage]
+  - id: pricewhisperer
+    port: 10356
+    repo: PriceWhisperer
+    aliases: [pricewhisperer, pw]
   - id: rerp
     port: 10350
     repo: rerp

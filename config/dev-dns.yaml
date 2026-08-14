@@ -24,6 +24,9 @@ lan_zones:
       # Apps
       - hauliage
       - loadlinker
+      - pricewhisperer
+      - pw-trader
+      - pw-platform
       # Platform UIs (HTTPRoute in envoy-gateway)
       - opensearch
       - grafana
@@ -44,6 +47,7 @@ lan_zones:
       - tilt-fleetingdns
       - tilt-aether
       - tilt-opengroupware
+      - tilt-pricewhisperer
       # Reserved (no HTTPRoute yet — will 404 until product adds one)
       - sesame-idam
       - cylon
