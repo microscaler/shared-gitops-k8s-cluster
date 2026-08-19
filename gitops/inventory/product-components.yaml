@@ -212,6 +212,10 @@ images:
   - name: pricewhisperer-platform
     image: 10.177.76.220:5000/pricewhisperer-platform
     product: pricewhisperer
+  # PRD I1 background worker (raw Deployment; full-ref imagepolicy marker)
+  - name: pricewhisperer-benzinga-news-ingestor
+    image: 10.177.76.220:5000/pricewhisperer-benzinga-news-ingestor
+    product: pricewhisperer
   - name: pricewhisperer-market
     image: 10.177.76.220:5000/pricewhisperer-market
     product: pricewhisperer
