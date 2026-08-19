@@ -212,6 +212,48 @@ images:
   - name: pricewhisperer-platform
     image: 10.177.76.220:5000/pricewhisperer-platform
     product: pricewhisperer
+  - name: pricewhisperer-market
+    image: 10.177.76.220:5000/pricewhisperer-market
+    product: pricewhisperer
+  - name: pricewhisperer-areas
+    image: 10.177.76.220:5000/pricewhisperer-areas
+    product: pricewhisperer
+  - name: pricewhisperer-alerts
+    image: 10.177.76.220:5000/pricewhisperer-alerts
+    product: pricewhisperer
+  - name: pricewhisperer-news
+    image: 10.177.76.220:5000/pricewhisperer-news
+    product: pricewhisperer
+  - name: pricewhisperer-strategies
+    image: 10.177.76.220:5000/pricewhisperer-strategies
+    product: pricewhisperer
+  - name: pricewhisperer-identity
+    image: 10.177.76.220:5000/pricewhisperer-identity
+    product: pricewhisperer
+  - name: pricewhisperer-billing
+    image: 10.177.76.220:5000/pricewhisperer-billing
+    product: pricewhisperer
+  - name: pricewhisperer-compliance
+    image: 10.177.76.220:5000/pricewhisperer-compliance
+    product: pricewhisperer
+  - name: pricewhisperer-brokerage
+    image: 10.177.76.220:5000/pricewhisperer-brokerage
+    product: pricewhisperer
+  - name: pricewhisperer-portfolio
+    image: 10.177.76.220:5000/pricewhisperer-portfolio
+    product: pricewhisperer
+  - name: pricewhisperer-orders
+    image: 10.177.76.220:5000/pricewhisperer-orders
+    product: pricewhisperer
+  - name: pricewhisperer-backtests
+    image: 10.177.76.220:5000/pricewhisperer-backtests
+    product: pricewhisperer
+  - name: pricewhisperer-feedback
+    image: 10.177.76.220:5000/pricewhisperer-feedback
+    product: pricewhisperer
+  - name: pricewhisperer-calendar
+    image: 10.177.76.220:5000/pricewhisperer-calendar
+    product: pricewhisperer
 
 automations:
   - name: rerp-dev-images
