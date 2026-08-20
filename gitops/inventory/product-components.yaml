@@ -217,6 +217,9 @@ images:
     image: 10.177.76.220:5000/pricewhisperer-db-init
     product: pricewhisperer
   # PRD I1 background worker (raw Deployment; full-ref imagepolicy marker)
+  - name: pricewhisperer-massive-ticker-ingestor
+    image: 10.177.76.220:5000/pricewhisperer-massive-ticker-ingestor
+    product: pricewhisperer
   - name: pricewhisperer-benzinga-ticker-ingestor
     image: 10.177.76.220:5000/pricewhisperer-benzinga-ticker-ingestor
     product: pricewhisperer
