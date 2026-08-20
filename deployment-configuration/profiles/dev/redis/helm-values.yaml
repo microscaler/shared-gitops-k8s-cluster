@@ -13,9 +13,23 @@ image:
 auth:
   enabled: false
 
+# maxmemory MUST stay below the container limit below (256Mi). Without it
+# Redis grows unbounded and the kernel OOM-kills the pod, taking the whole
+# instance down - sesame-idam refresh tokens and hauliage state included -
+# with no warning and no graceful degradation. With it, Redis reaches its own
+# ceiling first and reports OOM on writes: a failure you can see and alert on
+# rather than a restart you have to infer.
+#
+# noeviction is deliberate HERE: this instance holds auth and session state,
+# and silently dropping a refresh token is worse than refusing a write.
+# Cache-shaped, growth-prone data belongs on its own instance where an LRU
+# policy is safe - Redis eviction is instance-wide and cannot be told to
+# prefer one tenant over another.
 commonConfiguration: |-
   appendonly yes
   save ""
+  maxmemory 200mb
+  maxmemory-policy noeviction
 
 master:
   disableCommands: []
