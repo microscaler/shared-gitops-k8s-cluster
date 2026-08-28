@@ -45,6 +45,7 @@ def main() -> int:
         "K8S_WORKER_1_IP": env.get("K8S_WORKER_1_IP", "10.177.76.211"),
         "K8S_WORKER_2_IP": env.get("K8S_WORKER_2_IP", "10.177.76.212"),
         "K8S_WORKER_3_IP": env.get("K8S_WORKER_3_IP", "10.177.76.213"),
+        "K8S_WORKER_4_IP": env.get("K8S_WORKER_4_IP", "10.177.76.214"),
         "REGISTRY_LB_IP": env.get("REGISTRY_LB_IP", "10.177.76.220"),
         "REGISTRY_HOST_ALIAS": env.get("REGISTRY_HOST_ALIAS", "localhost:5001"),
         "WORKSPACE_GUEST": env.get(
