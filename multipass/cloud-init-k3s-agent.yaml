@@ -21,6 +21,16 @@ write_files:
         "registry.shared-k8s.local:5000":
           endpoint:
             - "http://{{REGISTRY_LB_IP}}:5000"
+        "registry.registry.svc.cluster.local:5000":
+          endpoint:
+            - "http://{{REGISTRY_LB_IP}}:5000"
+        # The direct reference form ("<lb-ip>:5000/image") used by dev image
+        # tags MUST have its own mirror entry — insecure_skip_verify alone
+        # does not downgrade HTTPS->HTTP. Missing this bricked k8s-worker-4
+        # (ErrImagePull "HTTP response to HTTPS client", 2026-08-28).
+        "{{REGISTRY_LB_IP}}:5000":
+          endpoint:
+            - "http://{{REGISTRY_LB_IP}}:5000"
       configs:
         "{{REGISTRY_LB_IP}}:5000":
           tls:

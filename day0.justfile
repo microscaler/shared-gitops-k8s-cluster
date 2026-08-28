@@ -115,6 +115,47 @@ vm-create-workers: vm-create-cp
     done
     kubectl get nodes -o wide
 
+# -----------------------------------------------------------------------------
+# msk8s — consolidated tooling (docs/tooling-consolidation.md). New node
+# lifecycle goes through the Python CLI; these are thin shims. The cattle
+# rule: never SSH-fix a node — replace it.
+# -----------------------------------------------------------------------------
+tooling-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    test -x .venv/bin/python || python3 -m venv .venv
+    .venv/bin/pip -q install -e ./tooling
+
+node-add name: tooling-install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    set -a; source config/cluster.env; set +a
+    .venv/bin/msk8s node add "{{name}}"
+
+node-replace name: tooling-install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    set -a; source config/cluster.env; set +a
+    .venv/bin/msk8s node replace "{{name}}"
+
+node-delete name: tooling-install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    set -a; source config/cluster.env; set +a
+    .venv/bin/msk8s node delete "{{name}}"
+
+# Read-only: compare every node's registries.yaml against the template.
+node-doctor: tooling-install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    set -a; source config/cluster.env; set +a
+    .venv/bin/msk8s node doctor
+
 # Launch dedicated ARC runner nodes (labeled + tainted). Idempotent.
 vm-create-runners: vm-create-cp
     #!/usr/bin/env bash

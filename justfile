@@ -42,6 +42,20 @@ tilt-units-apply:
 	just cluster-edge-apply tilt_units
 
 # ── Day-0 Multipass/k3s (day0.justfile) ────────────────────────────────────
+# Node lifecycle via msk8s (docs/tooling-consolidation.md). Cattle rule:
+# never SSH-fix a node — replace it. doctor is read-only drift detection.
+node-add name:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" node-add {{name}}
+
+node-replace name:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" node-replace {{name}}
+
+node-delete name:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" node-delete {{name}}
+
+node-doctor:
+	just --justfile day0.justfile --working-directory "{{repo_root}}" node-doctor
+
 # VMs + kubeconfig + MetalLB/registry seed. Platform after that is Flux.
 
 cluster-create:
