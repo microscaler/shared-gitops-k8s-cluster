@@ -2683,6 +2683,207 @@ def metrics_instant_sum_vega(
     )
 
 
+def metrics_live_ranked_table_vega(
+    *,
+    title: str,
+    metric_name: str,
+    series_field: str,
+    extra_filters: list[dict[str, Any]] | None = None,
+    series_size: int = 200,
+    top_n: int = 15,
+    stale_ms: int = 120_000,
+    min_value: float = 0.0,
+    series_label: str = "pod",
+    value_label: str = "restarts",
+) -> dict[str, Any]:
+    """Ranked table of *currently scraped* series (drops terminated pods).
+
+    ``metrics_terms_table_visualization`` + ``max`` over the dashboard time
+    range keeps deleted pods in the table for as long as their samples remain
+    in the index. This helper takes the latest sample per series and drops
+    anything older than ``stale_ms`` (kube-state scrape is 30s).
+    """
+    filters: list[dict[str, Any]] = [
+        {"range": {METRICS_TIME_FIELD: {"%timefilter%": True}}},
+        {"term": {METRICS_NAME_KEYWORD: metric_name}},
+        {"term": {METRICS_PLATFORM_COMPONENT_KEYWORD: "k3s"}},
+    ]
+    if extra_filters:
+        filters.extend(extra_filters)
+    url = {
+        "index": "otel-v1-apm-metrics*",
+        "body": {
+            "size": 0,
+            "query": {"bool": {"filter": filters}},
+            "aggs": {
+                "series": {
+                    "terms": {"field": series_field, "size": series_size},
+                    "aggs": {
+                        "latest": {
+                            "top_hits": {
+                                "size": 1,
+                                "sort": [
+                                    {METRICS_TIME_FIELD: {"order": "desc"}}
+                                ],
+                                "_source": [METRICS_VALUE_FIELD, METRICS_TIME_FIELD],
+                            }
+                        }
+                    },
+                }
+            },
+        },
+    }
+    hit0 = "datum.latest && datum.latest.hits && datum.latest.hits.hits && datum.latest.hits.hits[0]"
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": 8,
+        "autosize": {"type": "fit", "contains": "padding"},
+        "signals": [{"name": "now", "value": None, "update": "now()"}],
+        "data": [
+            {
+                "name": "series",
+                "url": url,
+                "format": {"property": "aggregations.series.buckets"},
+                "transform": [
+                    {
+                        "type": "formula",
+                        "as": "latest",
+                        "expr": (
+                            f"{hit0} && datum.latest.hits.hits[0]._source && "
+                            f"datum.latest.hits.hits[0]._source['{METRICS_VALUE_FIELD}'] != null "
+                            f"? datum.latest.hits.hits[0]._source['{METRICS_VALUE_FIELD}'] : 0"
+                        ),
+                    },
+                    {
+                        "type": "formula",
+                        "as": "ts",
+                        "expr": (
+                            f"{hit0} && datum.latest.hits.hits[0].sort "
+                            f"? datum.latest.hits.hits[0].sort[0] : 0"
+                        ),
+                    },
+                    {
+                        "type": "filter",
+                        "expr": f"datum.ts > 0 && (now - datum.ts) <= {stale_ms}",
+                    },
+                    {
+                        "type": "filter",
+                        "expr": f"datum.latest > {min_value}",
+                    },
+                    {
+                        "type": "window",
+                        "sort": {"field": "latest", "order": "descending"},
+                        "ops": ["row_number"],
+                        "as": ["rank"],
+                    },
+                    {"type": "filter", "expr": f"datum.rank <= {top_n}"},
+                ],
+            },
+            {
+                "name": "empty",
+                "values": [{"msg": f"No live {value_label} > {min_value:g}"}],
+                "transform": [
+                    {
+                        "type": "filter",
+                        "expr": "length(data('series')) === 0",
+                    }
+                ],
+            },
+        ],
+        "scales": [
+            {
+                "name": "yscale",
+                "type": "band",
+                "domain": {"data": "series", "field": "key"},
+                "range": "height",
+                "padding": 0.15,
+            }
+        ],
+        "marks": [
+            {
+                "type": "text",
+                "from": {"data": "empty"},
+                "encode": {
+                    "enter": {
+                        "align": {"value": "center"},
+                        "baseline": {"value": "middle"},
+                        "fill": {"value": "#666"},
+                        "fontSize": {"value": 14},
+                        "text": {"field": "msg"},
+                    },
+                    "update": {
+                        "x": {"signal": "width / 2"},
+                        "y": {"signal": "height / 2"},
+                    },
+                },
+            },
+            {
+                "type": "text",
+                "from": {"data": "series"},
+                "encode": {
+                    "enter": {
+                        "align": {"value": "left"},
+                        "baseline": {"value": "middle"},
+                        "fill": {"value": "#111"},
+                        "fontSize": {"value": 12},
+                        "text": {"field": "key"},
+                    },
+                    "update": {
+                        "x": {"value": 4},
+                        "y": {"scale": "yscale", "field": "key", "band": 0.5},
+                    },
+                },
+            },
+            {
+                "type": "text",
+                "from": {"data": "series"},
+                "encode": {
+                    "enter": {
+                        "align": {"value": "right"},
+                        "baseline": {"value": "middle"},
+                        "fill": {"value": "#111"},
+                        "fontSize": {"value": 12},
+                        "fontWeight": {"value": "bold"},
+                        "text": {"signal": "format(datum.latest, ',.0f')"},
+                    },
+                    "update": {
+                        "x": {"signal": "width - 4"},
+                        "y": {"scale": "yscale", "field": "key", "band": 0.5},
+                    },
+                },
+            },
+            {
+                "type": "text",
+                "encode": {
+                    "enter": {
+                        "align": {"value": "left"},
+                        "baseline": {"value": "top"},
+                        "fill": {"value": "#666"},
+                        "fontSize": {"value": 10},
+                        "text": {
+                            "value": f"{series_label} (live) · {value_label}"
+                        },
+                    },
+                    "update": {"x": {"value": 4}, "y": {"value": 0}},
+                },
+            },
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query="",
+        filters=[],
+    )
+
+
 def metrics_line_visualization(
     *,
     title: str,
@@ -3767,18 +3968,13 @@ def _k3s_dev_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "k3s-dev-top-restarts",
-            # Restart totals are counters — max over the window ≈ current counter.
-            metrics_terms_table_visualization(
-                title="Top container restart counters",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: '
-                    f'"kube_pod_container_status_restarts_total" AND '
-                    f"metric.attributes.platform_component: k3s"
-                ),
-                field=METRICS_POD_KEYWORD,
-                size=15,
-                field_label="pod",
-                value_agg="max",
+            # Live scrape only — max-over-range tables keep terminated pods.
+            metrics_live_ranked_table_vega(
+                title="Top live container restart counters",
+                metric_name="kube_pod_container_status_restarts_total",
+                series_field=METRICS_POD_KEYWORD,
+                top_n=15,
+                series_label="pod",
                 value_label="restarts",
             ),
         ),
@@ -4240,18 +4436,19 @@ def _sesame_idam_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "sesame-idam-services-top-restarts",
-            metrics_terms_table_visualization(
-                title="Sesame-IDAM top container restart counters",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: '
-                    f'"kube_pod_container_status_restarts_total" AND '
-                    f"{METRICS_NAMESPACE_KEYWORD}: {SESAME_IDAM_NAMESPACE} AND "
-                    f"metric.attributes.platform_component: k3s"
-                ),
-                field=METRICS_POD_KEYWORD,
-                size=15,
-                field_label="pod",
-                value_agg="max",
+            metrics_live_ranked_table_vega(
+                title="Sesame-IDAM live container restart counters",
+                metric_name="kube_pod_container_status_restarts_total",
+                series_field=METRICS_POD_KEYWORD,
+                extra_filters=[
+                    {
+                        "term": {
+                            METRICS_NAMESPACE_KEYWORD: SESAME_IDAM_NAMESPACE
+                        }
+                    }
+                ],
+                top_n=15,
+                series_label="pod",
                 value_label="restarts",
             ),
         ),
@@ -4470,18 +4667,19 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         (
             "visualization",
             "pricewhisperer-services-top-restarts",
-            metrics_terms_table_visualization(
-                title="PriceWhisperer top container restart counters",
-                query=(
-                    f'{METRICS_NAME_KEYWORD}: '
-                    f'"kube_pod_container_status_restarts_total" AND '
-                    f"{METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE} AND "
-                    f"metric.attributes.platform_component: k3s"
-                ),
-                field=METRICS_POD_KEYWORD,
-                size=20,
-                field_label="pod",
-                value_agg="max",
+            metrics_live_ranked_table_vega(
+                title="PriceWhisperer live container restart counters",
+                metric_name="kube_pod_container_status_restarts_total",
+                series_field=METRICS_POD_KEYWORD,
+                extra_filters=[
+                    {
+                        "term": {
+                            METRICS_NAMESPACE_KEYWORD: PRICEWHISPERER_NAMESPACE
+                        }
+                    }
+                ],
+                top_n=20,
+                series_label="pod",
                 value_label="restarts",
             ),
         ),

@@ -63,6 +63,28 @@ def test_pricewhisperer_services_dashboard() -> None:
     )
 
 
+def test_live_restart_panels_drop_stale_series() -> None:
+    """Restart tables must use live scrape filter, not max-over-range history."""
+    for object_id in (
+        "pricewhisperer-services-top-restarts",
+        "sesame-idam-services-top-restarts",
+        "k3s-dev-top-restarts",
+    ):
+        vis = next(
+            payload
+            for object_type, oid, payload in definitions.all_dashboard_objects()
+            if object_type == "visualization" and oid == object_id
+        )
+        state = json.loads(vis["attributes"]["visState"])
+        assert state["type"] == "vega"
+        spec = json.loads(state["params"]["spec"])
+        transforms = spec["data"][0]["transform"]
+        exprs = [t.get("expr", "") for t in transforms if t.get("type") == "filter"]
+        assert any("stale" in e or "now - datum.ts" in e for e in exprs)
+        assert any("latest >" in e for e in exprs)
+        assert "live" in vis["attributes"]["title"].lower()
+
+
 def test_sesame_idam_services_dashboard() -> None:
     objects = definitions.all_dashboard_objects()
     dashboard = next(
