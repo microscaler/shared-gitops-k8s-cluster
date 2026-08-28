@@ -4370,6 +4370,251 @@ def _sesame_idam_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
     return objects
 
 
+# ---------------------------------------------------------------------------
+# pricewhisperer-services — pw namespace workload + HTTP/error logs + Postgres
+# ---------------------------------------------------------------------------
+
+PRICEWHISPERER_SERVICES_DASHBOARD_ID = "pricewhisperer-services"
+PRICEWHISPERER_NAMESPACE = "pw"
+PRICEWHISPERER_KUBE_LUCENE = (
+    f"{METRICS_NAME_KEYWORD}: (kube_pod_status_phase OR "
+    f"kube_pod_container_status_restarts_total OR "
+    f"kube_deployment_status_replicas_available OR "
+    f"kube_deployment_status_replicas_unavailable) AND "
+    f"{METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE} AND "
+    f"metric.attributes.platform_component: k3s"
+)
+PRICEWHISPERER_LOGS_LUCENE = (
+    f'{LOG_NAMESPACE_FIELD}: "{PRICEWHISPERER_NAMESPACE}" AND ({LOG_SIGNAL_LUCENE})'
+)
+PRICEWHISPERER_HTTP_LUCENE = (
+    f"({PRICEWHISPERER_LOGS_LUCENE}) AND {LOG_EVENT_CATEGORY_FIELD}:http"
+)
+PRICEWHISPERER_ERRORS_LUCENE = (
+    f"({PRICEWHISPERER_LOGS_LUCENE}) AND "
+    f"(severityText: (ERROR OR FATAL OR WARN) OR {LOG_STATUS_FIELD}:>=500)"
+)
+PRICEWHISPERER_POSTGRES_LUCENE = (
+    f"({PG_CONNECTIONS_LUCENE}) AND "
+    f"{METRICS_CONSUMER_NS_KEYWORD}: {PRICEWHISPERER_NAMESPACE}"
+)
+PRICEWHISPERER_DASHBOARD_LUCENE = (
+    f"({METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE}) OR "
+    f"({METRICS_CONSUMER_NS_KEYWORD}: {PRICEWHISPERER_NAMESPACE}) OR "
+    f'({LOG_NAMESPACE_FIELD}: "{PRICEWHISPERER_NAMESPACE}")'
+)
+
+
+def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
+    objects: list[tuple[str, str, dict[str, Any]]] = [
+        (
+            "visualization",
+            "pricewhisperer-services-pods-running",
+            metrics_cardinality_metric_visualization(
+                title="PriceWhisperer pods Running",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f"{METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE} AND "
+                    f"{METRICS_PHASE_KEYWORD}: Running AND value: 1 AND "
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_POD_KEYWORD,
+                custom_label="pods Running",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-deploy-unavailable",
+            metrics_instant_sum_vega(
+                title="PriceWhisperer deploy replicas unavailable",
+                metric_name="kube_deployment_status_replicas_unavailable",
+                series_field=METRICS_DEPLOYMENT_KEYWORD,
+                custom_label="unavailable",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-replicas-by-deployment",
+            metrics_terms_table_visualization(
+                title="Available replicas by deployment",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: '
+                    f'"kube_deployment_status_replicas_available" AND '
+                    f"{METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE} AND "
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_DEPLOYMENT_KEYWORD,
+                size=30,
+                field_label="deployment",
+                value_agg="max",
+                value_label="available replicas",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-pods-by-phase",
+            metrics_cardinality_table_visualization(
+                title="PriceWhisperer pods by phase",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: "kube_pod_status_phase" AND '
+                    f"{METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE} AND "
+                    f"value: 1 AND metric.attributes.platform_component: k3s"
+                ),
+                bucket_field=METRICS_PHASE_KEYWORD,
+                cardinality_field=METRICS_POD_KEYWORD,
+                size=8,
+                bucket_label="phase",
+                metric_label="pods",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-top-restarts",
+            metrics_terms_table_visualization(
+                title="PriceWhisperer top container restart counters",
+                query=(
+                    f'{METRICS_NAME_KEYWORD}: '
+                    f'"kube_pod_container_status_restarts_total" AND '
+                    f"{METRICS_NAMESPACE_KEYWORD}: {PRICEWHISPERER_NAMESPACE} AND "
+                    f"metric.attributes.platform_component: k3s"
+                ),
+                field=METRICS_POD_KEYWORD,
+                size=20,
+                field_label="pod",
+                value_agg="max",
+                value_label="restarts",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-http-by-service",
+            log_terms_table_visualization(
+                title="PriceWhisperer HTTP events by service",
+                data_view=LOGS_VIEW,
+                field=f"{LOG_APPLICATION_FIELD}.keyword",
+                query=PRICEWHISPERER_HTTP_LUCENE,
+                size=30,
+                field_label="service",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-errors-by-service",
+            log_terms_table_visualization(
+                title="PriceWhisperer warnings/errors by service",
+                data_view=LOGS_VIEW,
+                field=f"{LOG_APPLICATION_FIELD}.keyword",
+                query=PRICEWHISPERER_ERRORS_LUCENE,
+                size=30,
+                field_label="service",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-postgres-connections",
+            metrics_line_visualization(
+                title="PriceWhisperer Postgres connection signals",
+                query=PRICEWHISPERER_POSTGRES_LUCENE,
+                split_field=METRICS_NAME_KEYWORD,
+                split_size=6,
+                y_label="connections",
+            ),
+        ),
+        (
+            "search",
+            "pricewhisperer-services-error-logs",
+            saved_search(
+                title="PriceWhisperer / Warning and error logs",
+                data_view=LOGS_VIEW,
+                time_field=LOGS_TIME_FIELD,
+                columns=LOG_STREAM_COLUMNS,
+                query=PRICEWHISPERER_ERRORS_LUCENE,
+                filters=[],
+            ),
+        ),
+    ]
+    objects.append(
+        assemble_dashboard(
+            dashboard_id=PRICEWHISPERER_SERVICES_DASHBOARD_ID,
+            title="PriceWhisperer / Services",
+            description=(
+                "Namespace-wide health for PriceWhisperer in pw: running pods, "
+                "unavailable replicas, pod phases, restart leaders, HTTP/error "
+                "logs by serviceName, and Postgres connection signals for the "
+                "pricewhisperer database. Workload panels cover all deployments; "
+                "log panels reflect OTLP-instrumented backends. "
+                f"Managed by {MANAGED_BY}"
+            ),
+            panels=[
+                ("visualization", "pricewhisperer-services-pods-running", 0, 0, 24, 6),
+                (
+                    "visualization",
+                    "pricewhisperer-services-deploy-unavailable",
+                    24,
+                    0,
+                    24,
+                    6,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-replicas-by-deployment",
+                    0,
+                    6,
+                    24,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-pods-by-phase",
+                    24,
+                    6,
+                    12,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-top-restarts",
+                    36,
+                    6,
+                    12,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-http-by-service",
+                    0,
+                    18,
+                    24,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-errors-by-service",
+                    24,
+                    18,
+                    24,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-postgres-connections",
+                    0,
+                    30,
+                    48,
+                    12,
+                ),
+                ("search", "pricewhisperer-services-error-logs", 0, 42, 48, 14),
+            ],
+            panel_ref_prefix="pricewhisperer_services",
+            time_from="now-1h",
+            refresh_ms=30000,
+            query=PRICEWHISPERER_DASHBOARD_LUCENE,
+            filters=[],
+        )
+    )
+    return objects
+
+
 DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "logs-explore": _logs_explore_bundle(),
     "http-latency": _http_latency_bundle(),
@@ -4377,6 +4622,7 @@ DASHBOARD_BUNDLES: dict[str, list[tuple[str, str, dict[str, Any]]]] = {
     "k3s-dev": _k3s_dev_bundle(),
     "loadlinker-services": _loadlinker_services_bundle(),
     "sesame-idam-services": _sesame_idam_services_bundle(),
+    "pricewhisperer-services": _pricewhisperer_services_bundle(),
 }
 
 DEPRECATED_SAVED_OBJECTS: list[tuple[str, str]] = [

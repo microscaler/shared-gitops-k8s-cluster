@@ -30,3 +30,4 @@ configMapGenerator:
       - dashboards/k3s-dev.ndjson
       - dashboards/loadlinker-services.ndjson
       - dashboards/sesame-idam-services.ndjson
+      - dashboards/pricewhisperer-services.ndjson

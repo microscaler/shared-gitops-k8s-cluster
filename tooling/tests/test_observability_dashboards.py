@@ -27,7 +27,40 @@ def test_dashboard_bundles() -> None:
         "k3s-dev",
         "loadlinker-services",
         "sesame-idam-services",
+        "pricewhisperer-services",
     }
+
+
+def test_pricewhisperer_services_dashboard() -> None:
+    objects = definitions.all_dashboard_objects()
+    dashboard = next(
+        payload
+        for object_type, object_id, payload in objects
+        if object_type == "dashboard" and object_id == "pricewhisperer-services"
+    )
+    assert dashboard["attributes"]["title"] == "PriceWhisperer / Services"
+    assert "pw" in dashboard["attributes"]["description"]
+    ref_ids = {ref["id"] for ref in dashboard["references"]}
+    assert {
+        "pricewhisperer-services-pods-running",
+        "pricewhisperer-services-deploy-unavailable",
+        "pricewhisperer-services-replicas-by-deployment",
+        "pricewhisperer-services-pods-by-phase",
+        "pricewhisperer-services-top-restarts",
+        "pricewhisperer-services-http-by-service",
+        "pricewhisperer-services-errors-by-service",
+        "pricewhisperer-services-postgres-connections",
+        "pricewhisperer-services-error-logs",
+    }.issubset(ref_ids)
+    assert (DASHBOARDS / "pricewhisperer-services.ndjson").is_file()
+
+    source = json.loads(
+        dashboard["attributes"]["kibanaSavedObjectMeta"]["searchSourceJSON"]
+    )
+    assert "metric.attributes.namespace.keyword: pw" in source["query"]["query"]
+    assert (
+        'resource.attributes.k8s@namespace@name: "pw"' in source["query"]["query"]
+    )
 
 
 def test_sesame_idam_services_dashboard() -> None:

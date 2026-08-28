@@ -104,6 +104,10 @@ config:
                 target_label: consumer_namespace
                 replacement: sesame-idam
               - source_labels: [datname]
+                regex: pricewhisperer
+                target_label: consumer_namespace
+                replacement: pw
+              - source_labels: [datname]
                 regex: rerp
                 target_label: consumer_namespace
                 replacement: rerp
