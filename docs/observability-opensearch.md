@@ -7,21 +7,28 @@ Jaeger are not part of the stack.
 ## Data flow
 
 ```text
-applications/exporters
-        │ OTLP gRPC/HTTP
-        ▼
-OpenTelemetry Collector
-        │ transform/classify-log-signal (event_category on logs, no drop)
+applications/exporters          nginx SPA containers (pw / loadlinker)
+        │ OTLP gRPC/HTTP              │ stdout → /var/log/pods (k3s)
+        ▼                             ▼
+OpenTelemetry Collector         otel-collector-logs (DaemonSet)
+(gateway Deployment)            filelog → classify (log.source=nginx)
         │ traces :21890, metrics :21891, logs :21892
-        ▼
-Data Prepper
-        │
-        ▼
-OpenSearch 2.19.x ── OpenSearch Dashboards 2.19.x
+        └──────────────┬──────────────┘
+                       ▼
+                  Data Prepper
+                       │
+                       ▼
+            OpenSearch 2.19.x ── OpenSearch Dashboards 2.19.x
 ```
 
-The Collector scrapes Lifeguard Postgres + Redis exporters in the `data`
+The gateway Collector scrapes Lifeguard Postgres + Redis exporters in the `data`
 namespace (Prometheus *exporters* only — no Prometheus/Grafana/Loki servers).
+It also scrapes BRRTRouter `/metrics` from annotated pods in `loadlinker` and
+`pw` (`prometheus/loadlinker`, `prometheus/pw`), same keep-list of
+`brrtrouter_*` / `lifeguard_*` series.
+A separate **logs agent** DaemonSet tails nginx SPA container logs only
+(`pw` trader/website/platform, `loadlinker` frontend) so they appear in
+Discover without duplicating Rust OTLP already indexed from services.
 Dev Dashboards runs with `data_source.enabled: false` so GitOps-provisioned
 index patterns register without a separate data-source object.
 
@@ -30,7 +37,8 @@ index patterns register without a separate data-source object.
 | OpenSearch | HelmRelease `opensearch`, single node, `zfs-iscsi` 30 GiB PVC |
 | Dashboards | HelmRelease `opensearch-dashboards`; UI via Envoy `opensearch.dev` (optional MetalLB `.227` bridge-only) |
 | Data Prepper | HelmRelease `data-prepper`, image 2.11, OTLP pipelines |
-| OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231`, Prometheus scrape |
+| OTel Collector | HelmRelease `otel-collector`, OTLP MetalLB `.231`, Prometheus scrape (`data`, `k3s`, `loadlinker`, `pw`) |
+| OTel logs agent | HelmRelease `otel-collector-logs`, DaemonSet filelog for nginx SPA pods |
 | Postgres exporter | Deployment `postgres-exporter` in `data`, `:9187` (Lifeguard primary) |
 | Provisioner | Ten-minute CronJob reconciling lifecycle, saved objects, and monitors |
 
@@ -56,8 +64,10 @@ sets `OBSERVABILITY_RETENTION_DAYS=7`.
 - The legacy unsuffixed metrics and logs indices are attached to the same
   policies and stop receiving writes after the Data Prepper rollout.
 - Dev stores `INFO` and above. Explicit `DEBUG` and `TRACE` records are dropped
-  by the Collector before export; pod logs remain available for immediate
-  development diagnosis.
+  by the Collector before export. Nginx SPA access lines (which never speak
+  OTLP) are scraped by `otel-collector-logs` into the same logs indices;
+  `kube-probe` lines are dropped at the agent. Other pod logs remain available
+  via `kubectl` for immediate development diagnosis.
 - Prometheus staleness markers carry the OpenTelemetry
   `NO_RECORDED_VALUE` flag rather than a measurement. The Collector drops those
   flagged points before Data Prepper so they cannot become false zeroes or
@@ -105,6 +115,9 @@ Primary log exploration is GitOps-managed:
 | **Logs / Errors** | WARN+ within signal |
 | **Logs / Auth** | `sesame-idam` signal |
 | **Logs / BFF** | `loadlinker` + `serviceName:bff` signal |
+| **Logs / Business** | Handler business events (`event_category:business` / `operation:*` / `pw business event`) |
+| **Logs / PriceWhisperer** | `pw` namespace signal |
+| **Logs / PW Business** | `pw` business events (`operation` / `error_kind` / `outcome`) |
 | **Logs / Runtime noise** | Rare lifecycle/config (`event_class:runtime_noise`) |
 
 ### Two-click filter path
@@ -150,6 +163,10 @@ Direct URLs:
 | BRRTRouter lifecycle only | `log.attributes.event_category:framework_lifecycle` |
 | Errors | `log.attributes.event_class:application AND severityText:(ERROR OR FATAL OR WARN)` |
 | Auth ns | `resource.attributes.k8s@namespace@name:sesame-idam AND log.attributes.event_class:application` |
+| PriceWhisperer ns | `resource.attributes.k8s@namespace@name:pw AND log.attributes.event_class:application` |
+| Business events | `log.attributes.event_class:application AND (log.attributes.event_category:business OR body:"pw business event" OR log.attributes.operation:*)` |
+| PW get_ticker | `resource.attributes.k8s@namespace@name:pw AND log.attributes.operation:get_ticker` |
+| Nginx SPA (trader/website/frontend) | `log.attributes.log.source:nginx` |
 | With trace | `log.attributes.has_trace:true` |
 | Free text | `"connection pool"` |
 

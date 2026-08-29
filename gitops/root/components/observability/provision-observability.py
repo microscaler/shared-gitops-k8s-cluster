@@ -259,6 +259,10 @@ def logs_index_template(pattern: str) -> dict[str, Any]:
         "status": {"type": "long"},
         "duration_ms": {"type": "long"},
         "has_trace": {"type": "boolean"},
+        "operation": keyword,
+        "outcome": keyword,
+        "error_kind": keyword,
+        "symbol": keyword,
     }
     return {
         "index_patterns": [pattern],
@@ -278,6 +282,10 @@ def logs_index_template(pattern: str) -> dict[str, Any]:
                     "log.attributes.event_category": keyword,
                     "log.attributes.event_class": keyword,
                     "log.attributes.has_trace": {"type": "boolean"},
+                    "log.attributes.operation": keyword,
+                    "log.attributes.outcome": keyword,
+                    "log.attributes.error_kind": keyword,
+                    "log.attributes.symbol": keyword,
                     **short_props,
                 }
             },

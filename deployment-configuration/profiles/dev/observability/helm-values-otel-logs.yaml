@@ -1,0 +1,132 @@
+# Logs-agent DaemonSet: scrape nginx SPA container stdout into Data Prepper.
+# Keep the OTLP/metrics gateway Deployment (helm-values-otel.yaml) unchanged.
+#
+# Scope is intentional — do NOT collect all namespace pods (would duplicate
+# BRRTRouter/Rust OTLP already indexed). Only static nginx edges that never
+# speak OTLP: pw trader/website/platform + loadlinker frontend.
+mode: daemonset
+fullnameOverride: otel-collector-logs
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.114.0"
+  pullPolicy: IfNotPresent
+
+presets:
+  kubernetesAttributes:
+    enabled: false
+  logsCollection:
+    enabled: false
+
+# Agent only — no Service / MetalLB / OTLP listen ports.
+service:
+  enabled: false
+
+ports:
+  otlp:
+    enabled: false
+  otlp-http:
+    enabled: false
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  metrics:
+    enabled: false
+  prometheus:
+    enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# Host pod logs are typically root-owned (0640); match chart logsCollection preset.
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  runAsNonRoot: false
+
+# Run on every node (including control-plane where pw trader often lands).
+tolerations:
+  - operator: Exists
+
+# k3s stores container stdout under /var/log/pods/<ns>_<pod>_<uid>/<container>/
+extraVolumes:
+  - name: varlogpods
+    hostPath:
+      path: /var/log/pods
+extraVolumeMounts:
+  - name: varlogpods
+    mountPath: /var/log/pods
+    readOnly: true
+
+config:
+  receivers:
+    filelog/nginx-spa:
+      include:
+        - /var/log/pods/pw_*_*/trader/*.log
+        - /var/log/pods/pw_*_*/website/*.log
+        - /var/log/pods/pw_*_*/platform/*.log
+        - /var/log/pods/loadlinker_*_*/frontend/*.log
+      start_at: end
+      include_file_path: true
+      operators:
+        - type: container
+          id: container-parser
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 180
+      spike_limit_mib: 40
+    # Drop kube-probe noise before export (nginx combined format).
+    filter/drop-nginx-probes:
+      error_mode: ignore
+      logs:
+        log_record:
+          - 'IsMatch(body, "(?i)kube-probe")'
+    transform/nginx-spa:
+      error_mode: ignore
+      log_statements:
+        - context: resource
+          statements:
+            - set(attributes["service.namespace"], attributes["k8s.namespace.name"]) where attributes["k8s.namespace.name"] != nil
+            - set(attributes["service.name"], attributes["k8s.container.name"]) where attributes["k8s.container.name"] != nil
+            - set(attributes["serviceName"], attributes["k8s.container.name"]) where attributes["k8s.container.name"] != nil
+        - context: log
+          statements:
+            - set(time_unix_nano, observed_time_unix_nano) where time_unix_nano == 0
+            - set(attributes["log.source"], "nginx")
+            - set(attributes["event_category"], "http") where IsMatch(body, "\"(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) ")
+            - set(attributes["event_category"], "nginx") where attributes["event_category"] == nil
+            - set(attributes["event_class"], "application")
+            - set(attributes["has_trace"], false)
+            - set(attributes["message"], body) where attributes["message"] == nil
+  exporters:
+    otlp/logs:
+      endpoint: data-prepper.observability.svc.cluster.local:21892
+      tls:
+        insecure: true
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+  service:
+    extensions: [health_check]
+    pipelines:
+      logs:
+        receivers: [filelog/nginx-spa]
+        processors:
+          - memory_limiter
+          - filter/drop-nginx-probes
+          - transform/nginx-spa
+          - batch
+        exporters: [otlp/logs]

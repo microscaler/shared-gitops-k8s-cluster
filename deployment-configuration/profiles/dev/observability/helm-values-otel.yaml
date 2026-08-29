@@ -219,6 +219,39 @@ config:
               - source_labels: [__name__]
                 regex: brrtrouter_requests_total|brrtrouter_request_duration_seconds_bucket|brrtrouter_request_duration_seconds_sum|brrtrouter_request_duration_seconds_count|brrtrouter_active_requests|brrtrouter_auth_failures_total|brrtrouter_top_level_requests_total|brrtrouter_worker_pool_queue_depth|brrtrouter_worker_pool_shed_total|brrtrouter_worker_pool_dispatched_total|brrtrouter_worker_pool_completed_total|lifeguard_pool_size|lifeguard_pool_workers|lifeguard_active_connections|lifeguard_connection_wait_time_seconds_bucket|lifeguard_connection_wait_time_seconds_sum|lifeguard_connection_wait_time_seconds_count|lifeguard_query_duration_seconds_bucket|lifeguard_query_duration_seconds_sum|lifeguard_query_duration_seconds_count|lifeguard_query_errors_total|lifeguard_pool_acquire_timeout_total|lifeguard_pool_slot_heal_total|lifeguard_pool_connection_rotated_total|lifeguard_wal_monitor_replica_routing_disabled|hauliage_dependency_up|hauliage_dependency_check_seconds
                 action: keep
+    # PriceWhisperer BRRTRouter + Lifeguard /metrics (annotation scrape).
+    # Same keep-list as loadlinker minus hauliage_dependency_* (PW does not emit them).
+    prometheus/pw:
+      config:
+        scrape_configs:
+          - job_name: pw-pods
+            scrape_interval: 15s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [pw]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                regex: "true"
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                separator: ":"
+                target_label: __address__
+                action: replace
+              - target_label: __metrics_path__
+                replacement: /metrics
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                target_label: service
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                target_label: serviceName
+              - source_labels: [__meta_kubernetes_namespace]
+                target_label: namespace
+              - target_label: platform_component
+                replacement: pricewhisperer
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: brrtrouter_requests_total|brrtrouter_request_duration_seconds_bucket|brrtrouter_request_duration_seconds_sum|brrtrouter_request_duration_seconds_count|brrtrouter_active_requests|brrtrouter_auth_failures_total|brrtrouter_top_level_requests_total|brrtrouter_worker_pool_queue_depth|brrtrouter_worker_pool_shed_total|brrtrouter_worker_pool_dispatched_total|brrtrouter_worker_pool_completed_total|lifeguard_pool_size|lifeguard_pool_workers|lifeguard_active_connections|lifeguard_connection_wait_time_seconds_bucket|lifeguard_connection_wait_time_seconds_sum|lifeguard_connection_wait_time_seconds_count|lifeguard_query_duration_seconds_bucket|lifeguard_query_duration_seconds_sum|lifeguard_query_duration_seconds_count|lifeguard_query_errors_total|lifeguard_pool_acquire_timeout_total|lifeguard_pool_slot_heal_total|lifeguard_pool_connection_rotated_total|lifeguard_wal_monitor_replica_routing_disabled
+                action: keep
   processors:
     batch: {}
     memory_limiter:
@@ -291,6 +324,9 @@ config:
             - set(attributes["event_class"], "runtime_noise") where attributes["event_category"] == "runtime_config" or attributes["event_category"] == "framework_lifecycle"
             # --- Application signal categories ---
             - set(attributes["event_category"], "http") where attributes["event_category"] == nil and IsMatch(body, "(?i)^Request (completed|received)$")
+            # PriceWhisperer / Hauliage business handler events (pw_telemetry).
+            - set(attributes["event_category"], "business") where attributes["event_category"] == nil and attributes["operation"] != nil
+            - set(attributes["event_category"], "business") where attributes["event_category"] == nil and IsMatch(body, "(?i)^pw business event$")
             - set(attributes["event_category"], "auth") where attributes["event_category"] == nil and IsMatch(instrumentation_scope.name, "(?i).*(jwks|login|session|authz|api.keys|org.mgmt|user.mgmt).*")
             - set(attributes["event_category"], "application") where attributes["event_category"] == nil
             - set(attributes["event_class"], "application") where attributes["event_class"] == nil
@@ -323,7 +359,7 @@ config:
         processors: [memory_limiter, k8sattributes, batch]
         exporters: [otlp/traces]
       metrics:
-        receivers: [otlp, prometheus/data, prometheus/k3s, prometheus/loadlinker]
+        receivers: [otlp, prometheus/data, prometheus/k3s, prometheus/loadlinker, prometheus/pw]
         processors: [memory_limiter, filter/drop-no-recorded-value, k8sattributes, batch]
         exporters: [otlp/metrics]
       logs:

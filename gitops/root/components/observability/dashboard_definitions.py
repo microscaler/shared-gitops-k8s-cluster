@@ -23,6 +23,13 @@ LOG_PATH_KEYWORD_FIELD = "log.attributes.path.keyword"
 LOG_STATUS_FIELD = "log.attributes.status"
 LOG_DURATION_FIELD = "log.attributes.duration_ms"
 
+# PriceWhisperer / Hauliage business telemetry (pw_telemetry BusinessEvent).
+LOG_OPERATION_FIELD = "log.attributes.operation"
+LOG_OUTCOME_FIELD = "log.attributes.outcome"
+LOG_ERROR_KIND_FIELD = "log.attributes.error_kind"
+LOG_SYMBOL_FIELD = "log.attributes.symbol"
+LOG_DETAIL_FIELD = "log.attributes.detail"
+
 # Default HTTP latency SLO percentile target (BFF edge design: p95 ≤ 500 ms).
 HTTP_P95_SLO_MS = 500
 
@@ -67,6 +74,10 @@ LOG_FIELD_SHORT_COPIES = {
     "status": LOG_STATUS_FIELD,
     "duration_ms": LOG_DURATION_FIELD,
     "has_trace": LOG_HAS_TRACE_FIELD,
+    "operation": LOG_OPERATION_FIELD,
+    "outcome": LOG_OUTCOME_FIELD,
+    "error_kind": LOG_ERROR_KIND_FIELD,
+    "symbol": LOG_SYMBOL_FIELD,
 }
 
 # Discover also keeps customLabel on long paths (detail/sidebar); DE headers
@@ -87,6 +98,10 @@ LOG_STREAM_COLUMNS = [
     "severityText",
     "event_class",
     "event_category",
+    "operation",
+    "outcome",
+    "error_kind",
+    "symbol",
     "method",
     "path",
     "status",
@@ -106,6 +121,18 @@ LOG_HTTP_COLUMNS = [
     "body",
 ]
 
+LOG_BUSINESS_COLUMNS = [
+    "name",
+    LOG_APPLICATION_FIELD,
+    "observedTimestamp",
+    "severityText",
+    "operation",
+    "outcome",
+    "error_kind",
+    "symbol",
+    "body",
+]
+
 # Popular sidebar ranking (highest count first). Curated SRE control plane.
 LOG_SIDEBAR_FILTER_FIELDS = [
     LOG_NAMESPACE_FIELD,
@@ -113,6 +140,10 @@ LOG_SIDEBAR_FILTER_FIELDS = [
     "severityText",
     LOG_EVENT_CLASS_FIELD,
     LOG_EVENT_CATEGORY_FIELD,
+    LOG_OPERATION_FIELD,
+    LOG_OUTCOME_FIELD,
+    LOG_ERROR_KIND_FIELD,
+    LOG_SYMBOL_FIELD,
     LOG_METHOD_FIELD,
     LOG_PATH_FIELD,
     LOG_STATUS_FIELD,
@@ -151,6 +182,17 @@ LOG_AUTH_LUCENE = (
 LOG_BFF_LUCENE = (
     f'({LOG_SIGNAL_LUCENE}) AND {LOG_NAMESPACE_FIELD}: "loadlinker" AND '
     f'{LOG_APPLICATION_FIELD}: "bff"'
+)
+
+# pw_telemetry / business handler events (body + operation attribute).
+LOG_BUSINESS_LUCENE = (
+    f"({LOG_SIGNAL_LUCENE}) AND "
+    f'({LOG_EVENT_CATEGORY_FIELD}:business OR body: "pw business event" OR '
+    f"{LOG_OPERATION_FIELD}:*)"
+)
+
+LOG_PW_BUSINESS_LUCENE = (
+    f'({LOG_BUSINESS_LUCENE}) AND {LOG_NAMESPACE_FIELD}: "pw"'
 )
 
 # Backward-compatible alias used by older docs / filter helpers.
@@ -2166,6 +2208,27 @@ def _saved_search_scopes() -> list[tuple[str, str, dict[str, Any]]]:
         ("logs-errors", "Logs / Errors", LOG_ERRORS_LUCENE, LOG_STREAM_COLUMNS, None),
         ("logs-auth", "Logs / Auth", LOG_AUTH_LUCENE, LOG_STREAM_COLUMNS, None),
         ("logs-bff", "Logs / BFF", LOG_BFF_LUCENE, LOG_STREAM_COLUMNS, None),
+        (
+            "logs-business",
+            "Logs / Business",
+            LOG_BUSINESS_LUCENE,
+            LOG_BUSINESS_COLUMNS,
+            None,
+        ),
+        (
+            "logs-pw",
+            "Logs / PriceWhisperer",
+            f'({LOG_SIGNAL_LUCENE}) AND {LOG_NAMESPACE_FIELD}: "pw"',
+            LOG_STREAM_COLUMNS,
+            None,
+        ),
+        (
+            "logs-pw-business",
+            "Logs / PW Business",
+            LOG_PW_BUSINESS_LUCENE,
+            LOG_BUSINESS_COLUMNS,
+            None,
+        ),
         (
             "logs-runtime-noise",
             "Logs / Runtime noise",
@@ -4591,6 +4654,11 @@ PRICEWHISPERER_ERRORS_LUCENE = (
     f"({PRICEWHISPERER_LOGS_LUCENE}) AND "
     f"(severityText: (ERROR OR FATAL OR WARN) OR {LOG_STATUS_FIELD}:>=500)"
 )
+PRICEWHISPERER_BUSINESS_LUCENE = (
+    f"({PRICEWHISPERER_LOGS_LUCENE}) AND "
+    f'({LOG_EVENT_CATEGORY_FIELD}:business OR body: "pw business event" OR '
+    f"{LOG_OPERATION_FIELD}:*)"
+)
 PRICEWHISPERER_POSTGRES_LUCENE = (
     f"({PG_CONNECTIONS_LUCENE}) AND "
     f"{METRICS_CONSUMER_NS_KEYWORD}: {PRICEWHISPERER_NAMESPACE}"
@@ -4709,6 +4777,34 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
         ),
         (
             "visualization",
+            "pricewhisperer-services-business-by-operation",
+            log_terms_table_visualization(
+                title="PriceWhisperer business events by operation",
+                data_view=LOGS_VIEW,
+                field=f"{LOG_OPERATION_FIELD}.keyword",
+                query=PRICEWHISPERER_BUSINESS_LUCENE,
+                size=30,
+                field_label="operation",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-business-by-error-kind",
+            log_terms_table_visualization(
+                title="PriceWhisperer business errors by error_kind",
+                data_view=LOGS_VIEW,
+                field=f"{LOG_ERROR_KIND_FIELD}.keyword",
+                query=(
+                    f"({PRICEWHISPERER_BUSINESS_LUCENE}) AND "
+                    f"(severityText: (ERROR OR FATAL OR WARN) OR "
+                    f"{LOG_OUTCOME_FIELD}: (error OR refused OR degraded))"
+                ),
+                size=20,
+                field_label="error_kind",
+            ),
+        ),
+        (
+            "visualization",
             "pricewhisperer-services-postgres-connections",
             metrics_line_visualization(
                 title="PriceWhisperer Postgres connection signals",
@@ -4730,6 +4826,18 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 filters=[],
             ),
         ),
+        (
+            "search",
+            "pricewhisperer-services-business-logs",
+            saved_search(
+                title="PriceWhisperer / Business events",
+                data_view=LOGS_VIEW,
+                time_field=LOGS_TIME_FIELD,
+                columns=LOG_BUSINESS_COLUMNS,
+                query=PRICEWHISPERER_BUSINESS_LUCENE,
+                filters=[],
+            ),
+        ),
     ]
     objects.append(
         assemble_dashboard(
@@ -4738,7 +4846,8 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
             description=(
                 "Namespace-wide health for PriceWhisperer in pw: running pods, "
                 "unavailable replicas, pod phases, restart leaders, HTTP/error "
-                "logs by serviceName, and Postgres connection signals for the "
+                "logs by serviceName, business handler events (operation / "
+                "error_kind), and Postgres connection signals for the "
                 "pricewhisperer database. Workload panels cover all deployments; "
                 "log panels reflect OTLP-instrumented backends. "
                 f"Managed by {MANAGED_BY}"
@@ -4795,13 +4904,37 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 ),
                 (
                     "visualization",
-                    "pricewhisperer-services-postgres-connections",
+                    "pricewhisperer-services-business-by-operation",
                     0,
                     30,
+                    24,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-business-by-error-kind",
+                    24,
+                    30,
+                    24,
+                    12,
+                ),
+                (
+                    "visualization",
+                    "pricewhisperer-services-postgres-connections",
+                    0,
+                    42,
                     48,
                     12,
                 ),
-                ("search", "pricewhisperer-services-error-logs", 0, 42, 48, 14),
+                ("search", "pricewhisperer-services-error-logs", 0, 54, 48, 12),
+                (
+                    "search",
+                    "pricewhisperer-services-business-logs",
+                    0,
+                    66,
+                    48,
+                    14,
+                ),
             ],
             panel_ref_prefix="pricewhisperer_services",
             time_from="now-1h",

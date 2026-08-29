@@ -1,39 +1,50 @@
 # Active Context
 
-**Last updated:** 2026-07-16 — product GitOps cutover (sesame + hauliage) following rerp split.
+**Last updated:** 2026-08-29 — committing PW business OTEL so Flux keeps it.
 
-## Product deploy ownership (rerp pattern)
+## Just done
 
-| Owner | Owns |
-|-------|------|
-| Flux bootstrap Job | Pgpool contract, role, database, schema, grants, login verify (`scripts/db-init-job.sh`) |
-| Tilt | Publish `*-db-init` image + `*-apply-migrations` (Lifeguard SQL/seeds) |
-| Flux services KS | HelmReleases (after bootstrap Ready) |
+### Commit path for Flux (2026-08-29)
 
-Foundation Ready: `sesame-idam-idam`, `hauliage-core`. Next: push microservice images + `FLUX_OWNS_DEPLOY=1`.
+Live patches alone get overwritten: profile-config + provisioner CronJob
+reconcile from git. Commit/push includes:
+- `event_category:business` classify + `prometheus/pw` scrape in helm-values-otel
+- short-field copies (operation/outcome/error_kind/symbol) in provisioner
+- PW business Discover searches + dashboard panels (regenerated NDJSON)
+- otel-collector-logs DaemonSet for nginx SPA filelog
+- docs/observability-opensearch.md Discover queries
 
----
+Provisioner CronJob was temporarily suspended while pipeline was patched live;
+resume after Flux applies new provisioner ConfigMap.
 
-**Earlier:** registry + mailpit on Helm; MailHog retired; Fluvio already Helm.
+### OSD + business telemetry verification
 
-## Helm migrations done
+- Confirmed `event_category:business` on new `pw business event` docs after
+  live otel CM patch (pre-commit).
+- `search_tickers` returns 200 + business events; `get_ticker` still WrongType/db
+  and can hang the may worker after errors.
 
-| Workload | Chart | Notes |
-|----------|-------|-------|
-| imgproxy | imgproxy/imgproxy 1.1.0 | Service :5001→8080 |
-| otel-collector | open-telemetry 0.110.7 | MetalLB .231 |
-| routellm (LiteLLM) | oci litellm-helm 1.92.0 | Bitnami DB/Redis **off**; MetalLB .221 |
-| pact-broker | pact-broker 6.2.2 | External `pact-postgres` (raw); MetalLB .232 |
-| Fluvio | fluvio-sys/app @ public git | pin `5267394…`; SpuGroup + `fluvio-sc` alias |
-| **registry** | twuni/docker-registry @ git `803018a` | existingClaim; custom tag-prune CronJob kept |
-| **mailpit** | jouve/mailpit 0.34.1 OCI | alias LB Service; MailHog removed |
 
-## Intentional keep-raw
+### Registry push: digest did not match (2026-08-29)
 
-FreeRADIUS / Squid / NanoMQ / llmrouter / postgres-backup / Faktory (config-watcher) / pact-postgres (alpine PGDATA) / namespaces / cert-manager CRs / MetalLB pools.
+**Symptom:** Tilt `image-pricewhisperer-backtests` fails on
+`docker buildx … oci-mediatypes=true` retag to `:dev-<ns>` with
+`provided digest did not match uploaded content` (zot @ 10.177.76.220:5000).
 
-## Next optional
+**Fix:**
+1. `BRRTRouter/tooling/.../build_image_simple.py` — push `:tilt` via buildx OCI
+   (with retries) instead of plain `docker push` schema2.
+2. `PriceWhisperer/Tiltfile` (+ `.ui`) — prefer `buildx imagetools create` for
+   `:dev-*` (no blob re-upload); fall back to buildx FROM with 3 retries.
 
-1. Inbucket community chart (low value)
-2. Faktory only if sidecar can stay out-of-band
-3. pact-postgres → Helm only with wipe or CNPG (do not Bitnami onto alpine PVC)
+### Zot wipe + recreate (2026-08-29)
+
+Suspended `stack-cluster`, deleted deploy/zot + pvc/zot-data + Released PV
+(Retain). Resumed Flux → fresh **60Gi** PVC, zot Ready, empty catalog.
+MetalLB Service `registry` @ `10.177.76.220:5000` preserved.
+Next: republish product images via Tilt (PW/hauliage/sesame).
+
+
+### PW observability parity (code on NFS)
+
+Helm scrape annotations + common.yaml + shared-gitops `prometheus/pw` — unpushed.

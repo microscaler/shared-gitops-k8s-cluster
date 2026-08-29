@@ -13,6 +13,7 @@ resources:
   - helm-release-dashboards.yaml
   - helm-release-data-prepper.yaml
   - helm-release-otel.yaml
+  - helm-release-otel-logs.yaml
   - node-exporter.yaml
   - kube-state-metrics.yaml
   - observability-provisioner-cronjob.yaml
