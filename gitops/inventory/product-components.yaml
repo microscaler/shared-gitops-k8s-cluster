@@ -24,6 +24,7 @@ sources:
 
 components:
   # --- RERP Accounting ---
+  # Suspended 2026-09-01: reduce Multipass load while registry/storage recover.
   - name: rerp-accounting
     source: rerp
     product: rerp
@@ -32,6 +33,7 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: true
+    suspend: true
   - name: rerp-accounting-services
     source: rerp
     product: rerp
@@ -40,6 +42,7 @@ components:
     depends_on: rerp-accounting
     wait: true
     force: false
+    suspend: true
   - name: rerp-accounting-catalog
     source: rerp
     product: rerp
@@ -48,6 +51,18 @@ components:
     depends_on: rerp-accounting
     wait: false
     force: false
+    suspend: true
+
+  # --- RERP CRM (just-enough CRM backing the PriceWhisperer platform portal) ---
+  - name: rerp-crm-services
+    source: rerp
+    product: rerp
+    suite: crm
+    path: ./deployment-configuration/profiles/dev/rerp/crm/services
+    depends_on: stack-namespaces
+    wait: true
+    force: false
+    suspend: false
 
   # --- Sesame-IDAM ---
   - name: sesame-idam-idam
@@ -58,6 +73,7 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: true
+    suspend: false
   - name: sesame-idam-idam-services
     source: sesame-idam
     product: sesame-idam
@@ -66,8 +82,10 @@ components:
     depends_on: sesame-idam-idam
     wait: true
     force: false
+    suspend: false
 
   # --- Hauliage ---
+  # Suspended 2026-09-01: reduce Multipass load while registry/storage recover.
   - name: hauliage-core
     source: hauliage
     product: hauliage
@@ -76,6 +94,7 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: true
+    suspend: true
   - name: hauliage-core-services
     source: hauliage
     product: hauliage
@@ -84,6 +103,7 @@ components:
     depends_on: hauliage-core
     wait: true
     force: false
+    suspend: true
 
   # --- PriceWhisperer ---
   - name: pricewhisperer-core
@@ -94,6 +114,7 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: true
+    suspend: false
 
 # Image discovery is cluster integration; update markers stay beside Helm
 # releases in each product repository. Tags: dev-<nanoseconds>.
@@ -101,176 +122,238 @@ images:
   - name: rerp-accounting-db-init
     image: 10.177.76.220:5000/rerp-accounting-db-init
     product: rerp
+    suspend: true
   - name: rerp-accounting-general-ledger
     image: 10.177.76.220:5000/rerp-accounting-general-ledger
     product: rerp
+    suspend: true
   - name: rerp-accounting-invoice
     image: 10.177.76.220:5000/rerp-accounting-invoice
     product: rerp
+    suspend: true
+
+  - name: rerp-crm-pipeline
+    image: 10.177.76.220:5000/rerp-crm-pipeline
+    product: rerp
+    suspend: false
 
   - name: sesame-idam-db-init
     image: 10.177.76.220:5000/sesame-idam-db-init
     product: sesame-idam
+    suspend: false
   - name: sesame-idam-identity-login-service
     image: 10.177.76.220:5000/sesame-idam-identity-login-service
     product: sesame-idam
+    suspend: false
   - name: sesame-idam-identity-session-service
     image: 10.177.76.220:5000/sesame-idam-identity-session-service
     product: sesame-idam
+    suspend: false
   - name: sesame-idam-identity-user-mgmt-service
     image: 10.177.76.220:5000/sesame-idam-identity-user-mgmt-service
     product: sesame-idam
+    suspend: false
   - name: sesame-idam-authz-core
     image: 10.177.76.220:5000/sesame-idam-authz-core
     product: sesame-idam
+    suspend: false
   - name: sesame-idam-api-keys
     image: 10.177.76.220:5000/sesame-idam-api-keys
     product: sesame-idam
+    suspend: false
   - name: sesame-idam-org-mgmt
     image: 10.177.76.220:5000/sesame-idam-org-mgmt
     product: sesame-idam
+    suspend: false
 
+  # Suspended 2026-09-01: registry repos missing (NAME_UNKNOWN); haulage sync paused.
   - name: hauliage-db-init
     image: 10.177.76.220:5000/hauliage-db-init
     product: hauliage
+    suspend: true
   - name: hauliage-identity
     image: 10.177.76.220:5000/hauliage-identity
     product: hauliage
+    suspend: true
   - name: hauliage-company
     image: 10.177.76.220:5000/hauliage-company
     product: hauliage
+    suspend: true
   - name: hauliage-fleet
     image: 10.177.76.220:5000/hauliage-fleet
     product: hauliage
+    suspend: true
   - name: hauliage-consignments
     image: 10.177.76.220:5000/hauliage-consignments
     product: hauliage
+    suspend: true
   - name: hauliage-bidding
     image: 10.177.76.220:5000/hauliage-bidding
     product: hauliage
+    suspend: true
   - name: hauliage-inbox
     image: 10.177.76.220:5000/hauliage-inbox
     product: hauliage
+    suspend: true
   - name: hauliage-notifications
     image: 10.177.76.220:5000/hauliage-notifications
     product: hauliage
+    suspend: true
   - name: hauliage-analytics
     image: 10.177.76.220:5000/hauliage-analytics
     product: hauliage
+    suspend: true
   - name: hauliage-telemetry
     image: 10.177.76.220:5000/hauliage-telemetry
     product: hauliage
+    suspend: true
   - name: hauliage-marketing
     image: 10.177.76.220:5000/hauliage-marketing
     product: hauliage
+    suspend: true
   - name: hauliage-reviews
     image: 10.177.76.220:5000/hauliage-reviews
     product: hauliage
+    suspend: true
   - name: hauliage-locations
     image: 10.177.76.220:5000/hauliage-locations
     product: hauliage
+    suspend: true
   - name: hauliage-customs
     image: 10.177.76.220:5000/hauliage-customs
     product: hauliage
+    suspend: true
   - name: hauliage-gics
     image: 10.177.76.220:5000/hauliage-gics
     product: hauliage
+    suspend: true
   - name: hauliage-terminals
     image: 10.177.76.220:5000/hauliage-terminals
     product: hauliage
+    suspend: true
   - name: hauliage-bff
     image: 10.177.76.220:5000/hauliage-bff
     product: hauliage
+    suspend: true
   - name: hauliage-frontend
     image: 10.177.76.220:5000/hauliage-frontend
     product: hauliage
+    suspend: true
   - name: hauliage-iot-worker
     image: 10.177.76.220:5000/hauliage-iot-worker
     product: hauliage
+    suspend: true
   - name: hauliage-notifications-sweep-worker
     image: 10.177.76.220:5000/hauliage-notifications-sweep-worker
     product: hauliage
+    suspend: true
   - name: hauliage-escrow-drawdown-worker
     image: 10.177.76.220:5000/hauliage-escrow-drawdown-worker
     product: hauliage
+    suspend: true
   - name: hauliage-notifications-dispatcher
     image: 10.177.76.220:5000/hauliage-notifications-dispatcher
     product: hauliage
+    suspend: true
   - name: hauliage-demo-telemetry-publisher
     image: 10.177.76.220:5000/hauliage-demo-telemetry-publisher
     product: hauliage
+    suspend: true
   - name: searates-terminal-mock
     image: 10.177.76.220:5000/searates-terminal-mock
     product: hauliage
+    suspend: true
 
   - name: pricewhisperer-website
     image: 10.177.76.220:5000/pricewhisperer-website
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-trader
     image: 10.177.76.220:5000/pricewhisperer-trader
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-platform
     image: 10.177.76.220:5000/pricewhisperer-platform
     product: pricewhisperer
+    suspend: false
   # Database bootstrap Job image (hauliage db-init pattern)
   - name: pricewhisperer-db-init
     image: 10.177.76.220:5000/pricewhisperer-db-init
     product: pricewhisperer
+    suspend: false
   # PRD I1 background worker (raw Deployment; full-ref imagepolicy marker)
   - name: pricewhisperer-massive-ticker-ingestor
     image: 10.177.76.220:5000/pricewhisperer-massive-ticker-ingestor
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-benzinga-ticker-ingestor
     image: 10.177.76.220:5000/pricewhisperer-benzinga-ticker-ingestor
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-benzinga-analyst-ingestor
     image: 10.177.76.220:5000/pricewhisperer-benzinga-analyst-ingestor
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-benzinga-news-ingestor
     image: 10.177.76.220:5000/pricewhisperer-benzinga-news-ingestor
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-market
     image: 10.177.76.220:5000/pricewhisperer-market
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-areas
     image: 10.177.76.220:5000/pricewhisperer-areas
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-alerts
     image: 10.177.76.220:5000/pricewhisperer-alerts
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-news
     image: 10.177.76.220:5000/pricewhisperer-news
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-strategies
     image: 10.177.76.220:5000/pricewhisperer-strategies
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-identity
     image: 10.177.76.220:5000/pricewhisperer-identity
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-billing
     image: 10.177.76.220:5000/pricewhisperer-billing
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-compliance
     image: 10.177.76.220:5000/pricewhisperer-compliance
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-brokerage
     image: 10.177.76.220:5000/pricewhisperer-brokerage
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-portfolio
     image: 10.177.76.220:5000/pricewhisperer-portfolio
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-orders
     image: 10.177.76.220:5000/pricewhisperer-orders
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-backtests
     image: 10.177.76.220:5000/pricewhisperer-backtests
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-feedback
     image: 10.177.76.220:5000/pricewhisperer-feedback
     product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-calendar
     image: 10.177.76.220:5000/pricewhisperer-calendar
     product: pricewhisperer
+    suspend: false
 
 automations:
   - name: rerp-dev-images
@@ -280,6 +363,7 @@ automations:
     path: ./deployment-configuration/profiles/dev/rerp
     author_name: RERP Flux image automation
     author_email: flux-rerp@microscaler.local
+    suspend: true
   - name: sesame-idam-dev-images
     source: sesame-idam
     product: sesame-idam
@@ -287,6 +371,7 @@ automations:
     path: ./deployment-configuration/profiles/dev/sesame-idam
     author_name: Sesame-IDAM Flux image automation
     author_email: flux-sesame-idam@microscaler.local
+    suspend: false
   - name: hauliage-dev-images
     source: hauliage
     product: hauliage
@@ -294,6 +379,7 @@ automations:
     path: ./deployment-configuration/profiles/dev/hauliage
     author_name: Hauliage Flux image automation
     author_email: flux-hauliage@microscaler.local
+    suspend: true
   - name: pricewhisperer-dev-images
     source: pricewhisperer
     product: pricewhisperer
@@ -301,3 +387,4 @@ automations:
     path: ./deployment-configuration/profiles/dev/pricewhisperer
     author_name: PriceWhisperer Flux image automation
     author_email: flux-pricewhisperer@microscaler.local
+    suspend: false
