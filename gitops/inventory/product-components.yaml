@@ -310,6 +310,10 @@ images:
     image: 10.177.76.220:5000/pricewhisperer-alerts
     product: pricewhisperer
     suspend: false
+  - name: pricewhisperer-platform-bff
+    image: 10.177.76.220:5000/pricewhisperer-platform-bff
+    product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-news
     image: 10.177.76.220:5000/pricewhisperer-news
     product: pricewhisperer
