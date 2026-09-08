@@ -97,7 +97,7 @@ spec:
           imageRepositoryRef:
             name: "${{ .Repeat.name }}"
           filterTags:
-            pattern: '^dev-(?P<timestamp>[0-9]+)$'
+            pattern: '^dev-(?P<timestamp>[0-9]{19})$'
             extract: '$timestamp'
           policy:
             numerical:
