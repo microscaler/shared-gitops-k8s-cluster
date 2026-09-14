@@ -30,18 +30,16 @@ def test_lifecycle_policy_enforces_seven_day_delete() -> None:
     assert policy["ism_template"][0]["index_patterns"] == ["otel-v1-apm-logs-*"]
 
 
-def test_trace_policy_keeps_rollover_and_adds_seven_day_delete() -> None:
+def test_trace_policy_rolls_daily_to_make_seven_day_delete_reachable() -> None:
     policy = provisioner.trace_lifecycle_policy(7)["policy"]
 
     current = policy["states"][0]
     assert current["name"] == "current_write_index"
-    # Size-only rollover: daily min_index_age created empty span indices when
-    # the collector stopped exporting traces.
     assert current["actions"][0]["rollover"] == {
-        "min_size": "50gb",
+        "min_size": "5gb",
+        "min_index_age": "24h",
         "copy_alias": False,
     }
-    assert "min_index_age" not in current["actions"][0]["rollover"]
     assert current["transitions"] == [
         {"state_name": "delete", "conditions": {"min_index_age": "7d"}}
     ]
