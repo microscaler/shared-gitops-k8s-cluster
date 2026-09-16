@@ -599,7 +599,33 @@ def desired_monitors() -> list[dict[str, Any]]:
             }
         },
     }
+    # PriceWhisperer's market service exports pricewhisperer_stream_stale = 1
+    # when the US market calendar says minute bars should be arriving and no
+    # streamed bar has landed for three minutes (docs/incidents
+    # 2026-09-15_massive_stream_stall_POSTMORTEM.md in the PriceWhisperer
+    # repo: four silent hours). Any such sample in the last five minutes
+    # raises the alert; the gauge is 0 while the market is closed.
+    pricewhisperer_stream_stale = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": {
+            "bool": {
+                "filter": [
+                    {"range": {"time": {"gte": "now-5m", "lte": "now"}}},
+                    {"term": {"name.keyword": "pricewhisperer_stream_stale"}},
+                    {"term": {"value": 1}},
+                ]
+            }
+        },
+    }
     return [
+        monitor_payload(
+            name="PriceWhisperer stream stale",
+            indices=[METRICS_PATTERN],
+            query=pricewhisperer_stream_stale,
+            condition="ctx.results[0].hits.total.value > 0",
+            severity="1",
+        ),
         monitor_payload(
             name="Telemetry metrics stale",
             indices=[METRICS_PATTERN],

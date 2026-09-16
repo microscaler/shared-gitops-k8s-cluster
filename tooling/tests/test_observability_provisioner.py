@@ -130,6 +130,7 @@ def test_alerts_cover_ingest_errors_and_rerp_freshness() -> None:
     monitors = {monitor["name"]: monitor for monitor in provisioner.desired_monitors()}
 
     assert set(monitors) == {
+        "PriceWhisperer stream stale",
         "Telemetry metrics stale",
         "Telemetry error logs detected",
         "RERP API metrics stale",
