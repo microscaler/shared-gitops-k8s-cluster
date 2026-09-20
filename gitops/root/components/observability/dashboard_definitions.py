@@ -3252,6 +3252,161 @@ def metrics_scaled_line_vega(
     )
 
 
+def metrics_counter_rate_vega(
+    *,
+    title: str,
+    metric_name: str,
+    split_field: str,
+    y_label: str,
+    numerator_field: str = METRICS_VALUE_FIELD,
+    denominator_field: str | None = None,
+    extra_filters: list[dict[str, Any]] | None = None,
+    platform_component: str = "pricewhisperer",
+    split_size: int = 8,
+    interval: str = "1m",
+) -> dict[str, Any]:
+    """Per-interval change of a cumulative counter, one line per split value.
+
+    ``max(numerator)`` per bucket, then a ``derivative`` - so a counter reads
+    as a rate (frames per minute, disconnects per minute). With
+    ``denominator_field`` the two derivatives are divided instead: for a
+    histogram doc that is ``Δsum / Δcount`` = the mean over the interval
+    (``pw_stream_tail_ms``: mean tail query time). Negative derivatives (a
+    counter reset on a pod restart) are dropped.
+    """
+    filters: list[dict[str, Any]] = [
+        {"range": {METRICS_TIME_FIELD: {"%timefilter%": True}}},
+        {"term": {METRICS_NAME_KEYWORD: metric_name}},
+        {"term": {"metric.attributes.platform_component": platform_component}},
+    ] + list(extra_filters or [])
+    timeline_aggs: dict[str, Any] = {
+        "num": {"max": {"field": numerator_field}},
+        "num_d": {"derivative": {"buckets_path": "num"}},
+    }
+    if denominator_field:
+        timeline_aggs["den"] = {"max": {"field": denominator_field}}
+        timeline_aggs["den_d"] = {"derivative": {"buckets_path": "den"}}
+        timeline_aggs["rate"] = {
+            "bucket_script": {
+                "buckets_path": {"n": "num_d", "d": "den_d"},
+                "script": "params.d > 0 ? params.n / params.d : null",
+            }
+        }
+        value_expr = "datum.bucket.rate ? datum.bucket.rate.value : null"
+    else:
+        value_expr = "datum.bucket.num_d ? datum.bucket.num_d.value : null"
+    url = {
+        "index": "otel-v1-apm-metrics*",
+        "body": {
+            "size": 0,
+            "query": {"bool": {"filter": filters}},
+            "aggs": {
+                "series": {
+                    "terms": {"field": split_field, "size": split_size},
+                    "aggs": {
+                        "timeline": {
+                            "date_histogram": {
+                                "field": METRICS_TIME_FIELD,
+                                "fixed_interval": interval,
+                                # a derivative's parent must keep empty buckets
+                                "min_doc_count": 0,
+                            },
+                            "aggs": timeline_aggs,
+                        }
+                    },
+                }
+            },
+        },
+    }
+    spec = {
+        "$schema": "https://vega.github.io/schema/vega/v5.json",
+        "padding": {"left": 8, "right": 8, "top": 8, "bottom": 8},
+        "autosize": {"type": "fit", "contains": "padding"},
+        "data": [
+            {
+                "name": "raw",
+                "url": url,
+                "format": {"property": "aggregations.series.buckets"},
+                "transform": [
+                    {"type": "formula", "as": "series", "expr": "datum.key"},
+                    {"type": "flatten", "fields": ["timeline.buckets"], "as": ["bucket"]},
+                    {"type": "formula", "as": "t", "expr": "datum.bucket.key"},
+                    {"type": "formula", "as": "value", "expr": value_expr},
+                    {
+                        "type": "filter",
+                        "expr": "isValid(datum.value) && isFinite(datum.value) && datum.value >= 0",
+                    },
+                ],
+            }
+        ],
+        "scales": [
+            {"name": "x", "type": "time", "domain": {"data": "raw", "field": "t"}, "range": "width"},
+            {
+                "name": "y",
+                "type": "linear",
+                "domain": {"data": "raw", "field": "value"},
+                "nice": True,
+                "zero": True,
+                "range": "height",
+            },
+            {
+                "name": "color",
+                "type": "ordinal",
+                "domain": {"data": "raw", "field": "series"},
+                "range": {"scheme": "category10"},
+            },
+        ],
+        "axes": [
+            {"orient": "bottom", "scale": "x", "labelFontSize": 10, "title": METRICS_TIME_FIELD, "titleFontSize": 11},
+            {"orient": "left", "scale": "y", "labelFontSize": 10, "title": y_label, "titleFontSize": 11, "format": ",.1f"},
+        ],
+        "legends": [
+            {"fill": "color", "title": split_field.split(".")[-2] if "." in split_field else split_field,
+             "orient": "right", "labelFontSize": 10, "titleFontSize": 11}
+        ],
+        "marks": [
+            {
+                "type": "group",
+                "from": {"facet": {"name": "series", "data": "raw", "groupby": "series"}},
+                "marks": [
+                    {
+                        "type": "line",
+                        "from": {"data": "series"},
+                        "encode": {
+                            "enter": {"interpolate": {"value": "linear"}, "strokeWidth": {"value": 2}},
+                            "update": {
+                                "x": {"scale": "x", "field": "t"},
+                                "y": {"scale": "y", "field": "value"},
+                                "stroke": {"scale": "color", "field": "series"},
+                                "tooltip": {
+                                    "signal": (
+                                        "{title: datum.series, "
+                                        f"'{y_label}': format(datum.value, ',.1f'), "
+                                        "time: utcFormat(datum.t, '%Y-%m-%d %H:%M')}"
+                                    )
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    vis_state = {
+        "title": title,
+        "type": "vega",
+        "params": {"spec": compact(spec), "hideWarnings": True},
+        "aggs": [],
+    }
+    return _visualization(
+        title=title,
+        data_view=METRICS_VIEW,
+        vis_state=vis_state,
+        query="",
+        filters=[],
+    )
+
+
 def metrics_terms_table_visualization(
     *,
     title: str,
@@ -4814,6 +4969,68 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 y_label="connections",
             ),
         ),
+        # EPIC_37 US_37_08: the push streams (market / alerts / orders SSE).
+        (
+            "visualization",
+            "pricewhisperer-services-push-streams-open",
+            metrics_line_visualization(
+                title="Push streams open (by service)",
+                query=(
+                    f"{METRICS_NAME_KEYWORD}: pw_stream_connections AND "
+                    "metric.attributes.topic.keyword: _all AND "
+                    f"metric.attributes.platform_component.keyword: pricewhisperer"
+                ),
+                split_field="metric.attributes.serviceName.keyword",
+                split_size=6,
+                y_label="streams",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-push-frames-rate",
+            metrics_counter_rate_vega(
+                title="Push frames / min (by topic)",
+                metric_name="pw_stream_frames_total",
+                split_field="metric.attributes.topic.keyword",
+                y_label="frames / min",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-push-disconnects-rate",
+            metrics_counter_rate_vega(
+                title="Push disconnects / min (by reason)",
+                metric_name="pw_stream_disconnects_total",
+                split_field="metric.attributes.reason.keyword",
+                y_label="disconnects / min",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-push-tail-mean",
+            metrics_counter_rate_vega(
+                title="Push tail query, mean ms per minute (by topic; alert on p95 > 250 ms)",
+                metric_name="pw_stream_tail_ms",
+                split_field="metric.attributes.topic.keyword",
+                y_label="tail ms (mean)",
+                numerator_field="sum",
+                denominator_field="count",
+            ),
+        ),
+        (
+            "visualization",
+            "pricewhisperer-services-push-listener",
+            metrics_line_visualization(
+                title="Push listener up (orders; LISTEN/NOTIFY)",
+                query=(
+                    f"{METRICS_NAME_KEYWORD}: pw_push_listener_up AND "
+                    f"metric.attributes.platform_component.keyword: pricewhisperer"
+                ),
+                split_field="metric.attributes.serviceName.keyword",
+                split_size=6,
+                y_label="up",
+            ),
+        ),
         (
             "search",
             "pricewhisperer-services-error-logs",
@@ -4847,7 +5064,8 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                 "Namespace-wide health for PriceWhisperer in pw: running pods, "
                 "unavailable replicas, pod phases, restart leaders, HTTP/error "
                 "logs by serviceName, business handler events (operation / "
-                "error_kind), and Postgres connection signals for the "
+                "error_kind), the push streams (open, frames/min, "
+                "disconnects/min, tail ms, listener), and Postgres connection signals for the "
                 "pricewhisperer database. Workload panels cover all deployments; "
                 "log panels reflect OTLP-instrumented backends. "
                 f"Managed by {MANAGED_BY}"
@@ -4926,12 +5144,17 @@ def _pricewhisperer_services_bundle() -> list[tuple[str, str, dict[str, Any]]]:
                     48,
                     12,
                 ),
-                ("search", "pricewhisperer-services-error-logs", 0, 54, 48, 12),
+                ("visualization", "pricewhisperer-services-push-streams-open", 0, 54, 16, 12),
+                ("visualization", "pricewhisperer-services-push-frames-rate", 16, 54, 16, 12),
+                ("visualization", "pricewhisperer-services-push-disconnects-rate", 32, 54, 16, 12),
+                ("visualization", "pricewhisperer-services-push-tail-mean", 0, 66, 32, 12),
+                ("visualization", "pricewhisperer-services-push-listener", 32, 66, 16, 12),
+                ("search", "pricewhisperer-services-error-logs", 0, 78, 48, 12),
                 (
                     "search",
                     "pricewhisperer-services-business-logs",
                     0,
-                    66,
+                    90,
                     48,
                     14,
                 ),
