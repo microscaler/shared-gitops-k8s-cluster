@@ -15,7 +15,11 @@ primary:
   persistence:
     storageClass: zfs-iscsi
     # Must be >= existing Bound PVC capacity (shrink is forbidden).
-    size: 20Gi
+    # 22 Sep 2026: 20 -> 60Gi for five years of daily bars for every
+    # ticker (~5 GB) and about a year of minute bars for the 2k-symbol
+    # minute universe (~60 GB); the zvols are thin, so the pool only pays
+    # for what is written.
+    size: 60Gi
   resources:
     requests:
       cpu: 250m
@@ -36,7 +40,9 @@ replica:
   count: 2
   persistence:
     storageClass: zfs-iscsi
-    size: 10Gi
+    # Replicas hold a full copy: they were 10Gi at 89% with the database at
+    # 8.2 GB, one good backfill away from breaking replication.
+    size: 60Gi
 
 exporter:
   enabled: true
