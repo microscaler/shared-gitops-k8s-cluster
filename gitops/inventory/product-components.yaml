@@ -298,6 +298,10 @@ images:
     image: 10.177.76.220:5000/pricewhisperer-benzinga-news-ingestor
     product: pricewhisperer
     suspend: false
+  - name: pricewhisperer-social-ingestor
+    image: 10.177.76.220:5000/pricewhisperer-social-ingestor
+    product: pricewhisperer
+    suspend: false
   - name: pricewhisperer-market
     image: 10.177.76.220:5000/pricewhisperer-market
     product: pricewhisperer
