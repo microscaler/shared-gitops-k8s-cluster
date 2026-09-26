@@ -20,6 +20,27 @@ broker:
         existingSecretUsernameKey: PACT_BROKER_BASIC_AUTH_USERNAME
         existingSecretPasswordKey: PACT_BROKER_BASIC_AUTH_PASSWORD
     disable_ssl: true
+    # The chart default is 0: one refused connection at boot and the broker exits.
+    # Every time pact-postgres restarts or moves node the broker crash-looped with
+    # "PG::ConnectionBad: Connection refused" - 1,113 restarts in 71 days. Retry
+    # for ~2 minutes (40 x 3 s) instead.
+    databaseConnectMaxRetries: 40
+  # Chart default checks the heartbeat every second with a 5 s timeout, so any
+  # 3 s stall (GC, a big publish, a busy node) kills a healthy broker.
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 120
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 6
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
   resources:
     requests:
       memory: 128Mi
