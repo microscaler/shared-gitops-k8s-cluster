@@ -165,13 +165,14 @@ spec:
           env:
             - name: DOCKER_GROUP_GID
               value: "123"
-            # Transparent registry cache (see dind-registry-proxy.yaml).
+            # Transparent registry cache (see dind-registry-proxy.yaml). Artifact Registry (.pkg.dev, blobs via
+            # .googleapis.com) goes direct: the proxy answers 502 for it, and pushes need the WIF login, not a cache.
             - name: HTTP_PROXY
               value: http://dind-registry-proxy.arc-runners.svc.cluster.local:3128
             - name: HTTPS_PROXY
               value: http://dind-registry-proxy.arc-runners.svc.cluster.local:3128
             - name: NO_PROXY
-              value: localhost,127.0.0.1,10.0.0.0/8,10.177.76.0/24,10.177.76.220,.svc,.cluster.local,registry.shared-k8s.local,registry.registry.svc,registry.registry.svc.cluster.local
+              value: localhost,127.0.0.1,10.0.0.0/8,10.177.76.0/24,10.177.76.220,.svc,.cluster.local,registry.shared-k8s.local,registry.registry.svc,registry.registry.svc.cluster.local,.pkg.dev,.googleapis.com
           securityContext:
             privileged: true
           # Native sidecar (k8s 1.29+): keep dockerd up for the runner container.
