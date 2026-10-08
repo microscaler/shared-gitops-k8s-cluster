@@ -159,6 +159,9 @@ spec:
               exec dockerd-entrypoint.sh dockerd \
                 --host=unix:///var/run/docker.sock \
                 --group=123 \
+                # Match the pod network (flannel vxlan, MTU 1450). docker0 defaults to 1500, and containers in
+                # dind (pack lifecycle, test containers) then stall in TLS handshakes once full-size packets drop.
+                --mtu=1450 \
                 --insecure-registry=10.177.76.220:5000 \
                 --insecure-registry=registry.registry.svc.cluster.local:5000 \
                 --insecure-registry=registry.shared-k8s.local:5000
