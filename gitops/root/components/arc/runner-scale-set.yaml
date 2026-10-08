@@ -158,7 +158,10 @@ spec:
               fi
               exec dockerd-entrypoint.sh dockerd \
                 --host=unix:///var/run/docker.sock \
-                --group=123
+                --group=123 \
+                --insecure-registry=10.177.76.220:5000 \
+                --insecure-registry=registry.registry.svc.cluster.local:5000 \
+                --insecure-registry=registry.shared-k8s.local:5000
           env:
             - name: DOCKER_GROUP_GID
               value: "123"
@@ -168,7 +171,7 @@ spec:
             - name: HTTPS_PROXY
               value: http://dind-registry-proxy.arc-runners.svc.cluster.local:3128
             - name: NO_PROXY
-              value: localhost,127.0.0.1,10.0.0.0/8,10.177.76.0/24,.svc,.cluster.local,registry.shared-k8s.local,registry.registry.svc
+              value: localhost,127.0.0.1,10.0.0.0/8,10.177.76.0/24,10.177.76.220,.svc,.cluster.local,registry.shared-k8s.local,registry.registry.svc,registry.registry.svc.cluster.local
           securityContext:
             privileged: true
           # Native sidecar (k8s 1.29+): keep dockerd up for the runner container.
@@ -204,12 +207,17 @@ spec:
               value: unix:///var/run/docker.sock
             - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
               value: "120"
+            # Whole-workspace Rust builds (PriceWhisperer suite, cargo llvm-cov nextest) run in this container: cap
+            # rustc parallelism so one job stays inside the limit below instead of 24 rustc processes at once.
+            - name: CARGO_BUILD_JOBS
+              value: "8"
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 1Gi
             limits:
-              memory: 2Gi
+              # 2Gi OOM-killed the runner mid-compile (GitHub: "the runner lost communication with the server").
+              memory: 12Gi
           volumeMounts:
             - name: work
               mountPath: /home/runner/_work
