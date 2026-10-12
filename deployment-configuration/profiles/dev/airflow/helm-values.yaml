@@ -74,7 +74,6 @@ migrateDatabaseJob:
   useHelmHooks: false
   applyCustomEnv: false
 createUserJob:
-  enabled: false  # PAUSED 12 Oct 2026 (see scheduler.replicas); remove to resume
   useHelmHooks: false
   applyCustomEnv: false
 
@@ -98,6 +97,8 @@ scheduler:
       memory: 1536Mi
 
 webserver:
+  defaultUser:
+    enabled: false  # PAUSED 12 Oct 2026: no create-user job (see scheduler.replicas); remove to resume
   replicas: 0  # PAUSED 12 Oct 2026: no Airflow on the dev cluster (no disk to spare); remove to resume
   service:
     type: ClusterIP
