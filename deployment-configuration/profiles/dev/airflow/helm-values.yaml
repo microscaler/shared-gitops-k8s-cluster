@@ -70,9 +70,11 @@ env:
 # (pods wait for migrations; migration job would only run post-install).
 # Run them as regular release resources instead.
 migrateDatabaseJob:
+  enabled: false  # PAUSED 12 Oct 2026 (see scheduler.replicas); remove to resume
   useHelmHooks: false
   applyCustomEnv: false
 createUserJob:
+  enabled: false  # PAUSED 12 Oct 2026 (see scheduler.replicas); remove to resume
   useHelmHooks: false
   applyCustomEnv: false
 
