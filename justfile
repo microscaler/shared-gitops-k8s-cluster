@@ -434,39 +434,3 @@ heal-hostpath-pvc name:
 	kubectl -n data rollout status "deploy/$DEPLOY" --timeout=180s
 	echo "Healed {{name}} (Retain hostPath)."
 
-# ── Airflow stack ────────────────────────────────────────────────────────────
-
-# Mirror the OFFICIAL apache airflow helm chart (unmodified) into the
-# in-cluster zot registry. Run outside the airgap (needs airflow.apache.org)
-# or from any host that can reach both. The fork is retired.
-airflow-chart-push version="1.16.0":
-	#!/usr/bin/env bash
-	set -euo pipefail
-	source "{{repo_root}}/config/cluster.env"
-	WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-	helm pull airflow --repo https://airflow.apache.org --version "{{version}}" -d "$WORK"
-	helm push "$WORK/airflow-{{version}}.tgz" "oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts" --plain-http
-	echo "Mirrored official airflow-{{version}} → oci://${REGISTRY_LB_IP}:${REGISTRY_PORT}/charts/airflow:{{version}}"
-
-# SOPS-encrypt any plaintext airflow *.secret.yaml in place (age key per .sops.yaml).
-airflow-encrypt-secrets env="dev":
-	#!/usr/bin/env bash
-	set -euo pipefail
-	for F in "{{repo_root}}/deployment-configuration/profiles/{{env}}/airflow/"*.secret.yaml; do
-	  if grep -q "ENC\[" "$F"; then echo "already encrypted: $(basename "$F")"; continue; fi
-	  sops --encrypt --in-place "$F"
-	  echo "Encrypted $(basename "$F")"
-	done
-
-# Render the full airflow stack to rendered-airflow.yaml for review (no cluster).
-airflow-render env="dev" version="1.16.0":
-	#!/usr/bin/env bash
-	set -euo pipefail
-	WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-	helm pull airflow --repo https://airflow.apache.org --version "{{version}}" -d "$WORK"
-	helm template airflow "$WORK/airflow-{{version}}.tgz" \
-	  --namespace airflow \
-	  -f "{{repo_root}}/deployment-configuration/profiles/{{env}}/airflow/helm-values.yaml" \
-	  --set fullnameOverride=airflow \
-	  > "{{repo_root}}/rendered-airflow.yaml"
-	echo "Wrote {{repo_root}}/rendered-airflow.yaml"
