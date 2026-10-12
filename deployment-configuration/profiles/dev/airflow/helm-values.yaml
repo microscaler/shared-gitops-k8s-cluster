@@ -109,3 +109,14 @@ webserver:
 logs:
   persistence:
     enabled: false
+
+# PAUSED (12 Oct 2026): no Airflow running on the dev cluster; there is no disk to spare
+# for it. Workloads scale to zero; the release, secrets, metadata DB and the scheduler
+# log PVC stay, so resuming is deleting this block. (PriceWhisperer's Massive -> Parquet
+# crunching runs in GCP, gcp-infrastructure clusters/dataplane/airflow.)
+scheduler:
+  replicas: 0
+webserver:
+  replicas: 0
+triggerer:
+  replicas: 0
