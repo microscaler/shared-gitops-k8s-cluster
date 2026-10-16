@@ -97,8 +97,9 @@ spec:
     - linux
     - x64
   minRunners: 1
-  # Pool cap. Five k8s-runner-* nodes (4CPU/12G); ~4 jobs/node at 20.
-  maxRunners: 20
+  # Pool cap. Five k8s-runner-* nodes (6 CPU / 16G); ~3 jobs/node at 15, each requesting a whole CPU so the
+  # scheduler spreads them across nodes instead of stacking four builds on one.
+  maxRunners: 15
   template:
     spec:
       serviceAccountName: microscaler-gha-rs-no-permission
@@ -215,11 +216,11 @@ spec:
             # Whole-workspace Rust builds (PriceWhisperer suite, cargo llvm-cov nextest) run in this container: cap
             # rustc parallelism so one job stays inside the limit below instead of 24 rustc processes at once.
             - name: CARGO_BUILD_JOBS
-              value: "8"
+              value: "6"
           resources:
             requests:
-              cpu: 100m
-              memory: 1Gi
+              cpu: "1"
+              memory: 2Gi
             limits:
               # 2Gi OOM-killed the runner mid-compile (GitHub: "the runner lost communication with the server").
               memory: 12Gi

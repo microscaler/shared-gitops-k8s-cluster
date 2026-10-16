@@ -16,13 +16,13 @@ ARC registers scale-set name `microscaler` plus labels `self-hosted`, `linux`, `
 
 | Piece | Where |
 |--------|--------|
-| Nodes | Multipass `k8s-runner-*` (Day-0 `K8S_RUNNERS`) — 4 CPU / 12G / 100G |
+| Nodes | Multipass `k8s-runner-*` (Day-0 `K8S_RUNNERS`) — 6 CPU / 16G / 100G (was 4 / 12G until 2026-10-16) |
 | Node label | `node.microscaler.io/role=gha-runner` |
 | Node taint | `node.microscaler.io/gha-runner=true:NoSchedule` |
 | Controller | namespace `arc-systems` (HelmRelease `arc`, chart `0.14.2`) |
 | Scale set | namespace `arc-runners` — raw `AutoscalingRunnerSet` (`runner-scale-set.yaml`) |
 | Mode | Docker-in-Docker (native sidecar `restartPolicy: Always`) |
-| Parallelism | `minRunners: 1`, `maxRunners: 20` pool (~4/node on five runners; hauliage `integration_max_parallel: 20`) |
+| Parallelism | `minRunners: 1`, `maxRunners: 15` pool (~3/node on five runners; each runner requests 1 CPU / 2Gi, `CARGO_BUILD_JOBS=6`) |
 | DinD pull cache | `dind-registry-proxy` in `arc-runners` (MITM HTTPS proxy) — DinD uses `HTTP(S)_PROXY` + proxy CA. Caches `ghcr.io` / Docker Hub. Classic `--registry-mirror` is Hub-only, so not used alone. |
 
 > Chart `gha-runner-scale-set` 0.14.x is **not** used for the scale set: its
@@ -35,7 +35,11 @@ Add another node: append `k8s-runner-N` to `K8S_RUNNERS` in `config/cluster.env`
 just --justfile day0.justfile vm-create-runners
 ```
 
-Current pool: `k8s-runner-1` … `k8s-runner-5` (4 CPU / 12G each).
+Current pool: `k8s-runner-1` … `k8s-runner-5` (6 CPU / 16G each).
+
+Resize an existing runner (rolling, no job killed): cordon, wait for its runner pod to finish (an idle one is
+deleted), `multipass stop`, `multipass set local.<vm>.cpus=N` / `local.<vm>.memory=NG`, `multipass start`, uncordon.
+`tools/resize-runners.sh` does this for every `K8S_RUNNERS` node from `config/cluster.env`.
 
 ## Runner image (toolchain)
 
