@@ -2,7 +2,8 @@
 
 Merges:
   - gitops/inventory/platform-stacks.yaml (catalog: path, depends_on, profile)
-  - gitops/clusters/<id>/inventory/stacks/<name>/ (enablement dirs)
+  - gitops/clusters/<id>/inventory/stacks/<name>/ (enablement dirs; a `parked` file inside one renders the stack
+    with suspend: true - kept, never reconciled, so a fresh cluster leaves it down and its volumes are untouched)
   - deployment-configuration/profiles/<env>/<name>/ (optional profile KS)
 
 Output: gitops/clusters/<id>/inventory/stacks.yaml
@@ -65,6 +66,8 @@ def render(cluster_id: str, profile_env: str) -> dict:
         if profile:
             depends.append({"name": f"profile-config-{profile}"})
 
+        parked = (CLUSTERS / cluster_id / "inventory" / "stacks" / name / "parked").is_file()
+
         # Stable order: stack deps first, then profile
         stacks.append(
             {
@@ -72,6 +75,7 @@ def render(cluster_id: str, profile_env: str) -> dict:
                 "path": path,
                 "description": row.get("description") or "",
                 "depends": depends,
+                "suspend": parked,
             }
         )
 

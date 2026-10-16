@@ -54,6 +54,7 @@ components:
     suspend: true
 
   # --- RERP CRM (just-enough CRM backing the PriceWhisperer platform portal) ---
+  # Suspended 2026-10-16: ms02 CI capacity mode (docs/ci-capacity-mode.md).
   - name: rerp-crm-services
     source: rerp
     product: rerp
@@ -62,9 +63,10 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: false
-    suspend: false
+    suspend: true
 
   # --- Sesame-IDAM ---
+  # Suspended 2026-10-16: ms02 CI capacity mode; pp runs on GCP.
   - name: sesame-idam-idam
     source: sesame-idam
     product: sesame-idam
@@ -73,7 +75,7 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: true
-    suspend: false
+    suspend: true
   - name: sesame-idam-idam-services
     source: sesame-idam
     product: sesame-idam
@@ -82,7 +84,7 @@ components:
     depends_on: sesame-idam-idam
     wait: true
     force: false
-    suspend: false
+    suspend: true
 
   # --- Hauliage ---
   # Suspended 2026-09-01: reduce Multipass load while registry/storage recover.
@@ -106,6 +108,7 @@ components:
     suspend: true
 
   # --- PriceWhisperer ---
+  # Suspended 2026-10-16: ms02 CI capacity mode; pp runs on GCP.
   - name: pricewhisperer-core
     source: pricewhisperer
     product: pricewhisperer
@@ -114,7 +117,7 @@ components:
     depends_on: stack-namespaces
     wait: true
     force: true
-    suspend: false
+    suspend: true
 
 # Image discovery is cluster integration; update markers stay beside Helm
 # releases in each product repository. Tags: dev-<nanoseconds>.

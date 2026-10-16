@@ -59,6 +59,7 @@ spec:
           prune: true
           wait: ${{ .Repeat.wait }}
           force: ${{ .Repeat.force }}
+          suspend: ${{ .Repeat.suspend }}
           dependsOn:
             - name: "${{ .Repeat.depends_on }}"
           decryption:
@@ -83,6 +84,7 @@ spec:
           image: "${{ .Repeat.image }}"
           interval: 1m
           insecure: true
+          suspend: ${{ .Repeat.suspend }}
     - repeat: "{ .images }"
       content:
         apiVersion: image.toolkit.fluxcd.io/v1
@@ -94,6 +96,7 @@ spec:
             app.kubernetes.io/part-of: "${{ .Repeat.product }}"
             gitops.microscaler.io/environment: dev
         spec:
+          suspend: ${{ .Repeat.suspend }}
           imageRepositoryRef:
             name: "${{ .Repeat.name }}"
           filterTags:
@@ -113,6 +116,7 @@ spec:
             app.kubernetes.io/part-of: "${{ .Repeat.product }}"
             gitops.microscaler.io/environment: dev
         spec:
+          suspend: ${{ .Repeat.suspend }}
           interval: 1m
           sourceRef:
             kind: GitRepository

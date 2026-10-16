@@ -1,0 +1,2 @@
+Parked 2026-10-16: ms02 runs only GitHub Actions (ARC) and Flux, to give the CPU to CI
+(docs/ci-capacity-mode.md). Delete this file to bring the stack back.

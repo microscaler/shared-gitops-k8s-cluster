@@ -9,30 +9,35 @@ stacks:
   description: Shared LLMRouter
   depends:
   - name: stack-namespaces
+  suspend: true
 - name: arc
   path: ./gitops/root/components/arc
   description: GitHub Actions Runner Controller + org scale set (labels self-hosted/linux/x64/microscaler)
   depends:
   - name: stack-namespaces
   - name: profile-config-arc
+  suspend: false
 - name: cluster
   path: ./gitops/root/components/cluster
   description: In-cluster OCI registry (twuni helm) + tag-prune CronJob; MetalLB .220
   depends:
   - name: stack-namespaces
   - name: profile-config-cluster
+  suspend: false
 - name: cylon-infra
   path: ./gitops/root/components/cylon-infra
   description: routellm, squid, freeradius, resurrection-hub
   depends:
   - name: stack-namespaces
   - name: profile-config-cylon-infra
+  suspend: true
 - name: democratic-csi
   path: ./gitops/root/components/democratic-csi
   description: Host ZFS ZVOL + LIO iSCSI (democratic-csi); StorageClass zfs-iscsi
   depends:
   - name: stack-namespaces
   - name: profile-config-democratic-csi
+  suspend: false
 - name: envoy-gateway
   path: ./gitops/root/components/envoy-gateway
   description: Envoy Gateway edge for *.dev.microscaler.local (MetalLB .234); HTTPRoutes
@@ -40,18 +45,21 @@ stacks:
   depends:
   - name: stack-namespaces
   - name: stack-platform-dev-tls
+  suspend: true
 - name: imgproxy
   path: ./gitops/root/components/imgproxy
   description: Imgproxy over MinIO PVC
   depends:
   - name: stack-minio
   - name: profile-config-imgproxy
+  suspend: true
 - name: messaging
   path: ./gitops/root/components/messaging
   description: Mailpit (jouve helm, Retain PVC) + Inbucket; MailHog retired
   depends:
   - name: stack-namespaces
   - name: profile-config-messaging
+  suspend: true
 - name: minio
   path: ./gitops/root/components/minio
   description: MinIO Helm (charts.min.io standalone, existingClaim Retain); MetalLB
@@ -59,43 +67,51 @@ stacks:
   depends:
   - name: stack-namespaces
   - name: profile-config-minio
+  suspend: true
 - name: mosquitto
   path: ./gitops/root/components/mosquitto
   description: NanoMQ MQTT broker (Service name mosquitto)
   depends:
   - name: stack-namespaces
+  suspend: true
 - name: namespaces
   path: ./gitops/root/components/namespaces
   description: Platform and app namespaces
   depends: []
+  suspend: false
 - name: observability
   path: ./gitops/root/components/observability
   description: OpenSearch + Dashboards + Data Prepper + OTel; MetalLB .227/.231
   depends:
   - name: stack-namespaces
   - name: profile-config-observability
+  suspend: true
 - name: pact
   path: ./gitops/root/components/pact
   description: Pact Broker + dedicated Postgres
   depends:
   - name: stack-namespaces
   - name: profile-config-pact
+  suspend: true
 - name: pipeline
   path: ./gitops/root/components/pipeline
   description: Fluvio streaming (SC + SpuGroup) via official helm from public git
   depends:
   - name: stack-namespaces
   - name: profile-config-pipeline
+  suspend: true
 - name: platform-dev-tls
   path: ./gitops/root/components/platform-dev-tls
   description: cert-manager bootstrapped dev CA + wildcard
   depends:
   - name: stack-namespaces
+  suspend: false
 - name: platform-openbao
   path: ./gitops/root/components/platform-openbao
   description: OpenBao via Flux HelmRelease
   depends:
   - name: stack-namespaces
+  suspend: true
 - name: postgres
   path: ./gitops/root/components/postgres
   description: Lifeguard Helm charts/postgres (primary+replicas, zfs-iscsi); Service
@@ -103,6 +119,7 @@ stacks:
   depends:
   - name: stack-namespaces
   - name: profile-config-postgres
+  suspend: true
 - name: postgres-backup
   path: ./gitops/root/components/postgres-backup
   description: "pg_dumpall CronJob \u2192 MinIO bucket postgres-backups"
@@ -110,6 +127,7 @@ stacks:
   - name: stack-postgres
   - name: stack-minio
   - name: profile-config-postgres-backup
+  suspend: true
 - name: redis
   path: ./gitops/root/components/redis
   description: Bitnami Redis Helm (standalone, AOF, existingClaim Retain); MetalLB
@@ -117,8 +135,10 @@ stacks:
   depends:
   - name: stack-namespaces
   - name: profile-config-redis
+  suspend: true
 - name: scheduling
   path: ./gitops/root/components/scheduling
   description: Faktory job server
   depends:
   - name: stack-namespaces
+  suspend: true

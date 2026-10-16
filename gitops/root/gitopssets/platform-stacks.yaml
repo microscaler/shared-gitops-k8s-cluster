@@ -50,6 +50,9 @@ spec:
           path: "${{ .Repeat.path }}"
           prune: true
           wait: true
+          # Parked stacks (a `parked` file in clusters/<id>/inventory/stacks/<name>/) are suspended: Flux leaves them
+          # and their volumes alone; a fresh cluster never deploys them.
+          suspend: ${{ .Repeat.suspend }}
           dependsOn: ${{ .Repeat.depends | toYaml | nindent 12 }}
           decryption:
             provider: sops
